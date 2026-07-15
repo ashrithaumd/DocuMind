@@ -1,0 +1,8 @@
+# Eval-only dependencies — installed on top of ../requirements.txt.
+# Kept separate so the runtime Docker image doesn't carry RAGAS + LangChain.
+# ragas 0.2/0.3 need the old langchain 0.3 line, which conflicts with the
+# app's langgraph 1.x; ragas 0.4 works with both.
+ragas>=0.4,<0.5
+langchain-anthropic>=1.0
+httpx>=0.27
+pandas>=2.0

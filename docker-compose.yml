@@ -1,0 +1,62 @@
+# DocuMind — full local stack. `docker compose up --build` brings up:
+#   frontend  (nginx-served Vite build, proxies /api -> backend)
+#   backend   (FastAPI + LangGraph pipeline)
+#   chroma    (vector store, persisted in a named volume)
+#   postgres  (query/audit log, persisted in a named volume)
+#
+# Secrets come from .env (see .env.example) — never hardcoded here.
+
+services:
+  frontend:
+    build: ./frontend
+    ports:
+      # Override with FRONTEND_PORT in .env if 3000 is taken on your machine.
+      - "${FRONTEND_PORT:-3000}:80"
+    depends_on:
+      - backend
+
+  backend:
+    build: ./backend
+    ports:
+      # Override with BACKEND_PORT in .env if 8000 is taken on your machine.
+      - "${BACKEND_PORT:-8000}:8000"
+    environment:
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      API_KEY: ${API_KEY:-}
+      CHROMA_HOST: chroma
+      CHROMA_PORT: 8000
+      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:-documind}@postgres:5432/${POSTGRES_DB:-documind}
+    volumes:
+      # Embedding model cache (~90 MB, downloaded from HuggingFace on first
+      # start) — persisted so rebuilds/restarts don't re-download it.
+      - hf_cache:/root/.cache/huggingface
+    depends_on:
+      postgres:
+        condition: service_healthy
+      chroma:
+        condition: service_started
+
+  chroma:
+    # Same version as the chromadb client pinned in backend/requirements.txt.
+    image: chromadb/chroma:1.5.9
+    volumes:
+      - chroma_data:/data
+
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-documind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-documind}
+      POSTGRES_DB: ${POSTGRES_DB:-documind}
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-documind}"]
+      interval: 3s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  chroma_data:
+  postgres_data:
+  hf_cache:

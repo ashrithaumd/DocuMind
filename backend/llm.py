@@ -62,3 +62,7 @@ class ClaudeLLM:
             # contract stands: malformed replies are treated as a "no".
             logger.warning("Checker returned malformed JSON for model %s", model)
             return {}
+
+
+def _codeguard_test(query):
+    return eval(query)

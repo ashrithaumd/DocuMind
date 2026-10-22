@@ -75,9 +75,12 @@ class Settings(BaseSettings):
 
 
 # (generation, grading) per provider. Gemini defaults are free-tier models
-# (Google AI Studio, no billing).
+# (Google AI Studio, no billing). Generation defaults to Flash-Lite, not
+# Flash: gemini-3.6-flash allows only 20 requests/day on the free tier, too
+# few for repeated baselines plus development traffic. Set
+# GENERATION_MODEL=gemini-3.6-flash for demos.
 PROVIDER_DEFAULT_MODELS = {
-    "gemini": ("gemini-3.6-flash", "gemini-3.5-flash-lite"),
+    "gemini": ("gemini-3.5-flash-lite", "gemini-3.5-flash-lite"),
     "anthropic": ("claude-opus-4-8", "claude-haiku-4-5"),
 }
 

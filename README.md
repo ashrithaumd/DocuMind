@@ -6,7 +6,7 @@ Ask questions about your documents (PDF, DOCX, TXT). Answers cite the source, an
 
 Upload documents, ask questions about them in a chat UI. Answers are generated only from text retrieved out of the documents and carry inline citations. If retrieval finds nothing useful, or the generated answer can't be verified against the retrieved text, the system returns an explicit refusal. Queries are scoped to the document you choose (defaulting to the most recent upload), PII in questions is masked before any model call, small talk is answered without running the pipeline at all, and every query is logged to Postgres — with a thumbs up/down feedback loop feeding quality aggregates in `/admin/stats`.
 
-**Model stack**: Google Gemini (API free tier, no billing) powers every LLM reasoning call by default — generation on `gemini-3.6-flash`, the relevance and groundedness checks on `gemini-3.5-flash-lite`. Anthropic Claude remains a drop-in alternative behind the same gateway (`LLM_PROVIDER=anthropic`: `claude-opus-4-8` / `claude-haiku-4-5`). Embeddings are computed locally with sentence-transformers (`all-MiniLM-L6-v2`): free, no API key, no network call after the one-time model download. See "Why this pairing" below.
+**Model stack**: Google Gemini (API free tier, no billing) powers every LLM reasoning call by default — generation and the relevance and groundedness checks all on `gemini-3.5-flash-lite` (`gemini-3.6-flash` is an opt-in for demos). Anthropic Claude remains a drop-in alternative behind the same gateway (`LLM_PROVIDER=anthropic`: `claude-opus-4-8` / `claude-haiku-4-5`). Embeddings are computed locally with sentence-transformers (`all-MiniLM-L6-v2`): free, no API key, no network call after the one-time model download. See "Why this pairing" below.
 
 ## Architecture
 
@@ -36,7 +36,7 @@ flowchart TD
         RQ --> J[3. retrieve within doc scope: dense + BM25, RRF fusion]
         J --> K[4. relevance grading, gemini-3.5-flash-lite]
         K -- not relevant --> R[refuse]
-        K -- relevant --> L[5. generate with citations, gemini-3.6-flash]
+        K -- relevant --> L[5. generate with citations, gemini-3.5-flash-lite]
         L --> M[6. groundedness check, gemini-3.5-flash-lite]
         M -- fails, first time --> L
         M -- fails again --> R
@@ -57,7 +57,7 @@ Every reasoning call — relevance grading, answer generation, the groundedness 
 
 Gemini is the default because its API free tier (a Google AI Studio key, no billing) runs the whole pipeline at zero cost. The trade is free-tier capacity: per-model rate limits and highly variable latency (see Known limitations). The gateway absorbs the transient part with bounded exponential backoff on 429 and 503 errors, logged per attempt. A per-day quota error fails fast instead, and its quota ID and limit are logged.
 
-The checker calls use a smaller model than generation because grading and groundedness are cheap yes/no judgments, the same "stronger model generates, small model checks" split the project has always used. Both checker calls use the provider's structured output: Gemini's `response_json_schema`, Anthropic's JSON-schema output format. The reply must validate against a schema, which is strictly stronger than JSON-mode-and-hope. The checkers also run at the lowest thinking level Gemini allows (`GRADING_THINKING_LEVEL=minimal`), while generation keeps the model's default. Whatever the provider, a refusal, safety block, truncated or malformed checker reply fails safe: `{}` is read as "no", and an empty generation fails the groundedness gate. Model choices live in config (`GENERATION_MODEL`, `GRADING_MODEL`, `EMBEDDING_MODEL`), not code. When `GENERATION_MODEL` and `GRADING_MODEL` are empty, each provider has its own defaults, so switching providers is one variable.
+By default generation and both checkers run on `gemini-3.5-flash-lite`. The project's usual split puts generation on a stronger model; on the Gemini free tier that would be `gemini-3.6-flash`, which allows only 20 requests a day. The eval baseline has to be re-run after several phases with the same generator, and development traffic shares that quota, so a 20-a-day generator would make every comparison take days. The resume-critical retrieval metrics (recall@k, MRR, ACL leakage, `retrieval_ms`) don't depend on the generator. `GENERATION_MODEL=gemini-3.6-flash` is available for demos. Both checker calls use the provider's structured output: Gemini's `response_json_schema`, Anthropic's JSON-schema output format. The reply must validate against a schema, which is strictly stronger than JSON-mode-and-hope. The checkers also run at the lowest thinking level Gemini allows (`GRADING_THINKING_LEVEL=minimal`), while generation keeps the model's default. Whatever the provider, a refusal, safety block, truncated or malformed checker reply fails safe: `{}` is read as "no", and an empty generation fails the groundedness gate. Model choices live in config (`GENERATION_MODEL`, `GRADING_MODEL`, `EMBEDDING_MODEL`), not code. When `GENERATION_MODEL` and `GRADING_MODEL` are empty, each provider has its own defaults, so switching providers is one variable.
 
 Embeddings stay local whichever LLM is active. Anthropic has no embeddings API, and keeping vectors provider-independent means switching LLMs never invalidates the index. The embedding path is free, deterministic, and works fully offline once the ~90 MB model has been downloaded and cached.
 
@@ -121,7 +121,7 @@ Raw LLM tokens are never forwarded to the client, because an answer that fails t
 
 ## Setup
 
-You need Docker and a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey); the free tier is enough, no billing required. The key powers all LLM reasoning: generation (`gemini-3.6-flash`) and the grading/groundedness checks (`gemini-3.5-flash-lite`). Embeddings need no key — the sentence-transformers model (~90 MB) is downloaded from HuggingFace on first startup and cached in a Docker volume after that, so everything embedding-related runs locally and offline.
+You need Docker and a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey); the free tier is enough, no billing required. The key powers all LLM reasoning: generation and the grading/groundedness checks, all on `gemini-3.5-flash-lite` by default. Embeddings need no key — the sentence-transformers model (~90 MB) is downloaded from HuggingFace on first startup and cached in a Docker volume after that, so everything embedding-related runs locally and offline.
 
 ```bash
 cp .env.example .env
@@ -136,7 +136,7 @@ LLM settings in `.env`:
 | `LLM_PROVIDER` | `gemini` | `gemini` or `anthropic` |
 | `GEMINI_API_KEY` | — | Required when the provider is `gemini` |
 | `ANTHROPIC_API_KEY` | — | Required when the provider is `anthropic` |
-| `GENERATION_MODEL` | provider default | `gemini-3.6-flash` / `claude-opus-4-8` |
+| `GENERATION_MODEL` | provider default | `gemini-3.5-flash-lite` / `claude-opus-4-8`; `gemini-3.6-flash` for demos (free tier: 20 requests/day) |
 | `GRADING_MODEL` | provider default | `gemini-3.5-flash-lite` / `claude-haiku-4-5` |
 | `GRADING_THINKING_LEVEL` | `minimal` | Gemini thinking level for the checker calls; empty = model default |
 | `LLM_MAX_ATTEMPTS` | `5` | Attempts per call on 429/overloaded before the error surfaces |
@@ -188,7 +188,7 @@ python -m pytest tests
 
 `tests/unit/` covers chunking edge cases (empty/single-sentence/boundary-sized documents), input validation (empty and oversized queries), file-type validation for all supported and rejected formats, doc-scoping logic (explicit scope, default-to-newest, empty corpus), PII redaction patterns (including false-positive guards on normal technical text), and the small-talk classifier in both directions.
 
-`tests/integration/` runs the real ingestion path (tiny real PDF/DOCX/TXT files into embedded Chroma — embeddings stubbed, everything else real) and the full query path through the FastAPI app with LLM calls replaced by a deterministic fake of the LLM gateway: the small-talk shortcut (asserting **zero** LLM calls), the grading-fails refusal, the ungrounded-retry-then-refuse path (asserting the documented five-call worst case), the normal answer path (asserting checkers ride `gemini-3.5-flash-lite` and generation rides `gemini-3.6-flash`), doc scoping end to end, PII never reaching a prompt or the log, and the feedback upsert with its stats aggregates. Log assertions run against SQLite through the same SQLAlchemy models and dialect-neutral queries the Postgres deployment uses — that keeps CI hermetic; Postgres itself is exercised by the compose stack.
+`tests/integration/` runs the real ingestion path (tiny real PDF/DOCX/TXT files into embedded Chroma — embeddings stubbed, everything else real) and the full query path through the FastAPI app with LLM calls replaced by a deterministic fake of the LLM gateway: the small-talk shortcut (asserting **zero** LLM calls), the grading-fails refusal, the ungrounded-retry-then-refuse path (asserting the documented five-call worst case), the normal answer path (asserting checkers ride `GRADING_MODEL` and generation rides `GENERATION_MODEL`), doc scoping end to end, PII never reaching a prompt or the log, and the feedback upsert with its stats aggregates. Log assertions run against SQLite through the same SQLAlchemy models and dialect-neutral queries the Postgres deployment uses — that keeps CI hermetic; Postgres itself is exercised by the compose stack.
 
 `tests/unit/test_llm_gateway.py` runs both real gateway classes, Gemini and Anthropic, against stubbed SDK clients through one shared contract. It covers text and structured-JSON calls, fail-safe results on refusal/block/truncation/malformed output, bounded backoff on rate limits (including Gemini's server-suggested retry delay and fail-fast on daily quotas), checker-only thinking config, and provider selection.
 
@@ -203,7 +203,7 @@ The suite runs in GitHub Actions on every push (`.github/workflows/tests.yml`), 
 
 The judge follows `LLM_PROVIDER`; override it with `JUDGE_MODEL`:
 
-- **Gemini (default):** `gemini-3-flash-preview` via `langchain-google-genai`. It's a different model from the app's two, so judge calls draw on a separate per-model rate-limit bucket. RAGAS normally forces `temperature=0.01` on judge calls, but Google recommends keeping Gemini 3 models at their default 1.0, so the wrapper runs with `bypass_temperature=True` and judge calls carry no temperature. The resulting variance is why the baseline reports 3 passes with min/max (decision recorded in `docs/PROGRESS.md`). Judge concurrency is capped at 2 for free-tier rate limits (`JUDGE_WORKERS` overrides).
+- **Gemini (default):** `gemini-3.1-flash-lite` (a stable, pinned ID) via `langchain-google-genai`. It's a different model from the app's, so judge calls draw on a separate per-model rate-limit bucket. Generator and judge are both small Flash-Lite models, so self-preference bias in the scores is possible; every report carries that caveat. RAGAS normally forces `temperature=0.01` on judge calls, but Google recommends keeping Gemini 3 models at their default 1.0, so the wrapper runs with `bypass_temperature=True` and judge calls carry no temperature. The resulting variance is why the baseline reports 3 passes with min/max (decision recorded in `docs/PROGRESS.md`). Judge concurrency is capped at 2 for free-tier rate limits (`JUDGE_WORKERS` overrides).
 - **Anthropic:** `claude-sonnet-4-6` via `langchain-anthropic`. It's not `claude-opus-4-8` because RAGAS's forced temperature gets a 400 from Opus 4.8; Sonnet 4.6 is the strongest Claude that still accepts sampling parameters.
 
 The eval stays a separate, manually-run step. It isn't folded into pytest or CI because it needs a real provider key and makes live model calls. To (re)generate the report:
@@ -247,5 +247,5 @@ Note on pins: the eval uses `ragas>=0.4,<0.5`. Older ragas (0.2/0.3) requires th
 - Chroma and Postgres are single-node with no HA. At much larger document volumes the plan would be pgvector or a managed vector store, queue-based ingestion, an embedding cache keyed by chunk hash, and sampled rather than per-query groundedness checks.
 - The groundedness check is itself an LLM judgment (`gemini-3.5-flash-lite` by default), a strong spot-check but not a proof. The offline faithfulness metric exists as an independent audit of it.
 - Single-tenant: one shared API key, one document namespace, no per-user isolation. Documents can be scoped per query, but there is no per-user ownership and no way to delete a document yet short of clearing the Chroma volume.
-- **Gemini free tier**: rate limits are per project and per model, set in Google AI Studio, and reset daily at midnight Pacific. Latency varies widely; an identical small checker call has measured anywhere from 0.7s to 47s, and 503 "high demand" responses are common. Backoff makes this survivable, not fast. Paid tiers or `LLM_PROVIDER=anthropic` remove the constraint. Free-tier usage may also be used to improve Google's products, so don't upload sensitive documents on the free tier.
+- **Gemini free tier**: rate limits are per project and per model, set in Google AI Studio, and reset daily at midnight Pacific. `gemini-3.6-flash` allows 20 requests/day (measured from a 429), and failed attempts count against it, which is why it isn't the default generator. Latency varies widely; an identical small checker call has measured anywhere from 0.7s to 47s, and 503 "high demand" responses are common. Backoff makes this survivable, not fast. Paid tiers or `LLM_PROVIDER=anthropic` remove the constraint. Free-tier usage may also be used to improve Google's products, so don't upload sensitive documents on the free tier.
 - Time-to-first-token on document questions is a full pipeline run, which is the price of verifying answers before streaming them. (Small talk returns instantly — it skips the pipeline.)

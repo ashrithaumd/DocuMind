@@ -11,9 +11,9 @@ gateway in `backend/llm.py`. Anthropic stays implemented and tested;
 
 | Role | Gemini (default) | Anthropic (previous) |
 |---|---|---|
-| Generation (`GENERATION_MODEL`) | `gemini-3.6-flash` | `claude-opus-4-8` |
+| Generation (`GENERATION_MODEL`) | `gemini-3.5-flash-lite` (see decision below) | `claude-opus-4-8` |
 | Relevance + groundedness checks (`GRADING_MODEL`) | `gemini-3.5-flash-lite` | `claude-haiku-4-5` |
-| RAGAS judge (`JUDGE_MODEL`) | `gemini-3-flash-preview` | `claude-sonnet-4-6` |
+| RAGAS judge (`JUDGE_MODEL`) | `gemini-3.1-flash-lite` | `claude-sonnet-4-6` |
 
 Embeddings are unchanged (local `all-MiniLM-L6-v2`), so existing indexes stay valid.
 
@@ -37,3 +37,25 @@ and Gemini uses its default of 1.0. A one-sample probe confirmed it: both judge
 calls had `temperature=None`. The cost is less deterministic judge scores, so
 the baseline runs 3 passes and reports mean with min/max to show that variance.
 The Anthropic judge path is unchanged (`claude-sonnet-4-6`, temperature 0).
+
+### Decision: generate on gemini-3.5-flash-lite, project-wide (2026-10-22)
+
+The first Phase 0 eval pass hit `gemini-3.6-flash`'s free-tier daily cap at
+question 10 of 14. The quota id was
+`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, with limit **20**. By the
+request tally, failed attempts (503/500) count against it too.
+
+**Chosen:** `GENERATION_MODEL` now defaults to `gemini-3.5-flash-lite`, the same
+model as grading, everywhere: config, README and `.env.example`, not just the
+eval. `gemini-3.6-flash` remains an opt-in for demos.
+
+**Why:** the baseline has to be re-run after Phase 1, Phase 6 and Phase 12 with
+the same generator, and development queries share the quota. A 20-request/day
+generator would make every comparison take several days. The resume-critical
+metrics (recall@k, MRR, ACL leakage, `retrieval_ms`) don't depend on the
+generator.
+
+**Known limitation:** the generator (`gemini-3.5-flash-lite`) and the judge
+(`gemini-3.1-flash-lite`) are both small Gemini Flash-Lite models, so
+self-preference bias in the RAGAS scores is possible. Every eval report states
+this caveat.

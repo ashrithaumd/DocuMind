@@ -95,11 +95,11 @@ def test_normal_answer_path(client, app_env):
     assert body["citations"], "expected citations"
     assert len(app_env.chat_calls) == 3  # grade + generate + groundedness
 
-    # Model routing: checkers on the cheap grading model, generation on the
-    # stronger one — all via the single LLM gateway.
+    # Model routing: checkers on GRADING_MODEL, generation on
+    # GENERATION_MODEL (both Flash-Lite by default) — all via the gateway.
     models = [call["model"] for call in app_env.chat_calls]
     assert models[0] == "gemini-3.5-flash-lite"   # relevance grade
-    assert models[1] == "gemini-3.6-flash"        # generation
+    assert models[1] == "gemini-3.5-flash-lite"   # generation
     assert models[2] == "gemini-3.5-flash-lite"   # groundedness check
 
     row = _last_log()

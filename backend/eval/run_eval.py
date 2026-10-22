@@ -288,7 +288,7 @@ def latency_table(samples: list[dict]) -> dict:
 
 
 def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list[dict],
-                  summary: dict, latency: dict, judge_calls: dict) -> None:
+                  summary: dict, latency: dict, judge_calls: dict, caveats: list[str] = ()) -> None:
     per_question = [
         {
             "question": s["user_input"],
@@ -301,7 +301,7 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.json").write_text(
         json.dumps({"summary": summary, "latency_ms": latency, "judge_calls": judge_calls,
-                    "per_question": per_question}, indent=2),
+                    "caveats": list(caveats), "per_question": per_question}, indent=2),
         encoding="utf-8",
     )
 
@@ -314,6 +314,8 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
     ]
     if summary["stopped"]:
         lines += ["", f"**Run stopped early:** {summary['stopped']}"]
+    for caveat in caveats:
+        lines += ["", f"**Caveat:** {caveat}"]
     lines += [
         "",
         "| Metric | Mean | Scored |",
@@ -393,8 +395,16 @@ def main() -> int:
 
     summary = summarize(samples, stop_reasons)
     latency = latency_table(samples)
+    caveats = []
+    if os.environ.get("LLM_PROVIDER", "gemini") == "gemini":
+        judge_model = os.environ.get("JUDGE_MODEL") or JUDGE_DEFAULTS["gemini"]
+        caveats.append(
+            f"The default generator (gemini-3.5-flash-lite) and the judge ({judge_model}) "
+            "are both small Gemini Flash-Lite models, so self-preference bias in the "
+            "RAGAS scores is possible."
+        )
     write_reports(Path(args.out_dir), dataset, Path(args.dataset).name, samples,
-                  summary, latency, judge_calls)
+                  summary, latency, judge_calls, caveats)
 
     print("\nSummary:", json.dumps(summary, indent=2))
     print("Latency:", json.dumps(latency, indent=2))

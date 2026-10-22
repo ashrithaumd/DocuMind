@@ -281,7 +281,7 @@ async def test_claude_sends_schema_as_structured_output():
 def test_default_provider_is_gemini_with_free_tier_models():
     settings = Settings(_env_file=None, gemini_api_key="k")
     assert settings.llm_provider == "gemini"
-    assert settings.generation_model == "gemini-3.6-flash"
+    assert settings.generation_model == "gemini-3.5-flash-lite"
     assert settings.grading_model == "gemini-3.5-flash-lite"
     assert settings.grading_thinking_level == "minimal"
     gateway = build_llm(settings)

@@ -20,7 +20,8 @@ rank-bm25>=0.2.2
 # Local embeddings (all-MiniLM-L6-v2) — free, no API key, runs offline after
 # the first model download. Pulls in torch; the Dockerfile installs the
 # CPU-only torch wheel first so the image doesn't ship CUDA.
-sentence-transformers>=3.0
+# >=6: the store calls get_embedding_dimension (renamed in 6).
+sentence-transformers>=6.0
 pypdf>=4.3
 python-docx>=1.1
 

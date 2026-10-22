@@ -65,7 +65,9 @@ class FakeLLM:
 
 class FakeEmbedder:
     """Stands in for the sentence-transformers model: same interface the
-    store uses (encode + get_sentence_embedding_dimension), zero deps."""
+    store uses (encode + get_embedding_dimension, the sentence-transformers 6
+    name — deliberately not the deprecated get_sentence_embedding_dimension),
+    zero deps."""
 
     def __init__(self, record_into: list | None = None):
         self.embed_calls = record_into if record_into is not None else []
@@ -74,7 +76,7 @@ class FakeEmbedder:
         self.embed_calls.append(list(texts))
         return [_fake_vector(t) for t in texts]
 
-    def get_sentence_embedding_dimension(self) -> int:
+    def get_embedding_dimension(self) -> int:
         return 32
 
 

@@ -9,16 +9,23 @@ results with RAGAS:
   - context precision:  did retrieval rank the truly relevant chunks at the
                         top? (the metric that would justify adding a reranker)
 
+Every question ends in exactly one recorded outcome: the pipeline's own
+(answered / refused_*), "error" (with the failing stage and error kind), or
+"not_run" (the run stopped first). Nothing is dropped silently. A daily-quota
+error from any model stops the run; everything already scored is kept.
+
 Usage:
     1. Start the stack (docker compose up, or uvicorn locally).
     2. Upload the sample document once:  see --ingest below.
-    3. python eval/run_eval.py [--api http://localhost:8000] [--ingest]
+    3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR]
 
-Outputs eval/report.json and eval/report.md.
+Outputs report.json and report.md (default: eval/).
 """
 import argparse
 import json
+import math
 import os
+import re
 import statistics
 import sys
 from pathlib import Path
@@ -27,13 +34,6 @@ import httpx
 from dotenv import load_dotenv
 
 EVAL_DIR = Path(__file__).parent
-
-
-def call_api(client: httpx.Client, api: str, question: str) -> dict:
-    response = client.post(f"{api}/query", json={"question": question}, timeout=120)
-    response.raise_for_status()
-    return response.json()
-
 
 # Judge per provider. Overridable with JUDGE_MODEL. Defaults:
 #   gemini:    gemini-3.1-flash-lite — free tier, a stable (non-preview) ID,
@@ -47,12 +47,90 @@ def call_api(client: httpx.Client, api: str, question: str) -> dict:
 JUDGE_DEFAULTS = {"gemini": "gemini-3.1-flash-lite", "anthropic": "claude-sonnet-4-6"}
 
 STAGES = ("retrieval_ms", "grading_ms", "generation_ms", "groundedness_ms", "total_ms")
+METRICS = ("faithfulness", "context_precision")
+
+
+# --- error classification ------------------------------------------------------
+
+
+class DailyQuotaExhausted(Exception):
+    """A per-day quota is spent: retrying before the reset is pointless."""
+
+
+class TransientJudgeError(Exception):
+    """A judge error worth retrying (rate limit, 500/503)."""
+
+
+def is_daily_quota(text: str) -> bool:
+    # Gemini's quota id, e.g. GenerateRequestsPerDayPerProjectPerModel-FreeTier.
+    return "PerDay" in text
+
+
+def is_transient(text: str) -> bool:
+    return bool(re.search(r"\b(429|500|503|529)\b|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|overloaded", text))
+
+
+# --- querying the live pipeline ------------------------------------------------
+
+
+def call_api(client: httpx.Client, api: str, question: str) -> dict:
+    response = client.post(f"{api}/query", json={"question": question}, timeout=600)
+    response.raise_for_status()
+    return response.json()
+
+
+def _api_error(exc: httpx.HTTPError) -> tuple[str, str]:
+    """(stage, error kind) for a failed /query call."""
+    if isinstance(exc, httpx.HTTPStatusError):
+        try:
+            body = exc.response.json()
+        except ValueError:
+            body = {}
+        return (
+            body.get("stage", "api"),
+            body.get("error", f"http_{exc.response.status_code}"),
+        )
+    return "api", type(exc).__name__  # timeout / connection error
+
+
+def run_questions(client: httpx.Client, api: str, pairs: list[dict]) -> tuple[list[dict], str | None]:
+    """Every pair through the live pipeline. Returns (samples, stop_reason):
+    one sample per pair, always — a failed question is recorded as "error"
+    and the run continues; after a daily-quota error the rest are "not_run"."""
+    samples: list[dict] = []
+    stop_reason = None
+    for i, pair in enumerate(pairs, start=1):
+        sample = {"user_input": pair["question"], "reference": pair["reference"], "timings": {}}
+        if stop_reason:
+            sample["outcome"] = "not_run"
+        else:
+            try:
+                result = call_api(client, api, pair["question"])
+            except httpx.HTTPError as exc:
+                stage, error = _api_error(exc)
+                sample.update(outcome="error", stage=stage, error=error)
+                if error == "daily_quota":
+                    stop_reason = f"daily quota exhausted at question {i} (stage: {stage})"
+            else:
+                sample.update(
+                    outcome=result["outcome"],
+                    response=result["answer"],
+                    retrieved_contexts=[c["text"] for c in result["chunks"]],
+                    timings=result.get("timings") or {},
+                )
+        detail = f" [{sample['stage']}: {sample['error']}]" if sample["outcome"] == "error" else ""
+        print(f"[{i:2d}/{len(pairs)}] {sample['outcome']:20s} {pair['question'][:60]}{detail}", flush=True)
+        samples.append(sample)
+    return samples, stop_reason
+
+
+# --- judge ---------------------------------------------------------------------------
 
 
 class JudgeCallCounter:
     """LangChain callback counting every judge request per model, plus the
-    errors (429 quota details included) — free-tier quotas count requests,
-    so retries must be visible, not hidden inside the client."""
+    errors — free-tier quotas count requests, so retries must be visible, not
+    hidden inside the client."""
 
     def __new__(cls):
         from langchain_core.callbacks import BaseCallbackHandler
@@ -61,6 +139,7 @@ class JudgeCallCounter:
             def __init__(self):
                 self.requests: dict[str, int] = {}
                 self.errors: list[str] = []
+                self.daily_quota_hit = False
 
             def on_chat_model_start(self, serialized, messages, *, invocation_params=None, **kw):
                 model = (invocation_params or {}).get("model", "?")
@@ -69,15 +148,10 @@ class JudgeCallCounter:
             def on_llm_error(self, error, **kw):
                 self.errors.append(f"{type(error).__name__}: {str(error)[:400]}")
                 print(f"  judge error: {self.errors[-1][:200]}", flush=True)
+                if isinstance(error, DailyQuotaExhausted):
+                    self.daily_quota_hit = True
 
         return _Counter()
-
-
-def percentile(values: list[float], pct: float) -> float:
-    ordered = sorted(values)
-    k = (len(ordered) - 1) * pct / 100
-    lo, hi = int(k), min(int(k) + 1, len(ordered) - 1)
-    return round(ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo), 1)
 
 
 def build_judge():
@@ -89,22 +163,184 @@ def build_judge():
     if provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
+        class QuotaAwareGemini(ChatGoogleGenerativeAI):
+            """Re-raises judge errors as transient (RAGAS retries) or
+            daily-quota (never retried, stops scoring)."""
+
+            async def _agenerate(self, *args, **kwargs):
+                try:
+                    return await super()._agenerate(*args, **kwargs)
+                except Exception as exc:
+                    if is_daily_quota(str(exc)):
+                        raise DailyQuotaExhausted(str(exc)) from exc
+                    if is_transient(str(exc)):
+                        raise TransientJudgeError(str(exc)) from exc
+                    raise
+
         # No temperature: Google recommends keeping Gemini 3 models at their
         # default 1.0 (lower values risk looping/degraded reasoning), and
         # bypass_temperature below stops RAGAS overriding it with 0.01. The
         # resulting judge variance is measured by the 3-pass min/max.
         # max_retries=0: RAGAS's own retry (RunConfig, exponential backoff)
-        # re-issues failed judge calls, so every request reaches the counter.
-        chat = ChatGoogleGenerativeAI(
+        # re-issues transient failures, so every request reaches the counter.
+        chat = QuotaAwareGemini(
             model=model, api_key=os.environ["GEMINI_API_KEY"],
             max_tokens=4096, max_retries=0,
         )
         return LangchainLLMWrapper(chat, bypass_temperature=True)
-    else:
-        from langchain_anthropic import ChatAnthropic
 
-        chat = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
-        return LangchainLLMWrapper(chat)
+    from langchain_anthropic import ChatAnthropic
+
+    chat = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
+    return LangchainLLMWrapper(chat)
+
+
+def score_answered(answered: list[dict], judge, counter) -> str | None:
+    """Score each answered sample in place, one at a time, so a judge
+    daily-quota stop keeps everything scored before it. A metric the judge
+    failed on is None with the reason in sample["judge_error"]. Returns the
+    stop reason, if any."""
+    from ragas import EvaluationDataset, evaluate
+    from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference
+    from ragas.run_config import RunConfig
+
+    gemini = os.environ.get("LLM_PROVIDER", "gemini") == "gemini"
+    run_config = RunConfig(
+        timeout=300,  # long contexts can exceed the 180s default
+        # Only transient errors are retried; a daily quota is not.
+        exception_types=(TransientJudgeError,) if gemini else (Exception,),
+        # RAGAS fires 16 judge calls at once by default — far above Gemini
+        # free-tier RPM, so throttle there (JUDGE_WORKERS overrides).
+        max_workers=int(os.environ.get("JUDGE_WORKERS") or (2 if gemini else 16)),
+    )
+    metrics = [Faithfulness(), LLMContextPrecisionWithReference()]
+
+    for i, sample in enumerate(answered, start=1):
+        if counter.daily_quota_hit:
+            sample.update(faithfulness=None, context_precision=None,
+                          judge_error="not scored: judge daily quota exhausted")
+            continue
+        dataset = EvaluationDataset.from_list(
+            [{k: sample[k] for k in ("user_input", "reference", "response", "retrieved_contexts")}]
+        )
+        errors_before = len(counter.errors)
+        result = evaluate(dataset=dataset, metrics=metrics, llm=judge,
+                          run_config=run_config, show_progress=False, raise_exceptions=False)
+        row = result.to_pandas().iloc[0]
+        precision_col = next(c for c in row.index if "context_precision" in c)
+        for name, col in (("faithfulness", "faithfulness"), ("context_precision", precision_col)):
+            value = float(row[col])
+            sample[name] = None if math.isnan(value) else round(value, 3)
+        if sample["faithfulness"] is None or sample["context_precision"] is None:
+            sample["judge_error"] = "; ".join(counter.errors[errors_before:])[:400] or "judge returned no score"
+        print(f"  scored {i}/{len(answered)}: faithfulness={sample['faithfulness']} "
+              f"context_precision={sample['context_precision']}", flush=True)
+
+    return "judge daily quota exhausted" if counter.daily_quota_hit else None
+
+
+# --- reporting -----------------------------------------------------------------------
+
+
+def percentile(values: list[float], pct: float) -> float:
+    ordered = sorted(values)
+    k = (len(ordered) - 1) * pct / 100
+    lo, hi = int(k), min(int(k) + 1, len(ordered) - 1)
+    return round(ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo), 1)
+
+
+def summarize(samples: list[dict], stop_reasons: list[str]) -> dict:
+    """Counts by outcome (every question lands in exactly one bucket) and
+    metric means over the samples the judge actually scored."""
+    outcomes = [s["outcome"] for s in samples]
+    summary = {
+        "questions": len(samples),
+        "answered": outcomes.count("answered"),
+        "refused": sum(o.startswith("refused") for o in outcomes),
+        "errored": outcomes.count("error"),
+        "not_run": outcomes.count("not_run"),
+        "stopped": "; ".join(stop_reasons) or None,
+    }
+    for metric in METRICS:
+        scored = [s[metric] for s in samples if s.get(metric) is not None]
+        summary[f"{metric}_scored"] = len(scored)
+        summary[f"mean_{metric}"] = round(statistics.mean(scored), 3) if scored else None
+    return summary
+
+
+def latency_table(samples: list[dict]) -> dict:
+    # Over every question that ran (refusals included: they exercise
+    # retrieval + grading). On the Gemini free tier the LLM stages are
+    # dominated by server-side queueing and are NOT representative of model
+    # latency; retrieval_ms (local, no LLM) is the baseline number.
+    latency = {}
+    for stage in STAGES:
+        values = [s["timings"][stage] for s in samples if stage in s["timings"]]
+        if values:
+            latency[stage] = {
+                "n": len(values),
+                "p50": percentile(values, 50),
+                "p95": percentile(values, 95),
+                "label": "baseline" if stage == "retrieval_ms"
+                else "queue-dominated (free tier), not representative",
+            }
+    return latency
+
+
+def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list[dict],
+                  summary: dict, latency: dict, judge_calls: dict) -> None:
+    per_question = [
+        {
+            "question": s["user_input"],
+            "outcome": s["outcome"],
+            **{k: s[k] for k in ("stage", "error", *METRICS, "judge_error") if k in s},
+            "timings": s["timings"],
+        }
+        for s in samples
+    ]
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.json").write_text(
+        json.dumps({"summary": summary, "latency_ms": latency, "judge_calls": judge_calls,
+                    "per_question": per_question}, indent=2),
+        encoding="utf-8",
+    )
+
+    lines = [
+        "# DocuMind RAGAS Evaluation Report",
+        "",
+        f"Dataset: `{dataset_name}` over `{dataset['document']}` — {summary['questions']} questions: "
+        f"{summary['answered']} answered, {summary['refused']} refused, "
+        f"{summary['errored']} errored, {summary['not_run']} not run",
+    ]
+    if summary["stopped"]:
+        lines += ["", f"**Run stopped early:** {summary['stopped']}"]
+    lines += [
+        "",
+        "| Metric | Mean | Scored |",
+        "|---|---|---|",
+        *[f"| {m.replace('_', ' ').capitalize()} | **{summary[f'mean_{m}']}** | "
+          f"{summary[f'{m}_scored']}/{summary['answered']} |" for m in METRICS],
+        "",
+        "Latency per stage, all questions that ran (ms). LLM stages on the Gemini free",
+        "tier are queue-dominated and not representative; `retrieval_ms` is the baseline.",
+        "",
+        "| Stage | n | p50 | p95 | |",
+        "|---|---|---|---|---|",
+        *[f"| {stage} | {v['n']} | {v['p50']} | {v['p95']} | {v['label']} |"
+          for stage, v in latency.items()],
+        "",
+        "| # | Question | Outcome | Faithfulness | Context precision | Notes |",
+        "|---|---|---|---|---|---|",
+    ]
+    for i, q in enumerate(per_question, start=1):
+        note = (f"{q['stage']}: {q['error']}" if q["outcome"] == "error"
+                else q.get("judge_error", ""))
+        lines.append(f"| {i} | {q['question']} | {q['outcome']} | {q.get('faithfulness', '')} | "
+                     f"{q.get('context_precision', '')} | {note} |")
+    (out_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+
+
+# --- main ---------------------------------------------------------------------------
 
 
 def main() -> int:
@@ -139,152 +375,32 @@ def main() -> int:
         response.raise_for_status()
         print(f"Ingested {pdf_path.name}: {response.json()}")
 
-    # --- run every QA pair through the real pipeline -------------------------
-    samples = []
-    for i, pair in enumerate(dataset["pairs"], start=1):
-        result = call_api(client, args.api, pair["question"])
-        print(f"[{i:2d}/{len(dataset['pairs'])}] {result['outcome']:20s} {pair['question'][:60]}")
-        samples.append(
-            {
-                "user_input": pair["question"],
-                "reference": pair["reference"],
-                "response": result["answer"],
-                "retrieved_contexts": [c["text"] for c in result["chunks"]],
-                "outcome": result["outcome"],
-                "timings": result.get("timings") or {},
-            }
-        )
+    samples, app_stop = run_questions(client, args.api, dataset["pairs"])
+    stop_reasons = [app_stop] if app_stop else []
 
     answered = [s for s in samples if s["outcome"] == "answered"]
-    refused = len(samples) - len(answered)
-    if refused:
-        print(f"WARNING: {refused} question(s) were refused; they are excluded from scoring.")
-    if not answered:
-        print("Nothing to score — did you forget --ingest?")
-        return 1
+    judge_calls: dict = {"requests_per_model": {}, "errors": []}
+    if answered:
+        judge = build_judge()
+        counter = JudgeCallCounter()
+        judge.langchain_llm.callbacks = [counter]
+        judge_stop = score_answered(answered, judge, counter)
+        if judge_stop:
+            stop_reasons.append(judge_stop)
+        judge_calls = {"requests_per_model": counter.requests, "errors": counter.errors}
+    else:
+        print("Nothing answered, nothing to score — did you forget --ingest?")
 
-    # --- score with RAGAS -----------------------------------------------------
-    from ragas import EvaluationDataset, evaluate
-    from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference
-    from ragas.run_config import RunConfig
-
-    judge = build_judge()
-    judge_counter = JudgeCallCounter()
-    judge.langchain_llm.callbacks = [judge_counter]
-    eval_dataset = EvaluationDataset.from_list(
-        [{k: s[k] for k in ("user_input", "reference", "response", "retrieved_contexts")}
-         for s in answered]
-    )
-    result = evaluate(
-        dataset=eval_dataset,
-        metrics=[Faithfulness(), LLMContextPrecisionWithReference()],
-        llm=judge,
-        # timeout: long contexts can exceed the 180s default. max_workers:
-        # RAGAS fires 16 judge calls at once by default — far above Gemini
-        # free-tier RPM, so throttle there (JUDGE_WORKERS overrides).
-        run_config=RunConfig(
-            timeout=300,
-            max_workers=int(os.environ.get("JUDGE_WORKERS")
-                            or (2 if os.environ.get("LLM_PROVIDER", "gemini") == "gemini" else 16)),
-        ),
-    )
-    df = result.to_pandas()
-
-    # --- report ---------------------------------------------------------------
-    faith_col = "faithfulness"
-    precision_col = next(c for c in df.columns if "context_precision" in c)
-
-    rows = []
-    for sample, (_, scored) in zip(answered, df.iterrows()):
-        rows.append(
-            {
-                "question": sample["user_input"],
-                "outcome": sample["outcome"],
-                "faithfulness": round(float(scored[faith_col]), 3),
-                "context_precision": round(float(scored[precision_col]), 3),
-                "timings": sample["timings"],
-            }
-        )
-
-    summary = {
-        "questions": len(samples),
-        "answered": len(answered),
-        "refused": refused,
-        "mean_faithfulness": round(statistics.mean(r["faithfulness"] for r in rows), 3),
-        "mean_context_precision": round(
-            statistics.mean(r["context_precision"] for r in rows), 3
-        ),
-    }
-
-    # Per-stage latency over ALL questions (refusals included: they exercise
-    # retrieval + grading). On the Gemini free tier the LLM stages are
-    # dominated by server-side queueing and are NOT representative of model
-    # latency; retrieval_ms (local, no LLM) is the baseline number.
-    latency = {}
-    for stage in STAGES:
-        values = [s["timings"][stage] for s in samples if stage in s["timings"]]
-        if values:
-            latency[stage] = {
-                "n": len(values),
-                "p50": percentile(values, 50),
-                "p95": percentile(values, 95),
-                "label": "baseline" if stage == "retrieval_ms"
-                else "queue-dominated (free tier), not representative",
-            }
-    judge_calls = {"requests_per_model": judge_counter.requests, "errors": judge_counter.errors}
-
-    out_dir = Path(args.out_dir)
-    out_dir.mkdir(parents=True, exist_ok=True)
-    (out_dir / "report.json").write_text(
-        json.dumps(
-            {
-                "summary": summary,
-                "latency_ms": latency,
-                "judge_calls": judge_calls,
-                "per_question": [
-                    {"question": s["user_input"], "outcome": s["outcome"], "timings": s["timings"]}
-                    for s in samples
-                ],
-                "results": rows,
-            },
-            indent=2,
-        ),
-        encoding="utf-8",
-    )
-
-    lines = [
-        "# DocuMind RAGAS Evaluation Report",
-        "",
-        f"Dataset: `{Path(args.dataset).name}` over `{dataset['document']}` "
-        f"({len(samples)} questions, {len(answered)} answered, {refused} refused)",
-        "",
-        f"| Metric | Mean |",
-        f"|---|---|",
-        f"| Faithfulness | **{summary['mean_faithfulness']}** |",
-        f"| Context precision | **{summary['mean_context_precision']}** |",
-        "",
-        "Latency per stage, all questions (ms). LLM stages on the Gemini free tier",
-        "are queue-dominated and not representative; `retrieval_ms` is the baseline.",
-        "",
-        "| Stage | n | p50 | p95 | |",
-        "|---|---|---|---|---|",
-        *[f"| {stage} | {v['n']} | {v['p50']} | {v['p95']} | {v['label']} |"
-          for stage, v in latency.items()],
-        "",
-        "| # | Question | Faithfulness | Context precision |",
-        "|---|---|---|---|",
-    ]
-    for i, row in enumerate(rows, start=1):
-        lines.append(
-            f"| {i} | {row['question']} | {row['faithfulness']} | {row['context_precision']} |"
-        )
-    (out_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    summary = summarize(samples, stop_reasons)
+    latency = latency_table(samples)
+    write_reports(Path(args.out_dir), dataset, Path(args.dataset).name, samples,
+                  summary, latency, judge_calls)
 
     print("\nSummary:", json.dumps(summary, indent=2))
     print("Latency:", json.dumps(latency, indent=2))
     print("Judge calls:", json.dumps(judge_calls, indent=2))
-    print(f"Wrote {out_dir / 'report.json'} and {out_dir / 'report.md'}")
-    return 0
+    print(f"Wrote {Path(args.out_dir) / 'report.json'} and {Path(args.out_dir) / 'report.md'}")
+    return 0 if answered else 1
 
 
 if __name__ == "__main__":

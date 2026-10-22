@@ -19,12 +19,13 @@ while the graph runs, then the verified answer. Trust-first over latency-first
 import asyncio
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from config import get_settings
@@ -33,6 +34,7 @@ from deps import get_store
 from graph.pipeline import pipeline
 from ingestion.chunking import chunk_pages
 from ingestion.extract import IngestionError, validate_and_extract
+from llm import classify_error
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("documind")
@@ -210,11 +212,31 @@ async def list_documents():
     return {"documents": get_store().list_documents()}
 
 
+def _pipeline_error(exc: Exception) -> JSONResponse:
+    """Structured failure for /query: which pipeline node failed and a
+    provider-neutral error kind (raw provider messages stay in the server
+    log). LLM capacity errors are 503 (retry later); anything else is 500."""
+    # LangGraph notes the failing node on the exception:
+    # "During task with name 'generate' and id '...'".
+    notes = " ".join(getattr(exc, "__notes__", []))
+    match = re.search(r"During task with name '(\w+)'", notes)
+    stage = match.group(1) if match else "pipeline"
+    kind = classify_error(exc)
+    logger.exception("Pipeline failed at %s (%s)", stage, kind or "internal")
+    return JSONResponse(
+        status_code=503 if kind else 500,
+        content={"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal"},
+    )
+
+
 @app.post("/query", dependencies=[Depends(require_api_key)])
 async def query(request: QueryRequest):
     """Non-streaming variant — used by the eval harness and handy for curl."""
     start = time.perf_counter()
-    state = await pipeline.ainvoke(_initial_state(request))
+    try:
+        state = await pipeline.ainvoke(_initial_state(request))
+    except Exception as exc:
+        return _pipeline_error(exc)
     total_ms = round((time.perf_counter() - start) * 1000, 1)
 
     query_id = await asyncio.to_thread(

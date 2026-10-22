@@ -35,11 +35,14 @@ class FakeLLM:
         self.relevant = True
         self.grounded: bool | list[bool] = True
         self.answer = "The document says the pump runs at 400 RPM [1]."
+        self.generate_error: Exception | None = None  # raised by generation if set
         self.chat_calls: list[dict] = []
         self.embed_calls: list[list[str]] = []
 
     async def complete_text(self, model, system, user, max_tokens=4096) -> str:
         self.chat_calls.append({"model": model, "system": system, "user": user})
+        if self.generate_error is not None:
+            raise self.generate_error
         return self.answer
 
     async def complete_json(self, model, system, user, schema, max_tokens=1024) -> dict:

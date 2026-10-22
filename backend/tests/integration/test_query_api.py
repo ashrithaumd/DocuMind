@@ -242,3 +242,31 @@ def test_stream_done_event_has_query_id_and_stages(client, app_env):
     done = next(e for e in events if e["type"] == "done")
     assert done["outcome"] == "answered"
     assert isinstance(done["query_id"], int)
+
+
+def test_pipeline_failure_returns_stage_and_error_kind(client, app_env):
+    from google.genai import errors as genai_errors
+
+    _ingest_two_docs(client)
+    app_env.generate_error = genai_errors.ClientError(429, {"error": {
+        "code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED",
+        "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure",
+                     "violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
+                                     "quotaValue": "20"}]}],
+    }})
+
+    response = client.post("/query", json={"question": "How do vacation days accrue?"})
+
+    assert response.status_code == 503
+    assert response.json() == {"detail": "Pipeline failed.", "stage": "generate", "error": "daily_quota"}
+
+
+def test_unexpected_pipeline_failure_is_500_internal(client, app_env):
+    _ingest_two_docs(client)
+    app_env.generate_error = ValueError("bug")
+
+    response = client.post("/query", json={"question": "How do vacation days accrue?"})
+
+    assert response.status_code == 500
+    assert response.json()["stage"] == "generate"
+    assert response.json()["error"] == "internal"

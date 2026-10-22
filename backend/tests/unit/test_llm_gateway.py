@@ -308,3 +308,21 @@ def test_missing_key_for_selected_provider_fails_loudly(monkeypatch, provider_na
     settings = Settings(_env_file=None, llm_provider=provider_name)
     with pytest.raises(RuntimeError, match="API_KEY is not set"):
         build_llm(settings)
+
+
+# --- error classification -------------------------------------------------------------
+
+
+def test_classify_error_kinds():
+    from llm import classify_error
+
+    daily = gemini_error(429, quota_id="GenerateRequestsPerDayPerProjectPerModel-FreeTier")
+    per_minute = gemini_error(429, quota_id="GenerateRequestsPerMinutePerProjectPerModel-FreeTier")
+    assert classify_error(daily) == "daily_quota"
+    assert classify_error(per_minute) == "rate_limited"
+    assert classify_error(gemini_error(500)) == "unavailable"
+    assert classify_error(gemini_error(503)) == "unavailable"
+    assert classify_error(gemini_error(400)) is None
+    assert classify_error(claude_error(429)) == "rate_limited"
+    assert classify_error(claude_error(529)) == "unavailable"
+    assert classify_error(ValueError("bug")) is None

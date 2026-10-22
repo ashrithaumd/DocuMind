@@ -243,6 +243,31 @@ class ClaudeLLM(_BackoffLLM):
             return {}
 
 
+# --- error classification --------------------------------------------------------------
+
+
+def classify_error(exc: BaseException) -> str | None:
+    """Provider-neutral kind for an LLM error that escaped the gateway's
+    retries: "daily_quota", "rate_limited", "unavailable", or None if it
+    isn't a provider capacity error. Lets the API report what failed without
+    leaking raw provider messages."""
+    if isinstance(exc, genai_errors.APIError):
+        if exc.code == 429:
+            daily = any(
+                "PerDay" in violation.get("quotaId", "")
+                for detail in _gemini_error_details(exc)
+                for violation in detail.get("violations", [])
+            )
+            return "daily_quota" if daily else "rate_limited"
+        if exc.code in (500, 503):
+            return "unavailable"
+    if isinstance(exc, anthropic.RateLimitError):
+        return "rate_limited"
+    if isinstance(exc, anthropic.APIStatusError) and exc.status_code in (500, 529):
+        return "unavailable"
+    return None
+
+
 # --- provider selection --------------------------------------------------------------
 
 

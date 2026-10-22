@@ -221,6 +221,12 @@ async def test_gemini_truncated_json_fails_safe():
     assert await GeminiLLM(client).complete_json("m", "sys", "q", SCHEMA) == {}
 
 
+async def test_gemini_500_internal_is_retried():
+    client, create = gemini_client(gemini_error(500), gemini_reply("ok"))
+    assert await GeminiLLM(client).complete_text("m", "sys", "q") == "ok"
+    assert len(create.calls) == 2
+
+
 async def test_gemini_503_overloaded_is_retried():
     client, create = gemini_client(gemini_error(503), gemini_reply("ok"))
     assert await GeminiLLM(client).complete_text("m", "sys", "q") == "ok"

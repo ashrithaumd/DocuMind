@@ -18,7 +18,7 @@ and a refused/blocked generation returns "" (which then fails the
 groundedness gate) — the pipeline refuses rather than crashing or waving an
 answer through.
 
-Rate limits: transient capacity errors (429 rate limit, 503/529 overloaded)
+Rate limits: transient errors (429 rate limit, Gemini 500 INTERNAL, 503/529 overloaded)
 are retried with bounded exponential backoff, logged per attempt. A Gemini
 per-DAY quota 429 is not retried — it won't clear for hours — and the quota
 id/limit from the error is logged so the real free-tier numbers are visible.
@@ -102,7 +102,8 @@ class GeminiLLM(_BackoffLLM):
         )
 
     def _retry_delay(self, exc: Exception) -> float | None:
-        if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 503):
+        # 429 rate limit, 500 transient INTERNAL, 503 overloaded.
+        if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 500, 503):
             return None
         hint = 0.0
         for detail in _gemini_error_details(exc):

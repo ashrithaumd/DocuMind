@@ -55,16 +55,21 @@ def build_judge():
     if provider == "gemini":
         from langchain_google_genai import ChatGoogleGenerativeAI
 
+        # No temperature: Google recommends keeping Gemini 3 models at their
+        # default 1.0 (lower values risk looping/degraded reasoning), and
+        # bypass_temperature below stops RAGAS overriding it with 0.01. The
+        # resulting judge variance is measured by the 3-pass min/max.
         # max_retries covers free-tier 429/503s on the judge's own calls.
         chat = ChatGoogleGenerativeAI(
             model=model, api_key=os.environ["GEMINI_API_KEY"],
-            temperature=0, max_tokens=4096, max_retries=6,
+            max_tokens=4096, max_retries=6,
         )
+        return LangchainLLMWrapper(chat, bypass_temperature=True)
     else:
         from langchain_anthropic import ChatAnthropic
 
         chat = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
-    return LangchainLLMWrapper(chat)
+        return LangchainLLMWrapper(chat)
 
 
 def main() -> int:

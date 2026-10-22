@@ -23,3 +23,17 @@ in `backend/eval/report.*` and the README (faithfulness 1.0, context precision
 **and** a Claude judge. The new baseline changes both the system under test and
 the judge, so a difference between the two runs can't be attributed to either one.
 The Phase 0 baseline will be re-measured on Gemini.
+
+### Decision: RAGAS judge runs at Gemini's default temperature (2026-10-22)
+
+RAGAS 0.4's `LangchainLLMWrapper` overwrites the judge's temperature on every
+call (0.01, or 0.3 when it asks for several completions). Gemini accepts that,
+but Google strongly recommends keeping Gemini 3 models at their default 1.0,
+because lower values can cause looping or degraded reasoning.
+
+**Chosen:** `LangchainLLMWrapper(..., bypass_temperature=True)` with no
+temperature on `ChatGoogleGenerativeAI`, so judge calls carry no temperature
+and Gemini uses its default of 1.0. A one-sample probe confirmed it: both judge
+calls had `temperature=None`. The cost is less deterministic judge scores, so
+the baseline runs 3 passes and reports mean with min/max to show that variance.
+The Anthropic judge path is unchanged (`claude-sonnet-4-6`, temperature 0).

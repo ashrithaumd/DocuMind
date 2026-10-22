@@ -8,6 +8,8 @@ python-multipart>=0.0.9
 pydantic-settings>=2.4
 python-dotenv>=1.0
 
+# LLM providers behind llm.py (LLM_PROVIDER picks one; both stay installed).
+google-genai>=2.32
 anthropic>=0.116
 langgraph>=0.2.20
 langchain-text-splitters>=1.1

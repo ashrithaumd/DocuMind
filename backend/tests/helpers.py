@@ -15,7 +15,9 @@ def _fake_vector(text: str) -> list[float]:
 
 
 class FakeLLM:
-    """Stands in for llm.ClaudeLLM (the app's single LLM gateway). Dispatches
+    """Stands in for the app's single LLM gateway (llm.GeminiLLM /
+    llm.ClaudeLLM — same interface; tests/unit/test_llm_gateway.py covers the
+    real classes against stubbed SDK clients). Dispatches
     on the system prompt (grader / groundedness auditor / generator) and
     records every call so tests can assert call counts and prompt contents.
 

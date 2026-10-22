@@ -4,7 +4,7 @@ The app uses three lru_cache singletons (settings, LLM gateway, store) plus
 a module-global DB session factory. The `client` fixture resets all of them
 around a temp environment: embedded Chroma in tmp_path, SQLite standing in
 for Postgres (same SQLAlchemy models and queries — dialect-neutral SQL),
-FakeLLM in place of Claude, and FakeEmbedder in place of the local
+FakeLLM in place of the LLM gateway, and FakeEmbedder in place of the local
 sentence-transformers model — so no test ever makes a network call, loads
 torch, or spends a token.
 """
@@ -25,7 +25,10 @@ def fake_llm():
 @pytest.fixture
 def app_env(tmp_path, monkeypatch, fake_llm):
     """Fresh settings + stubbed LLM/embedder + temp Chroma/SQLite for one test."""
-    monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key-not-real")
+    monkeypatch.setenv("LLM_PROVIDER", "gemini")
+    monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
+    monkeypatch.delenv("GENERATION_MODEL", raising=False)
+    monkeypatch.delenv("GRADING_MODEL", raising=False)
     monkeypatch.setenv("CHROMA_DIR", str(tmp_path / "chroma"))
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'log.db'}")
     monkeypatch.setenv("COLLECTION_NAME", "test_documents")

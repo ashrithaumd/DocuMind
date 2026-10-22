@@ -5,19 +5,27 @@ nothing is hardcoded. Defaults are chosen for local development; docker-compose
 overrides the service hosts.
 """
 from functools import lru_cache
+from typing import Literal
 
+from pydantic import model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
 class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=".env", extra="ignore")
 
-    # --- Anthropic (all LLM reasoning calls) ---
-    anthropic_api_key: str
-    generation_model: str = "claude-opus-4-8"   # answer generation
-    grading_model: str = "claude-haiku-4-5"     # relevance grading + groundedness checks
+    # --- LLM (all reasoning calls go through the gateway in llm.py) ---
+    llm_provider: Literal["gemini", "anthropic"] = "gemini"
+    gemini_api_key: str | None = None      # required when llm_provider=gemini
+    anthropic_api_key: str | None = None   # required when llm_provider=anthropic
+    # Empty -> the provider's default from PROVIDER_DEFAULT_MODELS below, so
+    # switching LLM_PROVIDER alone is enough. Set either to pin a model.
+    generation_model: str = ""   # answer generation
+    grading_model: str = ""      # relevance grading + groundedness checks
+    # Attempts per call on 429/overloaded errors (exponential backoff between).
+    llm_max_attempts: int = 5
 
-    # --- Embeddings (local, free, offline — Anthropic has no embeddings API) ---
+    # --- Embeddings (local, free, offline — no provider embeddings API) ---
     # A sentence-transformers model name; downloaded from HuggingFace on first
     # use, then served from the local cache with no network or key required.
     embedding_model: str = "all-MiniLM-L6-v2"
@@ -52,6 +60,21 @@ class Settings(BaseSettings):
     max_query_chars: int = 2000
     max_upload_mb: int = 20
     max_pages: int = 300
+
+    @model_validator(mode="after")
+    def _fill_default_models(self) -> "Settings":
+        generation, grading = PROVIDER_DEFAULT_MODELS[self.llm_provider]
+        self.generation_model = self.generation_model or generation
+        self.grading_model = self.grading_model or grading
+        return self
+
+
+# (generation, grading) per provider. Gemini defaults are free-tier models
+# (Google AI Studio, no billing).
+PROVIDER_DEFAULT_MODELS = {
+    "gemini": ("gemini-3.6-flash", "gemini-3.5-flash-lite"),
+    "anthropic": ("claude-opus-4-8", "claude-haiku-4-5"),
+}
 
 
 @lru_cache

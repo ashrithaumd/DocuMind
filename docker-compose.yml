@@ -21,7 +21,11 @@ services:
       # Override with BACKEND_PORT in .env if 8000 is taken on your machine.
       - "${BACKEND_PORT:-8000}:8000"
     environment:
-      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY}
+      LLM_PROVIDER: ${LLM_PROVIDER:-gemini}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      GENERATION_MODEL: ${GENERATION_MODEL:-}
+      GRADING_MODEL: ${GRADING_MODEL:-}
       API_KEY: ${API_KEY:-}
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000

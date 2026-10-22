@@ -1,8 +1,8 @@
 # Backend test suite: unit + integration, no secrets needed.
-# LLM calls (Claude) are stubbed, embeddings are stubbed (the real ones are
-# local sentence-transformers anyway), Chroma runs embedded, and the log DB
-# is SQLite — the suite is hermetic by design. The RAGAS eval is NOT run
-# here: it needs a real ANTHROPIC_API_KEY and costs money (see README).
+# LLM calls (both providers' SDK clients) are stubbed, embeddings are stubbed
+# (the real ones are local sentence-transformers anyway), Chroma runs
+# embedded, and the log DB is SQLite — the suite is hermetic and keyless by
+# design. The RAGAS eval is NOT run here: it needs a real provider key.
 name: tests
 
 on:
@@ -32,6 +32,4 @@ jobs:
 
       - name: Run tests
         working-directory: backend
-        env:
-          ANTHROPIC_API_KEY: test-key-ci # never used: all LLM calls are stubbed
         run: python -m pytest tests -v

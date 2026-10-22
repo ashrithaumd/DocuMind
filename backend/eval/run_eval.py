@@ -18,6 +18,7 @@ Outputs eval/report.json and eval/report.md.
 """
 import argparse
 import json
+import os
 import statistics
 import sys
 from pathlib import Path
@@ -34,6 +35,38 @@ def call_api(client: httpx.Client, api: str, question: str) -> dict:
     return response.json()
 
 
+# Judge per provider. Overridable with JUDGE_MODEL. Defaults:
+#   gemini:    gemini-3-flash-preview — free tier, and a different model from
+#              the app's generation/grading models, so the judge draws on its
+#              own per-model rate-limit bucket instead of starving the app's.
+#   anthropic: claude-sonnet-4-6 rather than claude-opus-4-8 for a mechanical
+#              reason: RAGAS's LangchainLLMWrapper injects `temperature` into
+#              every judge call, and Opus 4.8 rejects sampling parameters with
+#              a 400 — Sonnet 4.6 is the strongest Claude that still accepts them.
+JUDGE_DEFAULTS = {"gemini": "gemini-3-flash-preview", "anthropic": "claude-sonnet-4-6"}
+
+
+def build_judge():
+    from ragas.llms import LangchainLLMWrapper
+
+    provider = os.environ.get("LLM_PROVIDER", "gemini")
+    model = os.environ.get("JUDGE_MODEL") or JUDGE_DEFAULTS[provider]
+    print(f"RAGAS judge: {provider} / {model}")
+    if provider == "gemini":
+        from langchain_google_genai import ChatGoogleGenerativeAI
+
+        # max_retries covers free-tier 429/503s on the judge's own calls.
+        chat = ChatGoogleGenerativeAI(
+            model=model, api_key=os.environ["GEMINI_API_KEY"],
+            temperature=0, max_tokens=4096, max_retries=6,
+        )
+    else:
+        from langchain_anthropic import ChatAnthropic
+
+        chat = ChatAnthropic(model=model, temperature=0, max_tokens=4096)
+    return LangchainLLMWrapper(chat)
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Run the RAGAS eval against a live API.")
     parser.add_argument("--api", default="http://localhost:8000", help="Backend base URL")
@@ -45,7 +78,7 @@ def main() -> int:
     )
     args = parser.parse_args()
 
-    load_dotenv()  # the RAGAS judge model needs ANTHROPIC_API_KEY
+    load_dotenv()  # the RAGAS judge needs the provider key (see build_judge)
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
     headers = {"X-API-Key": args.api_key} if args.api_key else {}
@@ -86,19 +119,11 @@ def main() -> int:
         return 1
 
     # --- score with RAGAS -----------------------------------------------------
-    from langchain_anthropic import ChatAnthropic
     from ragas import EvaluationDataset, evaluate
-    from ragas.llms import LangchainLLMWrapper
     from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference
     from ragas.run_config import RunConfig
 
-    # Judge on Claude. claude-sonnet-4-6 rather than claude-opus-4-8 for a
-    # mechanical reason: RAGAS's LangchainLLMWrapper injects `temperature`
-    # into every judge call, and Opus 4.8 rejects sampling parameters with a
-    # 400 — Sonnet 4.6 is the strongest Claude that still accepts them.
-    judge = LangchainLLMWrapper(
-        ChatAnthropic(model="claude-sonnet-4-6", temperature=0, max_tokens=4096)
-    )
+    judge = build_judge()
     eval_dataset = EvaluationDataset.from_list(
         [{k: s[k] for k in ("user_input", "reference", "response", "retrieved_contexts")}
          for s in answered]
@@ -107,7 +132,14 @@ def main() -> int:
         dataset=eval_dataset,
         metrics=[Faithfulness(), LLMContextPrecisionWithReference()],
         llm=judge,
-        run_config=RunConfig(timeout=300),  # long contexts can exceed the 180s default
+        # timeout: long contexts can exceed the 180s default. max_workers:
+        # RAGAS fires 16 judge calls at once by default — far above Gemini
+        # free-tier RPM, so throttle there (JUDGE_WORKERS overrides).
+        run_config=RunConfig(
+            timeout=300,
+            max_workers=int(os.environ.get("JUDGE_WORKERS")
+                            or (2 if os.environ.get("LLM_PROVIDER", "gemini") == "gemini" else 16)),
+        ),
     )
     df = result.to_pandas()
 

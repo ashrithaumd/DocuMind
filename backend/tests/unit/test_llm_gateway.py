@@ -185,6 +185,22 @@ async def test_gemini_sends_schema_as_structured_output():
     assert config.system_instruction == "sys"
 
 
+async def test_gemini_checker_thinking_level_applies_to_checkers_only():
+    client, create = gemini_client(gemini_reply('{"relevant": true}'), gemini_reply("answer"))
+    gateway = GeminiLLM(client, checker_thinking_level="minimal")
+    await gateway.complete_json("m", "sys", "q", SCHEMA)
+    await gateway.complete_text("m", "sys", "q")
+    checker_config, generation_config = (call["config"] for call in create.calls)
+    assert checker_config.thinking_config.thinking_level == genai_types.ThinkingLevel.MINIMAL
+    assert generation_config.thinking_config is None  # generation: model default
+
+
+async def test_gemini_empty_thinking_level_leaves_model_default():
+    client, create = gemini_client(gemini_reply('{"relevant": true}'))
+    await GeminiLLM(client).complete_json("m", "sys", "q", SCHEMA)
+    assert create.calls[0]["config"].thinking_config is None
+
+
 async def test_gemini_blocked_prompt_fails_safe():
     blocked = genai_types.GenerateContentResponse(
         candidates=[],
@@ -261,7 +277,10 @@ def test_default_provider_is_gemini_with_free_tier_models():
     assert settings.llm_provider == "gemini"
     assert settings.generation_model == "gemini-3.6-flash"
     assert settings.grading_model == "gemini-3.5-flash-lite"
-    assert isinstance(build_llm(settings), GeminiLLM)
+    assert settings.grading_thinking_level == "minimal"
+    gateway = build_llm(settings)
+    assert isinstance(gateway, GeminiLLM)
+    assert gateway._checker_thinking.thinking_level == genai_types.ThinkingLevel.MINIMAL
 
 
 def test_anthropic_provider_keeps_claude_defaults():

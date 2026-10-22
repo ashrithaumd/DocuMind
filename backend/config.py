@@ -22,6 +22,11 @@ class Settings(BaseSettings):
     # switching LLM_PROVIDER alone is enough. Set either to pin a model.
     generation_model: str = ""   # answer generation
     grading_model: str = ""      # relevance grading + groundedness checks
+    # Gemini thinking level for the two checker calls (a yes/no verdict needs
+    # little reasoning). "minimal" is the lowest the Gemini 3 docs allow;
+    # thinking can't be fully disabled. Empty = the model's default.
+    # Generation stays at the model default. Ignored by the Anthropic provider.
+    grading_thinking_level: Literal["", "minimal", "low", "medium", "high"] = "minimal"
     # Attempts per call on 429/overloaded errors (exponential backoff between).
     llm_max_attempts: int = 5
 

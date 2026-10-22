@@ -90,9 +90,16 @@ def _gemini_error_details(exc: genai_errors.APIError) -> list[dict]:
 
 
 class GeminiLLM(_BackoffLLM):
-    def __init__(self, client: genai.Client, **backoff):
+    def __init__(self, client: genai.Client, checker_thinking_level: str = "", **backoff):
+        """`checker_thinking_level` applies to complete_json (the checker
+        calls) only; "" leaves the model's default. Generation always runs
+        at the model's default thinking level."""
         super().__init__(**backoff)
         self._client = client
+        self._checker_thinking = (
+            genai_types.ThinkingConfig(thinking_level=checker_thinking_level)
+            if checker_thinking_level else None
+        )
 
     def _retry_delay(self, exc: Exception) -> float | None:
         if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 503):
@@ -154,6 +161,7 @@ class GeminiLLM(_BackoffLLM):
             max_output_tokens=max_tokens,
             response_mime_type="application/json",
             response_json_schema=schema,
+            thinking_config=self._checker_thinking,
         )
         response = await self._call(
             model,
@@ -243,7 +251,11 @@ def build_llm(settings) -> GeminiLLM | ClaudeLLM:
     if settings.llm_provider == "gemini":
         if not settings.gemini_api_key:
             raise RuntimeError("LLM_PROVIDER=gemini but GEMINI_API_KEY is not set")
-        return GeminiLLM(genai.Client(api_key=settings.gemini_api_key), **backoff)
+        return GeminiLLM(
+            genai.Client(api_key=settings.gemini_api_key),
+            checker_thinking_level=settings.grading_thinking_level,
+            **backoff,
+        )
     if not settings.anthropic_api_key:
         raise RuntimeError("LLM_PROVIDER=anthropic but ANTHROPIC_API_KEY is not set")
     # SDK-level retries off: the gateway's own backoff is the single retry layer.

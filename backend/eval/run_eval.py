@@ -36,14 +36,48 @@ def call_api(client: httpx.Client, api: str, question: str) -> dict:
 
 
 # Judge per provider. Overridable with JUDGE_MODEL. Defaults:
-#   gemini:    gemini-3-flash-preview — free tier, and a different model from
-#              the app's generation/grading models, so the judge draws on its
-#              own per-model rate-limit bucket instead of starving the app's.
+#   gemini:    gemini-3.1-flash-lite — free tier, a stable (non-preview) ID,
+#              and a different model from the app's generation/grading models,
+#              so the judge draws on its own per-model rate-limit bucket
+#              instead of starving the app's.
 #   anthropic: claude-sonnet-4-6 rather than claude-opus-4-8 for a mechanical
 #              reason: RAGAS's LangchainLLMWrapper injects `temperature` into
 #              every judge call, and Opus 4.8 rejects sampling parameters with
 #              a 400 — Sonnet 4.6 is the strongest Claude that still accepts them.
-JUDGE_DEFAULTS = {"gemini": "gemini-3-flash-preview", "anthropic": "claude-sonnet-4-6"}
+JUDGE_DEFAULTS = {"gemini": "gemini-3.1-flash-lite", "anthropic": "claude-sonnet-4-6"}
+
+STAGES = ("retrieval_ms", "grading_ms", "generation_ms", "groundedness_ms", "total_ms")
+
+
+class JudgeCallCounter:
+    """LangChain callback counting every judge request per model, plus the
+    errors (429 quota details included) — free-tier quotas count requests,
+    so retries must be visible, not hidden inside the client."""
+
+    def __new__(cls):
+        from langchain_core.callbacks import BaseCallbackHandler
+
+        class _Counter(BaseCallbackHandler):
+            def __init__(self):
+                self.requests: dict[str, int] = {}
+                self.errors: list[str] = []
+
+            def on_chat_model_start(self, serialized, messages, *, invocation_params=None, **kw):
+                model = (invocation_params or {}).get("model", "?")
+                self.requests[model] = self.requests.get(model, 0) + 1
+
+            def on_llm_error(self, error, **kw):
+                self.errors.append(f"{type(error).__name__}: {str(error)[:400]}")
+                print(f"  judge error: {self.errors[-1][:200]}", flush=True)
+
+        return _Counter()
+
+
+def percentile(values: list[float], pct: float) -> float:
+    ordered = sorted(values)
+    k = (len(ordered) - 1) * pct / 100
+    lo, hi = int(k), min(int(k) + 1, len(ordered) - 1)
+    return round(ordered[lo] + (ordered[hi] - ordered[lo]) * (k - lo), 1)
 
 
 def build_judge():
@@ -59,10 +93,11 @@ def build_judge():
         # default 1.0 (lower values risk looping/degraded reasoning), and
         # bypass_temperature below stops RAGAS overriding it with 0.01. The
         # resulting judge variance is measured by the 3-pass min/max.
-        # max_retries covers free-tier 429/503s on the judge's own calls.
+        # max_retries=0: RAGAS's own retry (RunConfig, exponential backoff)
+        # re-issues failed judge calls, so every request reaches the counter.
         chat = ChatGoogleGenerativeAI(
             model=model, api_key=os.environ["GEMINI_API_KEY"],
-            max_tokens=4096, max_retries=6,
+            max_tokens=4096, max_retries=0,
         )
         return LangchainLLMWrapper(chat, bypass_temperature=True)
     else:
@@ -77,6 +112,10 @@ def main() -> int:
     parser.add_argument("--api", default="http://localhost:8000", help="Backend base URL")
     parser.add_argument("--dataset", default=str(EVAL_DIR / "dataset.json"))
     parser.add_argument("--api-key", default=None, help="X-API-Key if the gate is enabled")
+    parser.add_argument(
+        "--out-dir", default=str(EVAL_DIR),
+        help="Where report.json / report.md are written (default: eval/)",
+    )
     parser.add_argument(
         "--ingest", action="store_true",
         help="Upload eval/sample.pdf to the API before querying",
@@ -112,6 +151,7 @@ def main() -> int:
                 "response": result["answer"],
                 "retrieved_contexts": [c["text"] for c in result["chunks"]],
                 "outcome": result["outcome"],
+                "timings": result.get("timings") or {},
             }
         )
 
@@ -129,6 +169,8 @@ def main() -> int:
     from ragas.run_config import RunConfig
 
     judge = build_judge()
+    judge_counter = JudgeCallCounter()
+    judge.langchain_llm.callbacks = [judge_counter]
     eval_dataset = EvaluationDataset.from_list(
         [{k: s[k] for k in ("user_input", "reference", "response", "retrieved_contexts")}
          for s in answered]
@@ -160,6 +202,7 @@ def main() -> int:
                 "outcome": sample["outcome"],
                 "faithfulness": round(float(scored[faith_col]), 3),
                 "context_precision": round(float(scored[precision_col]), 3),
+                "timings": sample["timings"],
             }
         )
 
@@ -173,8 +216,40 @@ def main() -> int:
         ),
     }
 
-    (EVAL_DIR / "report.json").write_text(
-        json.dumps({"summary": summary, "results": rows}, indent=2), encoding="utf-8"
+    # Per-stage latency over ALL questions (refusals included: they exercise
+    # retrieval + grading). On the Gemini free tier the LLM stages are
+    # dominated by server-side queueing and are NOT representative of model
+    # latency; retrieval_ms (local, no LLM) is the baseline number.
+    latency = {}
+    for stage in STAGES:
+        values = [s["timings"][stage] for s in samples if stage in s["timings"]]
+        if values:
+            latency[stage] = {
+                "n": len(values),
+                "p50": percentile(values, 50),
+                "p95": percentile(values, 95),
+                "label": "baseline" if stage == "retrieval_ms"
+                else "queue-dominated (free tier), not representative",
+            }
+    judge_calls = {"requests_per_model": judge_counter.requests, "errors": judge_counter.errors}
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    (out_dir / "report.json").write_text(
+        json.dumps(
+            {
+                "summary": summary,
+                "latency_ms": latency,
+                "judge_calls": judge_calls,
+                "per_question": [
+                    {"question": s["user_input"], "outcome": s["outcome"], "timings": s["timings"]}
+                    for s in samples
+                ],
+                "results": rows,
+            },
+            indent=2,
+        ),
+        encoding="utf-8",
     )
 
     lines = [
@@ -188,6 +263,14 @@ def main() -> int:
         f"| Faithfulness | **{summary['mean_faithfulness']}** |",
         f"| Context precision | **{summary['mean_context_precision']}** |",
         "",
+        "Latency per stage, all questions (ms). LLM stages on the Gemini free tier",
+        "are queue-dominated and not representative; `retrieval_ms` is the baseline.",
+        "",
+        "| Stage | n | p50 | p95 | |",
+        "|---|---|---|---|---|",
+        *[f"| {stage} | {v['n']} | {v['p50']} | {v['p95']} | {v['label']} |"
+          for stage, v in latency.items()],
+        "",
         "| # | Question | Faithfulness | Context precision |",
         "|---|---|---|---|",
     ]
@@ -195,10 +278,12 @@ def main() -> int:
         lines.append(
             f"| {i} | {row['question']} | {row['faithfulness']} | {row['context_precision']} |"
         )
-    (EVAL_DIR / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
+    (out_dir / "report.md").write_text("\n".join(lines) + "\n", encoding="utf-8")
 
     print("\nSummary:", json.dumps(summary, indent=2))
-    print(f"Wrote {EVAL_DIR / 'report.json'} and {EVAL_DIR / 'report.md'}")
+    print("Latency:", json.dumps(latency, indent=2))
+    print("Judge calls:", json.dumps(judge_calls, indent=2))
+    print(f"Wrote {out_dir / 'report.json'} and {out_dir / 'report.md'}")
     return 0
 
 

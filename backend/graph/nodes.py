@@ -43,12 +43,11 @@ def _elapsed_ms(start: float) -> float:
     return round((time.perf_counter() - start) * 1000, 1)
 
 
-def _numbered_context(chunks: list[dict], max_chars: int | None = None) -> str:
+def _numbered_context(chunks: list[dict]) -> str:
     """Render chunks as numbered excerpts the LLM can cite as [1], [2], ..."""
     parts = []
     for i, chunk in enumerate(chunks, start=1):
-        text = chunk["text"][:max_chars] if max_chars else chunk["text"]
-        parts.append(f"[{i}] ({chunk['filename']}, p. {chunk['page_number']})\n{text}")
+        parts.append(f"[{i}] ({chunk['filename']}, p. {chunk['page_number']})\n{chunk['text']}")
     return "\n\n".join(parts)
 
 
@@ -165,11 +164,12 @@ async def grade_node(state: GraphState) -> dict:
     if not state["chunks"]:
         return {"grade_relevant": False, "timings": {"grading_ms": _elapsed_ms(start)}}
 
-    # Truncated excerpts are plenty for a relevance judgment and keep the
-    # grading call cheap.
+    # Full excerpts, as generation sees them. Truncating them (700 chars, until
+    # Phase 1) hid answers that sit late in a chunk and refused answerable
+    # questions (Q7, Q12 of the eval set).
     user = (
         f"Question: {state['question']}\n\nExcerpts:\n"
-        f"{_numbered_context(state['chunks'], max_chars=700)}"
+        f"{_numbered_context(state['chunks'])}"
     )
     verdict = await get_llm().complete_json(
         get_settings().grading_model, _GRADE_SYSTEM, user, _GRADE_SCHEMA

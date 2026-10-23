@@ -91,8 +91,9 @@ also covers the default-scope lookup and PII redaction.
   vs. water mist), 0.5.
 - Q7 (out-of-range environmental parameter) and Q12 (emergency return vehicle)
   were refused `refused_no_context`, same as in pass 1. Both have reference
-  answers in the document, so these are false refusals by the relevance
-  grader: with a 5-chunk index, retrieval handed it the whole document.
+  answers in the document, so these are false refusals. Cause: the grader
+  sees only the first 700 characters of each excerpt, and both answers lie
+  past that cut (see Phase 6 notes).
 - LLM stage latencies (grading p50 1006 ms, generation p50 811 ms,
   groundedness p50 827 ms, total p50 2790 ms) are free-tier queue-dominated
   and not a baseline.
@@ -162,11 +163,28 @@ Postgres + pgvector + full-text search replace Chroma and the in-memory BM25.
 
 ## Phase 6 notes
 
-- **Q7 and Q12 are false refusals.** Both answers are in `sample.pdf`, but the
-  relevance grader (`gemini-3.5-flash-lite`) rejected the retrieved chunks
-  (`refused_no_context`) in both Phase 0 passes. The July 2026 Claude run
-  refused the same two questions, and the README described those as correct
-  refusals ("refused rather than guessed, consistent with the refusal-first
-  design"). The Phase 6 eval adds a **false-refusal rate** metric (questions
-  with an answer in the document that end in a refusal), and the README
-  wording is corrected when the eval is rewritten. No fix now.
+- **Q7 and Q12 are false refusals, caused by excerpt truncation in grading.**
+  Both answers are in `sample.pdf`, and retrieval found them (Phase 0 run A:
+  gold page ranked 1st for Q12, 2nd for Q7). But `grade_node` shows the
+  relevance grader only the first 700 characters of each excerpt
+  (`_numbered_context(..., max_chars=700)` in `graph/nodes.py`), and both
+  answers lie past that cut in their chunk text:
+  - Q7 (page 2, 1,008 chars): "out of range for more than 5 minutes" at
+    915, "Tier-2 alarm" at 963.
+  - Q12 (page 4, 986 chars): the sentence starts at 648, so the grader sees
+    "The emergency return vehicle remains docked at all times, seat", but
+    "seats all six crew members" starts at 706 and "undock within 4 minutes"
+    at 742.
+  Every answered question's answer ends before 700 (the latest is Q3 at 660;
+  Q6's "recovers 93 percent" is at 636-655). That's why the July Claude run
+  and both Gemini passes refused exactly these two. It is not the grader
+  model; the README called them correct refusals.
+  The fix ("grade full excerpts") lands in Phase 1 after run C, so the A/B/C
+  comparison isn't confounded, with a regression test and a before/after
+  RAGAS pass. The Phase 6 eval still adds a **false-refusal rate** metric
+  (questions with an answer in the document that end in a refusal), and the
+  README wording is corrected when the eval is rewritten.
+- **Check: no unjustified excerpt truncation.** Any truncation of excerpt or
+  chunk text anywhere in the pipeline (grading, generation, groundedness,
+  embedding input, logging) must be justified in a comment and covered by a
+  test that places the answer past the cut.

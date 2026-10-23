@@ -34,7 +34,7 @@ from deps import get_store
 from graph.pipeline import pipeline
 from ingestion.chunking import chunk_pages
 from ingestion.extract import IngestionError, validate_and_extract
-from llm import classify_error
+from llm import classify_error, track_usage
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("documind")
@@ -212,10 +212,12 @@ async def list_documents():
     return {"documents": get_store().list_documents()}
 
 
-def _pipeline_error(exc: Exception) -> JSONResponse:
-    """Structured failure for /query: which pipeline node failed and a
-    provider-neutral error kind (raw provider messages stay in the server
-    log). LLM capacity errors are 503 (retry later); anything else is 500."""
+def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
+    """Structured failure for /query: which pipeline node failed, a
+    provider-neutral error kind, and the full error text plus every LLM
+    attempt the request made (so the eval report can record quota ids and
+    limits; /query sits behind the API key). LLM capacity errors are 503
+    (retry later); anything else is 500."""
     # LangGraph notes the failing node on the exception:
     # "During task with name 'generate' and id '...'".
     notes = " ".join(getattr(exc, "__notes__", []))
@@ -225,7 +227,8 @@ def _pipeline_error(exc: Exception) -> JSONResponse:
     logger.exception("Pipeline failed at %s (%s)", stage, kind or "internal")
     return JSONResponse(
         status_code=503 if kind else 500,
-        content={"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal"},
+        content={"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal",
+                 "message": f"{type(exc).__name__}: {exc}", "llm_usage": llm_usage},
     )
 
 
@@ -233,10 +236,11 @@ def _pipeline_error(exc: Exception) -> JSONResponse:
 async def query(request: QueryRequest):
     """Non-streaming variant — used by the eval harness and handy for curl."""
     start = time.perf_counter()
-    try:
-        state = await pipeline.ainvoke(_initial_state(request))
-    except Exception as exc:
-        return _pipeline_error(exc)
+    with track_usage() as llm_usage:
+        try:
+            state = await pipeline.ainvoke(_initial_state(request))
+        except Exception as exc:
+            return _pipeline_error(exc, llm_usage)
     total_ms = round((time.perf_counter() - start) * 1000, 1)
 
     query_id = await asyncio.to_thread(
@@ -266,6 +270,9 @@ async def query(request: QueryRequest):
             for c in state.get("chunks", [])
         ],
         "timings": {**state.get("timings", {}), "total_ms": total_ms},
+        # Attempts per model and the full text of every failed attempt
+        # (retried ones included), for the eval report.
+        "llm_usage": llm_usage,
     }
 
 

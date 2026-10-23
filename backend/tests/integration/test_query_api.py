@@ -258,7 +258,12 @@ def test_pipeline_failure_returns_stage_and_error_kind(client, app_env):
     response = client.post("/query", json={"question": "How do vacation days accrue?"})
 
     assert response.status_code == 503
-    assert response.json() == {"detail": "Pipeline failed.", "stage": "generate", "error": "daily_quota"}
+    body = response.json()
+    assert (body["stage"], body["error"]) == ("generate", "daily_quota")
+    # Full error text, so the eval report can record the quota id and limit.
+    assert "GenerateRequestsPerDayPerProjectPerModel-FreeTier" in body["message"]
+    assert "'quotaValue': '20'" in body["message"]
+    assert set(body["llm_usage"]) == {"attempts_per_model", "failures"}
 
 
 def test_unexpected_pipeline_failure_is_500_internal(client, app_env):

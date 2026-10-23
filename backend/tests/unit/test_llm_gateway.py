@@ -253,6 +253,20 @@ async def test_gemini_hung_request_times_out_and_is_retried():
     assert create.calls == 2
 
 
+async def test_usage_tracking_keeps_every_attempt_and_full_failure_text():
+    from llm import track_usage
+
+    quota = "GenerateRequestsPerMinutePerProjectPerModel-FreeTier"
+    client, _ = gemini_client(gemini_error(429, quota_id=quota), gemini_error(503), gemini_reply("ok"))
+    with track_usage() as usage:
+        assert await GeminiLLM(client).complete_text("m", "sys", "q") == "ok"
+
+    assert usage["attempts_per_model"] == {"m": 3}
+    assert [f["attempt"] for f in usage["failures"]] == [1, 2]
+    assert quota in usage["failures"][0]["error"]  # not truncated: id and limit survive
+    assert "'quotaValue': '20'" in usage["failures"][0]["error"]
+
+
 async def test_gemini_honours_server_retry_delay(no_sleep):
     client, _ = gemini_client(
         gemini_error(429, quota_id="GenerateRequestsPerMinutePerProjectPerModel-FreeTier",

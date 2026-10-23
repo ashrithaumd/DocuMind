@@ -22,10 +22,17 @@ Rate limits: transient errors (429 rate limit, Gemini 500 INTERNAL, 503/529 over
 and a Gemini request exceeding LLM_REQUEST_TIMEOUT_S) are retried with bounded exponential backoff, logged per attempt. A Gemini
 per-DAY quota 429 is not retried — it won't clear for hours — and the quota
 id/limit from the error is logged so the real free-tier numbers are visible.
+
+Usage tracking: inside `with track_usage() as usage:`, every attempt is
+counted per model and every failed attempt is kept with its full error text
+(including a 429's quota id and limit), so a caller such as /query can
+report exactly what a request spent and what failed.
 """
 import asyncio
+import contextvars
 import json
 import logging
+from contextlib import contextmanager
 
 import anthropic
 from anthropic import AsyncAnthropic
@@ -34,6 +41,21 @@ from google.genai import errors as genai_errors
 from google.genai import types as genai_types
 
 logger = logging.getLogger(__name__)
+
+_usage: contextvars.ContextVar[dict | None] = contextvars.ContextVar("llm_usage", default=None)
+
+
+@contextmanager
+def track_usage():
+    """Collect {"attempts_per_model": {model: n}, "failures": [...]} for every
+    gateway call made inside the block (LangGraph nodes included: they run
+    in a copy of this context, which shares the same dict)."""
+    usage = {"attempts_per_model": {}, "failures": []}
+    token = _usage.set(usage)
+    try:
+        yield usage
+    finally:
+        _usage.reset(token)
 
 
 class _BackoffLLM:
@@ -54,10 +76,18 @@ class _BackoffLLM:
         raise NotImplementedError
 
     async def _call(self, model: str, request):
+        usage = _usage.get()
         for attempt in range(1, self._max_attempts + 1):
+            if usage is not None:
+                attempts = usage["attempts_per_model"]
+                attempts[model] = attempts.get(model, 0) + 1
             try:
                 return await asyncio.wait_for(request(), self._request_timeout_s)
             except Exception as exc:
+                if usage is not None:
+                    usage["failures"].append(
+                        {"model": model, "attempt": attempt, "error": f"{type(exc).__name__}: {exc}"}
+                    )
                 hint = self._retry_delay(exc)
                 if hint is None or attempt == self._max_attempts:
                     raise

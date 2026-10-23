@@ -136,6 +136,42 @@ def test_resume_skips_finished_questions_and_reruns_the_rest(tmp_path):
     assert [s["outcome"] for s in samples] == ["answered", "refused_no_context", "answered", "answered"]
 
 
+QUOTA_TEXT = ("ClientError: 429 RESOURCE_EXHAUSTED. {'error': {'details': [{'@type': "
+              "'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'quotaId': "
+              "'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaValue': '15'}]}]}}")
+
+
+def test_failed_query_keeps_full_error_text_and_llm_usage():
+    usage = {"attempts_per_model": {"flash-lite": 3},
+             "failures": [{"model": "flash-lite", "attempt": 1, "error": QUOTA_TEXT}]}
+    client = client_for({"q1": httpx.Response(503, json={
+        "detail": "Pipeline failed.", "stage": "generate", "error": "unavailable",
+        "message": "ServerError: 503 UNAVAILABLE. {...full body...}", "llm_usage": usage})})
+
+    samples, _ = run_eval.run_questions(client, "http://api", PAIRS[:1])
+
+    assert samples[0]["error_message"] == "ServerError: 503 UNAVAILABLE. {...full body...}"
+    assert samples[0]["llm_usage"] == usage
+
+
+def test_call_accounting_totals_requests_failures_and_quota_hits():
+    samples = [
+        {"llm_usage": {"attempts_per_model": {"flash-lite": 4},
+                       "failures": [{"model": "flash-lite", "attempt": 1, "error": QUOTA_TEXT}]},
+         "judge_requests": {"judge": 8}, "judge_errors": [QUOTA_TEXT, "ServerError: 503 UNAVAILABLE"]},
+        {"llm_usage": {"attempts_per_model": {"flash-lite": 3}, "failures": []},
+         "judge_requests": {"judge": 7}, "judge_errors": []},
+    ]
+
+    calls = run_eval.call_accounting(samples)
+
+    assert calls["app_requests_per_model"] == {"flash-lite": 7}
+    assert calls["app_failed_attempts_per_model"] == {"flash-lite": 1}
+    assert calls["judge_requests_per_model"] == {"judge": 15}
+    assert calls["judge_failed_attempts"] == 2
+    assert calls["quota_hits"] == {"GenerateRequestsPerMinutePerProjectPerModel-FreeTier (limit 15)": 2}
+
+
 def test_judge_requests_are_totalled_across_resumed_samples():
     samples = [
         {"judge_requests": {"gemini-3.1-flash-lite": 7}},

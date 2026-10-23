@@ -78,6 +78,12 @@ def is_transient(text: str) -> bool:
     return bool(re.search(r"\b(429|500|503|529)\b|RESOURCE_EXHAUSTED|UNAVAILABLE|INTERNAL|overloaded", text))
 
 
+def quota_hits(text: str) -> list[str]:
+    """'<quotaId> (limit N)' for each quota violation in a Gemini error text."""
+    return [f"{quota_id} (limit {value})" for quota_id, value in
+            re.findall(r"'quotaId': '([^']+)'.*?'quotaValue': '([^']+)'", text)]
+
+
 # --- querying the live pipeline ------------------------------------------------
 
 
@@ -87,18 +93,23 @@ def call_api(client: httpx.Client, api: str, question: str) -> dict:
     return response.json()
 
 
-def _api_error(exc: httpx.HTTPError) -> tuple[str, str]:
-    """(stage, error kind) for a failed /query call."""
+def _api_error(exc: httpx.HTTPError) -> dict:
+    """stage, error kind, full error text and the request's LLM usage for a
+    failed /query call."""
     if isinstance(exc, httpx.HTTPStatusError):
         try:
             body = exc.response.json()
         except ValueError:
             body = {}
-        return (
-            body.get("stage", "api"),
-            body.get("error", f"http_{exc.response.status_code}"),
-        )
-    return "api", type(exc).__name__  # timeout / connection error
+        return {
+            "stage": body.get("stage", "api"),
+            "error": body.get("error", f"http_{exc.response.status_code}"),
+            "error_message": body.get("message") or exc.response.text,
+            "llm_usage": body.get("llm_usage") or {},
+        }
+    # timeout / connection error
+    return {"stage": "api", "error": type(exc).__name__,
+            "error_message": f"{type(exc).__name__}: {exc}", "llm_usage": {}}
 
 
 def is_finished(sample: dict) -> bool:
@@ -157,16 +168,16 @@ def run_questions(client: httpx.Client, api: str, pairs: list[dict], score=None,
             try:
                 result = call_api(client, api, pair["question"])
             except httpx.HTTPError as exc:
-                stage, error = _api_error(exc)
-                sample.update(outcome="error", stage=stage, error=error)
-                if error == "daily_quota":
-                    stop_reason = f"daily quota exhausted at question {i} (stage: {stage})"
+                sample.update(outcome="error", **_api_error(exc))
+                if sample["error"] == "daily_quota":
+                    stop_reason = f"daily quota exhausted at question {i} (stage: {sample['stage']})"
             else:
                 sample.update(
                     outcome=result["outcome"],
                     response=result["answer"],
                     retrieved_contexts=[c["text"] for c in result["chunks"]],
                     timings=result.get("timings") or {},
+                    llm_usage=result.get("llm_usage") or {},
                 )
         detail = f" [{sample['stage']}: {sample['error']}]" if sample["outcome"] == "error" else ""
         print(f"[{i:2d}/{len(pairs)}] {sample['outcome']:20s} {pair['question'][:60]}{detail}", flush=True)
@@ -202,8 +213,10 @@ class JudgeCallCounter:
                 self.requests[model] = self.requests.get(model, 0) + 1
 
             def on_llm_error(self, error, **kw):
-                self.errors.append(f"{type(error).__name__}: {str(error)[:400]}")
-                print(f"  judge error: {self.errors[-1][:200]}", flush=True)
+                # Full text, never truncated: it carries the quota id and limit.
+                self.errors.append(f"{type(error).__name__}: {error}")
+                hits = quota_hits(self.errors[-1])
+                print(f"  judge error: {', '.join(hits) or self.errors[-1][:200]}", flush=True)
                 if isinstance(error, DailyQuotaExhausted):
                     self.daily_quota_hit = True
 
@@ -267,9 +280,10 @@ def judge_run_config():
 
 def score_sample(sample: dict, judge, counter, run_config) -> str | None:
     """Score one answered sample in place. A metric the judge failed on is
-    None with the reason in sample["judge_error"]; the judge requests this
-    sample cost are kept in sample["judge_requests"] so a resumed run can
-    still total them. Returns a stop reason on a judge daily quota."""
+    None with the reason in sample["judge_error"]; every failed judge call's
+    full text is kept in sample["judge_errors"], and the judge requests this
+    sample cost in sample["judge_requests"] so a resumed run can still total
+    them. Returns a stop reason on a judge daily quota."""
     from ragas import EvaluationDataset, evaluate
     from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference
 
@@ -290,8 +304,10 @@ def score_sample(sample: dict, judge, counter, run_config) -> str | None:
         value = float(row[col])
         sample[name] = None if math.isnan(value) else round(value, 3)
     sample.pop("judge_error", None)
+    sample["judge_errors"] = counter.errors[errors_before:]
     if sample["faithfulness"] is None or sample["context_precision"] is None:
-        sample["judge_error"] = "; ".join(counter.errors[errors_before:])[:400] or "judge returned no score"
+        last = sample["judge_errors"][-1] if sample["judge_errors"] else "judge returned no score"
+        sample["judge_error"] = ", ".join(quota_hits(last)) or last.split("\n")[0][:200]
     sample["judge_requests"] = {
         model: n - requests_before.get(model, 0) for model, n in counter.requests.items()
         if n - requests_before.get(model, 0)
@@ -307,6 +323,35 @@ def total_judge_requests(samples: list[dict]) -> dict[str, int]:
         for model, n in sample.get("judge_requests", {}).items():
             totals[model] = totals.get(model, 0) + n
     return totals
+
+
+def call_accounting(samples: list[dict]) -> dict:
+    """Requests and failed attempts per model (app via /query's llm_usage,
+    judge via the callback counter), and every distinct quota hit with how
+    often it was seen."""
+    app_requests: dict[str, int] = {}
+    app_failures: dict[str, int] = {}
+    judge_failures = 0
+    quotas: dict[str, int] = {}
+    for sample in samples:
+        usage = sample.get("llm_usage") or {}
+        for model, n in usage.get("attempts_per_model", {}).items():
+            app_requests[model] = app_requests.get(model, 0) + n
+        texts = []
+        for failure in usage.get("failures", []):
+            app_failures[failure["model"]] = app_failures.get(failure["model"], 0) + 1
+            texts.append(failure["error"])
+        judge_failures += len(sample.get("judge_errors", []))
+        texts += sample.get("judge_errors", [])
+        for hit in (h for text in texts for h in quota_hits(text)):
+            quotas[hit] = quotas.get(hit, 0) + 1
+    return {
+        "app_requests_per_model": app_requests,
+        "app_failed_attempts_per_model": app_failures,
+        "judge_requests_per_model": total_judge_requests(samples),
+        "judge_failed_attempts": judge_failures,
+        "quota_hits": quotas,
+    }
 
 
 # --- reporting -----------------------------------------------------------------------
@@ -358,19 +403,20 @@ def latency_table(samples: list[dict]) -> dict:
 
 
 def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list[dict],
-                  summary: dict, latency: dict, judge_calls: dict, caveats: list[str] = ()) -> None:
+                  summary: dict, latency: dict, calls: dict, caveats: list[str] = ()) -> None:
     per_question = [
         {
             "question": s["user_input"],
             "outcome": s["outcome"],
-            **{k: s[k] for k in ("stage", "error", *METRICS, "judge_error") if k in s},
+            **{k: s[k] for k in ("stage", "error", "error_message", *METRICS, "judge_error",
+                                 "judge_errors", "judge_requests", "llm_usage") if k in s},
             "timings": s["timings"],
         }
         for s in samples
     ]
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.json").write_text(
-        json.dumps({"summary": summary, "latency_ms": latency, "judge_calls": judge_calls,
+        json.dumps({"summary": summary, "latency_ms": latency, "calls": calls,
                     "caveats": list(caveats), "per_question": per_question}, indent=2),
         encoding="utf-8",
     )
@@ -400,6 +446,17 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
         "|---|---|---|---|---|",
         *[f"| {stage} | {v['n']} | {v['p50']} | {v['p95']} | {v['label']} |"
           for stage, v in latency.items()],
+        "",
+        "Requests per model (failed attempts included; full error texts are in report.json).",
+        "",
+        "| Model | Role | Requests | Failed attempts |",
+        "|---|---|---|---|",
+        *[f"| {model} | app | {n} | {calls.get('app_failed_attempts_per_model', {}).get(model, 0)} |"
+          for model, n in calls.get("app_requests_per_model", {}).items()],
+        *[f"| {model} | judge | {n} | {calls.get('judge_failed_attempts', 0)} |"
+          for model, n in calls.get("judge_requests_per_model", {}).items()],
+        "",
+        *[f"- Quota hit: `{hit}` ×{n}" for hit, n in calls.get("quota_hits", {}).items()],
         "",
         "| # | Question | Outcome | Faithfulness | Context precision | Notes |",
         "|---|---|---|---|---|---|",
@@ -479,10 +536,7 @@ def main() -> int:
     answered = [s for s in samples if s["outcome"] == "answered"]
     if not answered:
         print("Nothing answered, nothing to score — did you forget --ingest?")
-    judge_calls = {
-        "requests_per_model": total_judge_requests(samples),
-        "errors_this_run": judging["counter"].errors if judging else [],
-    }
+    calls = call_accounting(samples)
 
     summary = summarize(samples, stop_reasons)
     latency = latency_table(samples)
@@ -495,11 +549,11 @@ def main() -> int:
             "RAGAS scores is possible."
         )
     write_reports(out_dir, dataset, Path(args.dataset).name, samples,
-                  summary, latency, judge_calls, caveats)
+                  summary, latency, calls, caveats)
 
     print("\nSummary:", json.dumps(summary, indent=2))
     print("Latency:", json.dumps(latency, indent=2))
-    print("Judge calls:", json.dumps(judge_calls, indent=2))
+    print("Calls:", json.dumps(calls, indent=2))
     print(f"Wrote {results_path}, {out_dir / 'report.json'} and {out_dir / 'report.md'}")
     return 0 if answered else 1
 

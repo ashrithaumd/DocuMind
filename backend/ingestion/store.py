@@ -60,7 +60,14 @@ def rrf_fuse(
     `dense` maps chunk_id -> (rank, similarity, text, meta), `sparse` maps
     chunk_id -> (rank, text, meta); meta has filename and page_number. Every
     candidate from either leg comes back, sorted by fused score, keeping its
-    rank in each leg. Ties keep insertion order (dense candidates first).
+    rank in each leg.
+
+    Tie-break rule (equal fused scores, which happen whenever two chunks hold
+    mirrored ranks, e.g. dense 1 + sparse 2 vs dense 2 + sparse 1): a chunk
+    the dense leg found comes first, ordered by its dense rank; chunks only
+    the sparse leg found follow, ordered by sparse rank. This is the order
+    the Phase 0 store produced implicitly (stable sort over dense-first
+    insertion), so run A and the Postgres runs break ties the same way.
     """
     fused: dict[str, RetrievedChunk] = {}
     for cid, (rank, similarity, text, meta) in dense.items():
@@ -89,7 +96,14 @@ def rrf_fuse(
                 sparse_rank=rank,
                 similarity=None,
             )
-    return sorted(fused.values(), key=lambda c: c.score, reverse=True)
+    return sorted(fused.values(), key=_fused_order)
+
+
+def _fused_order(chunk: RetrievedChunk) -> tuple:
+    """Sort key: fused score descending, then the tie-break rule in rrf_fuse."""
+    if chunk.dense_rank is not None:
+        return (-chunk.score, 0, chunk.dense_rank)
+    return (-chunk.score, 1, chunk.sparse_rank)
 
 
 

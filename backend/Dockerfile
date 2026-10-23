@@ -7,10 +7,11 @@ WORKDIR /app
 # Install dependencies first so code changes don't bust the layer cache.
 # torch is installed from the CPU-only wheel BEFORE requirements.txt so
 # sentence-transformers doesn't pull the multi-GB CUDA build into the image.
-# Version matches backend/.venv and CI.
-COPY requirements.txt .
+# Version matches backend/.venv and CI. constraints.txt pins every
+# transitive dependency to the baseline venv.
+COPY requirements.txt constraints.txt ./
 RUN pip install --no-cache-dir torch==2.14.1+cpu --index-url https://download.pytorch.org/whl/cpu \
-    && pip install --no-cache-dir -r requirements.txt
+    && pip install --no-cache-dir -r requirements.txt -c constraints.txt
 
 COPY . .
 

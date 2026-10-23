@@ -22,14 +22,17 @@ jobs:
           cache-dependency-path: |
             backend/requirements.txt
             backend/requirements-dev.txt
+            backend/constraints.txt
 
       - name: Install dependencies
         # CPU-only torch first, so sentence-transformers doesn't drag the
         # multi-GB CUDA build into a CI runner with no GPU. Same version as
-        # backend/.venv and the Dockerfile.
+        # backend/.venv and the Dockerfile. constraints.txt pins every
+        # transitive dependency to the baseline venv.
         run: |
           pip install torch==2.14.1+cpu --index-url https://download.pytorch.org/whl/cpu
-          pip install -r backend/requirements.txt -r backend/requirements-dev.txt
+          pip install -r backend/requirements.txt -r backend/requirements-dev.txt \
+            -c backend/constraints.txt
 
       - name: Run tests
         working-directory: backend

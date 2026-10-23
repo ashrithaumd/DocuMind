@@ -60,6 +60,53 @@ generator.
 self-preference bias in the RAGAS scores is possible. Every eval report states
 this caveat.
 
+### Phase 0 baseline (2026-10-22)
+
+Artifacts: `docs/baseline/phase0/` — `retrieval_bench.json` (retrieval-only
+benchmark), `results.jsonl` (one record per question), `report.json` and
+`report.md` (RAGAS). One RAGAS pass; the backend ran with
+`EXPOSE_LLM_DIAGNOSTICS=true` so the report has per-model request counts and
+full quota errors. Generator and checkers: `gemini-3.5-flash-lite`; judge:
+`gemini-3.1-flash-lite`.
+
+**Retrieval latency (the latency baseline).** `HybridStore.search()` scoped to
+`sample.pdf` (5 chunks, `all-MiniLM-L6-v2`, 12 candidates per retriever, top 6),
+no LLM calls, 14 questions × 20 timed reps after 1 warm-up each:
+
+| n | p50 | p95 | p99 | min | max |
+|---|---|---|---|---|---|
+| 280 | 14.9 ms | 19.0 ms | 21.9 ms | 12.3 ms | 24.3 ms |
+
+Inside the live pipeline `retrieval_ms` was p50 26.4 / p95 30.7 ms (n=14); it
+also covers the default-scope lookup and PII redaction.
+
+**RAGAS (14 questions).** 12 answered, 2 refused, 0 errored, 0 not run.
+
+| Metric | Mean | Scored |
+|---|---|---|
+| Faithfulness | 1.0 | 12/12 |
+| Context precision | 0.958 | 12/12 |
+
+- Context precision is 1.0 on every answered question except Q11 (CO2 flooding
+  vs. water mist), 0.5.
+- Q7 (out-of-range environmental parameter) and Q12 (emergency return vehicle)
+  were refused `refused_no_context`, same as in pass 1. Both have reference
+  answers in the document, so these are false refusals by the relevance
+  grader: with a 5-chunk index, retrieval handed it the whole document.
+- LLM stage latencies (grading p50 1006 ms, generation p50 811 ms,
+  groundedness p50 827 ms, total p50 2790 ms) are free-tier queue-dominated
+  and not a baseline.
+- Requests: app `gemini-3.5-flash-lite` 38, 0 failed; judge
+  `gemini-3.1-flash-lite` 115, 31 failed. 17 of the failures were the judge's
+  per-minute quota, `GenerateRequestsPerMinutePerProjectPerModel-FreeTier`,
+  limit **15**. No daily quota was hit.
+- Caveat (also in the report): generator and judge are both small Gemini
+  Flash-Lite models, so self-preference bias in the RAGAS scores is possible.
+
+**Not yet done:** the judge-temperature decision above calls for 3 passes
+reported as mean with min/max. This is a single pass, so it shows no judge
+variance.
+
 ## Phase 2 notes
 
 - **LLM diagnostics become admin-only.** Phase 0 gates the raw provider error

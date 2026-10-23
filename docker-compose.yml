@@ -28,6 +28,7 @@ services:
       GRADING_MODEL: ${GRADING_MODEL:-}
       GRADING_THINKING_LEVEL: ${GRADING_THINKING_LEVEL:-minimal}
       API_KEY: ${API_KEY:-}
+      EXPOSE_LLM_DIAGNOSTICS: ${EXPOSE_LLM_DIAGNOSTICS:-false}
       CHROMA_HOST: chroma
       CHROMA_PORT: 8000
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:-documind}@postgres:5432/${POSTGRES_DB:-documind}

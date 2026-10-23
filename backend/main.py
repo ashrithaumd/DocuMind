@@ -213,11 +213,12 @@ async def list_documents():
 
 
 def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
-    """Structured failure for /query: which pipeline node failed, a
-    provider-neutral error kind, and the full error text plus every LLM
-    attempt the request made (so the eval report can record quota ids and
-    limits; /query sits behind the API key). LLM capacity errors are 503
-    (retry later); anything else is 500."""
+    """Structured failure for /query: which pipeline node failed and a
+    provider-neutral error kind (raw provider messages stay in the server
+    log). With EXPOSE_LLM_DIAGNOSTICS on, it also carries the full error text
+    and every LLM attempt the request made, so the eval report can record
+    quota ids and limits. LLM capacity errors are 503 (retry later); anything
+    else is 500."""
     # LangGraph notes the failing node on the exception:
     # "During task with name 'generate' and id '...'".
     notes = " ".join(getattr(exc, "__notes__", []))
@@ -225,11 +226,10 @@ def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
     stage = match.group(1) if match else "pipeline"
     kind = classify_error(exc)
     logger.exception("Pipeline failed at %s (%s)", stage, kind or "internal")
-    return JSONResponse(
-        status_code=503 if kind else 500,
-        content={"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal",
-                 "message": f"{type(exc).__name__}: {exc}", "llm_usage": llm_usage},
-    )
+    content = {"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal"}
+    if get_settings().expose_llm_diagnostics:
+        content |= {"message": f"{type(exc).__name__}: {exc}", "llm_usage": llm_usage}
+    return JSONResponse(status_code=503 if kind else 500, content=content)
 
 
 @app.post("/query", dependencies=[Depends(require_api_key)])
@@ -250,7 +250,7 @@ async def query(request: QueryRequest):
     if state.get("outcome") == "rejected_input":
         raise HTTPException(status_code=422, detail=state["rejection"])
 
-    return {
+    response = {
         "query_id": query_id,
         "answer": state.get("answer", ""),
         "outcome": state.get("outcome", "error"),
@@ -270,10 +270,12 @@ async def query(request: QueryRequest):
             for c in state.get("chunks", [])
         ],
         "timings": {**state.get("timings", {}), "total_ms": total_ms},
+    }
+    if get_settings().expose_llm_diagnostics:
         # Attempts per model and the full text of every failed attempt
         # (retried ones included), for the eval report.
-        "llm_usage": llm_usage,
-    }
+        response["llm_usage"] = llm_usage
+    return response
 
 
 @app.post("/query/stream", dependencies=[Depends(require_api_key)])

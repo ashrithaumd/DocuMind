@@ -59,3 +59,12 @@ generator.
 (`gemini-3.1-flash-lite`) are both small Gemini Flash-Lite models, so
 self-preference bias in the RAGAS scores is possible. Every eval report states
 this caveat.
+
+## Phase 2 notes
+
+- **LLM diagnostics become admin-only.** Phase 0 gates the raw provider error
+  text and per-request `llm_usage` in `/query` behind `EXPOSE_LLM_DIAGNOSTICS`
+  (default `false`; only the eval harness's backend turns it on). With the
+  flag off, clients get provider-neutral errors and the details stay in the
+  server log. Phase 2 replaces the global flag with a role check: only admin
+  callers get diagnostics.

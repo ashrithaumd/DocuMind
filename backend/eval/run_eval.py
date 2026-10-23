@@ -22,7 +22,9 @@ or answered and fully scored); errored, not-run and partly scored questions
 are run again. The last record per question wins.
 
 Usage:
-    1. Start the stack (docker compose up, or uvicorn locally).
+    1. Start the stack (docker compose up, or uvicorn locally) with
+       EXPOSE_LLM_DIAGNOSTICS=true, so /query returns llm_usage and full
+       error text for the report. It is off by default for normal clients.
     2. Upload the sample document once:  see --ingest below.
     3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR] [--resume]
 
@@ -153,6 +155,7 @@ def run_questions(client: httpx.Client, api: str, pairs: list[dict], score=None,
     are reused rather than re-queried."""
     samples: list[dict] = []
     stop_reason = None
+    warned_no_diagnostics = False
     done = done or {}
     for i, pair in enumerate(pairs, start=1):
         if pair["question"] in done:
@@ -172,6 +175,11 @@ def run_questions(client: httpx.Client, api: str, pairs: list[dict], score=None,
                 if sample["error"] == "daily_quota":
                     stop_reason = f"daily quota exhausted at question {i} (stage: {sample['stage']})"
             else:
+                if "llm_usage" not in result and not warned_no_diagnostics:
+                    warned_no_diagnostics = True
+                    print("WARNING: /query returned no llm_usage. Restart the backend with "
+                          "EXPOSE_LLM_DIAGNOSTICS=true, or the report's app call counts "
+                          "and quota limits will be empty.", flush=True)
                 sample.update(
                     outcome=result["outcome"],
                     response=result["answer"],

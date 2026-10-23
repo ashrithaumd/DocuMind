@@ -54,6 +54,11 @@ class Settings(BaseSettings):
     # Single shared API key checked via the X-API-Key header.
     # Unset -> auth disabled (local dev convenience).
     api_key: str | None = None
+    # Return raw provider error text and per-request LLM usage (attempts per
+    # model, every failed attempt's message) from /query. Off by default:
+    # clients get provider-neutral errors and the details stay in the server
+    # log. The eval harness's backend runs with it on to record quota ids.
+    expose_llm_diagnostics: bool = False
 
     # --- Retrieval ---
     top_k: int = 6            # chunks handed to the LLM after fusion

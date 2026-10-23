@@ -244,16 +244,39 @@ def test_stream_done_event_has_query_id_and_stages(client, app_env):
     assert isinstance(done["query_id"], int)
 
 
-def test_pipeline_failure_returns_stage_and_error_kind(client, app_env):
+def _daily_quota_error():
     from google.genai import errors as genai_errors
 
-    _ingest_two_docs(client)
-    app_env.generate_error = genai_errors.ClientError(429, {"error": {
+    return genai_errors.ClientError(429, {"error": {
         "code": 429, "message": "quota", "status": "RESOURCE_EXHAUSTED",
         "details": [{"@type": "type.googleapis.com/google.rpc.QuotaFailure",
                      "violations": [{"quotaId": "GenerateRequestsPerDayPerProjectPerModel-FreeTier",
                                      "quotaValue": "20"}]}],
     }})
+
+
+def _expose_llm_diagnostics(monkeypatch):
+    import config
+
+    monkeypatch.setenv("EXPOSE_LLM_DIAGNOSTICS", "true")
+    config.get_settings.cache_clear()
+
+
+def test_pipeline_failure_returns_stage_and_error_kind(client, app_env):
+    _ingest_two_docs(client)
+    app_env.generate_error = _daily_quota_error()
+
+    response = client.post("/query", json={"question": "How do vacation days accrue?"})
+
+    assert response.status_code == 503
+    # Diagnostics off by default: provider details stay in the server log.
+    assert response.json() == {"detail": "Pipeline failed.", "stage": "generate", "error": "daily_quota"}
+
+
+def test_pipeline_failure_with_diagnostics_has_full_error_and_usage(client, app_env, monkeypatch):
+    _ingest_two_docs(client)
+    _expose_llm_diagnostics(monkeypatch)
+    app_env.generate_error = _daily_quota_error()
 
     response = client.post("/query", json={"question": "How do vacation days accrue?"})
 
@@ -263,6 +286,25 @@ def test_pipeline_failure_returns_stage_and_error_kind(client, app_env):
     # Full error text, so the eval report can record the quota id and limit.
     assert "GenerateRequestsPerDayPerProjectPerModel-FreeTier" in body["message"]
     assert "'quotaValue': '20'" in body["message"]
+    assert set(body["llm_usage"]) == {"attempts_per_model", "failures"}
+
+
+def test_answer_has_no_llm_usage_by_default(client, app_env):
+    _ingest_two_docs(client)
+
+    body = client.post("/query", json={"question": "How do vacation days accrue?"}).json()
+
+    assert body["outcome"] == "answered"
+    assert "llm_usage" not in body
+
+
+def test_answer_with_diagnostics_has_llm_usage(client, app_env, monkeypatch):
+    _ingest_two_docs(client)
+    _expose_llm_diagnostics(monkeypatch)
+
+    body = client.post("/query", json={"question": "How do vacation days accrue?"}).json()
+
+    assert body["outcome"] == "answered"
     assert set(body["llm_usage"]) == {"attempts_per_model", "failures"}
 
 

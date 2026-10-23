@@ -67,3 +67,28 @@ def client(app_env):
 
     with TestClient(app) as test_client:
         yield test_client
+
+
+@pytest.fixture
+def pg_url():
+    """URL of a fresh, empty Postgres database (with pgvector available),
+    dropped afterwards. Needs TEST_POSTGRES_URL, an admin URL to a pgvector
+    server (CI runs one as a service container); skipped without it."""
+    import os
+    import uuid
+
+    import sqlalchemy as sa
+
+    admin_url = os.environ.get("TEST_POSTGRES_URL")
+    if not admin_url:
+        pytest.skip("TEST_POSTGRES_URL not set (needs a pgvector Postgres)")
+    name = f"documind_test_{uuid.uuid4().hex[:12]}"
+    admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
+    with admin.connect() as conn:
+        conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
+    try:
+        yield sa.engine.make_url(admin_url).set(database=name).render_as_string(hide_password=False)
+    finally:
+        with admin.connect() as conn:
+            conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
+        admin.dispose()

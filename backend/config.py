@@ -40,9 +40,11 @@ class Settings(BaseSettings):
     embedding_provider: Literal["local", "gemini"] = "local"
     # Empty -> the provider's default from EMBEDDING_DEFAULT_MODELS below.
     embedding_model: str = ""
-    # Gemini output_dimensionality (128-3072; Google recommends 768/1536/3072).
-    # The local model's dimension is fixed by the model.
-    embedding_dimensions: int = 1536
+    # Vector size: Gemini's output_dimensionality (128-3072; Google
+    # recommends 768/1536/3072), or the local model's fixed size. 0 = the
+    # default from EMBEDDING_DEFAULT_DIMENSIONS. The chunks table's vector
+    # column is created with this size (migration 0002).
+    embedding_dimensions: int = 0
     embedding_batch_size: int = 100   # texts per Gemini embedding request
     embedding_use_vertexai: bool = False
     google_cloud_project: str | None = None   # Vertex only
@@ -90,6 +92,12 @@ class Settings(BaseSettings):
         self.generation_model = self.generation_model or generation
         self.grading_model = self.grading_model or grading
         self.embedding_model = self.embedding_model or EMBEDDING_DEFAULT_MODELS[self.embedding_provider]
+        if not self.embedding_dimensions:
+            try:
+                self.embedding_dimensions = EMBEDDING_DEFAULT_DIMENSIONS[self.embedding_model]
+            except KeyError:
+                raise ValueError(f"Set EMBEDDING_DIMENSIONS for embedding model "
+                                 f"'{self.embedding_model}'") from None
         return self
 
 
@@ -107,6 +115,10 @@ PROVIDER_DEFAULT_MODELS = {
 EMBEDDING_DEFAULT_MODELS = {
     "local": "all-MiniLM-L6-v2",
     "gemini": "gemini-embedding-2",
+}
+EMBEDDING_DEFAULT_DIMENSIONS = {
+    "all-MiniLM-L6-v2": 384,      # fixed by the model
+    "gemini-embedding-2": 1536,   # reduced from its native 3072
 }
 
 

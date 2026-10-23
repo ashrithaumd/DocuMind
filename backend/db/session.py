@@ -35,7 +35,7 @@ def init_db(settings: Settings) -> bool:
         return False
     try:
         engine = create_engine(settings.database_url, pool_pre_ping=True)
-        migrate(engine)
+        migrate(engine, settings)
         _session_factory = sessionmaker(bind=engine, expire_on_commit=False)
         logger.info("Query logging enabled (Postgres).")
         return True
@@ -44,8 +44,9 @@ def init_db(settings: Settings) -> bool:
         return False
 
 
-def migrate(engine) -> None:
-    """Run Alembic to head on this engine.
+def migrate(engine, settings: Settings) -> None:
+    """Run Alembic to head on this engine. Migrations read `settings` (the
+    chunk vector size comes from EMBEDDING_DIMENSIONS), not the global ones.
 
     A database created by create_all before Alembic existed (tables but no
     alembic_version) is adopted first: columns a newer Phase 0 model added
@@ -55,6 +56,7 @@ def migrate(engine) -> None:
     config = Config(str(ALEMBIC_INI))
     with engine.begin() as conn:
         config.attributes["connection"] = conn
+        config.attributes["settings"] = settings
         inspector = inspect(conn)
         if inspector.has_table("query_logs") and not inspector.has_table("alembic_version"):
             _add_missing_columns(conn)

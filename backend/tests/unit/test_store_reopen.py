@@ -6,14 +6,14 @@ import pytest
 from config import Settings
 from ingestion.chunking import Chunk
 from ingestion.store import HybridStore
-from tests.helpers import FakeEmbedder
+from tests.helpers import FakeEmbeddings
 
 
-class SixteenDimEmbedder(FakeEmbedder):
+class SixteenDimEmbeddings(FakeEmbeddings):
     """A different embedding model: same interface, other dimension."""
 
-    def get_embedding_dimension(self) -> int:
-        return 16
+    model = "fake-16"
+    dimension = 16
 
 
 @pytest.fixture
@@ -27,7 +27,7 @@ def settings(tmp_path):
 
 
 async def _populated(settings) -> None:
-    store = HybridStore(settings, FakeEmbedder())
+    store = HybridStore(settings, FakeEmbeddings())
     await store.add_chunks(
         [Chunk(chunk_id="d1-0", doc_id="d1", filename="a.pdf", page_number=1,
                chunk_index=0, text="The pump runs at 400 RPM.")]
@@ -37,7 +37,7 @@ async def _populated(settings) -> None:
 async def test_reopening_populated_index_with_same_model(settings):
     await _populated(settings)
 
-    reopened = HybridStore(settings, FakeEmbedder())  # runs the dimension check
+    reopened = HybridStore(settings, FakeEmbeddings())  # runs the dimension check
 
     assert reopened.count() == 1
 
@@ -46,4 +46,4 @@ async def test_reopening_populated_index_with_other_model_fails_loudly(settings)
     await _populated(settings)
 
     with pytest.raises(RuntimeError, match="holds 32-dim vectors.*produces 16-dim"):
-        HybridStore(settings, SixteenDimEmbedder())
+        HybridStore(settings, SixteenDimEmbeddings())

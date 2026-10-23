@@ -123,6 +123,37 @@ def _gemini_error_details(exc: genai_errors.APIError) -> list[dict]:
     return details if isinstance(details, list) else []
 
 
+def gemini_retry_delay(exc: Exception) -> float | None:
+    """The Gemini retry decision, shared by the LLM gateway and the Gemini
+    embedding provider: seconds the server asked us to wait (0.0 = no hint),
+    or None if `exc` must not be retried."""
+    # A request that hung past the per-request timeout: free-tier
+    # requests occasionally stall for minutes, so retry it.
+    if isinstance(exc, TimeoutError):
+        return 0.0
+    # 429 rate limit, 500 transient INTERNAL, 503 overloaded.
+    if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 500, 503):
+        return None
+    hint = 0.0
+    for detail in _gemini_error_details(exc):
+        kind = detail.get("@type", "")
+        if kind.endswith("QuotaFailure"):
+            for violation in detail.get("violations", []):
+                quota_id = violation.get("quotaId", "")
+                logger.warning(
+                    "Gemini quota hit: %s (limit %s)",
+                    quota_id, violation.get("quotaValue", "?"),
+                )
+                if "PerDay" in quota_id:
+                    return None  # daily cap: retrying within seconds is pointless
+        elif kind.endswith("RetryInfo"):
+            try:
+                hint = float(str(detail.get("retryDelay", "0s")).rstrip("s"))
+            except ValueError:
+                pass
+    return hint
+
+
 class GeminiLLM(_BackoffLLM):
     def __init__(self, client: genai.Client, checker_thinking_level: str = "", **backoff):
         """`checker_thinking_level` applies to complete_json (the checker
@@ -136,31 +167,7 @@ class GeminiLLM(_BackoffLLM):
         )
 
     def _retry_delay(self, exc: Exception) -> float | None:
-        # A request that hung past the per-request timeout: free-tier
-        # requests occasionally stall for minutes, so retry it.
-        if isinstance(exc, TimeoutError):
-            return 0.0
-        # 429 rate limit, 500 transient INTERNAL, 503 overloaded.
-        if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 500, 503):
-            return None
-        hint = 0.0
-        for detail in _gemini_error_details(exc):
-            kind = detail.get("@type", "")
-            if kind.endswith("QuotaFailure"):
-                for violation in detail.get("violations", []):
-                    quota_id = violation.get("quotaId", "")
-                    logger.warning(
-                        "Gemini quota hit: %s (limit %s)",
-                        quota_id, violation.get("quotaValue", "?"),
-                    )
-                    if "PerDay" in quota_id:
-                        return None  # daily cap: retrying within seconds is pointless
-            elif kind.endswith("RetryInfo"):
-                try:
-                    hint = float(str(detail.get("retryDelay", "0s")).rstrip("s"))
-                except ValueError:
-                    pass
-        return hint
+        return gemini_retry_delay(exc)
 
     def _usable_text(self, model: str, response, what: str) -> str | None:
         """Response text, or None if the prompt/answer was blocked."""

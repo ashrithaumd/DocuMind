@@ -27,7 +27,7 @@ class FakeLLM:
                      per call, so a test can fail the first check then pass)
         answer     - what generation returns
 
-    `embed_calls` mirrors the paired FakeEmbedder's activity so tests can
+    `embed_calls` mirrors the paired FakeEmbeddings's activity so tests can
     assert "zero model traffic" (chat AND embeddings) in one place.
     """
 
@@ -66,21 +66,22 @@ class FakeLLM:
         )
 
 
-class FakeEmbedder:
-    """Stands in for the sentence-transformers model: same interface the
-    store uses (encode + get_embedding_dimension, the sentence-transformers 6
-    name — deliberately not the deprecated get_sentence_embedding_dimension),
-    zero deps."""
+class FakeEmbeddings:
+    """Stands in for an embedding provider (embeddings.EmbeddingProvider):
+    deterministic vectors, zero deps, no network."""
+
+    model = "fake-embeddings"
+    dimension = 32
 
     def __init__(self, record_into: list | None = None):
         self.embed_calls = record_into if record_into is not None else []
 
-    def encode(self, texts, normalize_embeddings=True):
+    async def embed_documents(self, texts: list[str]) -> list[list[float]]:
         self.embed_calls.append(list(texts))
         return [_fake_vector(t) for t in texts]
 
-    def get_embedding_dimension(self) -> int:
-        return 32
+    async def embed_query(self, text: str) -> list[float]:
+        return (await self.embed_documents([text]))[0]
 
 
 # --- tiny real test files ------------------------------------------------------

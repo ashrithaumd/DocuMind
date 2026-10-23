@@ -47,16 +47,16 @@ sys.path.insert(0, str(EVAL_DIR))
 from run_eval import percentile  # noqa: E402  same interpolation as the eval report
 
 STORES = ("chroma",)
-EMBEDDINGS = ("local",)
+EMBEDDINGS = ("local", "gemini")
 RECALL_AT = (1, 3)
 
 
-def build_store(settings, store: str, embeddings: str):
+def build_store(settings, store: str):
+    from embeddings import build_embeddings
     from ingestion.store import HybridStore
-    from sentence_transformers import SentenceTransformer
 
-    assert store == "chroma" and embeddings == "local", (store, embeddings)
-    return HybridStore(settings, SentenceTransformer(settings.embedding_model))
+    assert store == "chroma", store
+    return HybridStore(settings, build_embeddings(settings))
 
 
 async def ensure_indexed(store, settings, pdf_path: Path) -> str:
@@ -171,8 +171,9 @@ async def main() -> int:
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
     chroma_dir = args.chroma_dir or tempfile.mkdtemp(prefix="documind-bench-")
-    settings = Settings(chroma_host=None, chroma_dir=chroma_dir)
-    store = build_store(settings, args.store, args.embeddings)
+    settings = Settings(chroma_host=None, chroma_dir=chroma_dir,
+                        embedding_provider=args.embeddings, embedding_model="")
+    store = build_store(settings, args.store)
     doc_id = await ensure_indexed(store, settings, EVAL_DIR / dataset["document"])
 
     questions = [pair["question"] for pair in dataset["pairs"]]

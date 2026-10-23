@@ -136,6 +136,21 @@ Postgres + pgvector + full-text search replace Chroma and the in-memory BM25.
   chunks, so the limit is read from the first real calls and their quota
   errors, as in Phase 0, including whether one batch request counts as one
   request.
+- **Embedding free-tier quota, measured 2026-10-23.** A 429 after 22 batch
+  requests of 5 texts reported
+  `EmbedContentRequestsPerMinutePerUserPerProjectPerModel-FreeTier`, limit
+  **100** per minute (metric `embed_content_free_tier_requests`). Every text
+  in a batch counts as one request: batching saves round trips, not quota.
+  The daily limit hasn't been hit yet; the gateway stops on a daily 429 and
+  logs its quota id and value.
+- **`gemini-embedding-2` task prefixes.** Queries:
+  `task: question answering | query: ...` (queries are questions answered
+  from the passages); documents: `title: none | text: ...` (chunks carry no
+  real title). Each text is sent as its own `Content`: the SDK merges a
+  plain list of strings into one multi-part content and returns a single
+  combined embedding for this model (caught by a count check on the first
+  real call). Vertex's `embedContent` takes one content per call, so the
+  Vertex path sends one text per request (untested here: no billing).
 - **Full-text search config: `english`** (stemming + English stop words).
   BM25 tokenized without stemming, so the sparse leg's ranking changes too;
   the benchmark reports each leg's ranks separately so that shows up.

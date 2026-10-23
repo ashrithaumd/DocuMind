@@ -11,7 +11,6 @@ in-memory only and is rebuilt from Chroma at startup. At this project's scale
 (hundreds of chunks) a rebuild takes milliseconds, so persisting a second
 index would be complexity with no payoff.
 """
-import asyncio
 import logging
 import re
 import threading
@@ -22,6 +21,7 @@ import chromadb
 from rank_bm25 import BM25Okapi
 
 from config import Settings
+from embeddings import EmbeddingProvider
 from ingestion.chunking import Chunk
 
 logger = logging.getLogger(__name__)
@@ -46,12 +46,11 @@ class RetrievedChunk:
 
 
 class HybridStore:
-    def __init__(self, settings: Settings, embedder):
-        """`embedder` is a sentence-transformers model (or anything exposing
-        encode() and get_embedding_dimension()). Embeddings are
-        computed locally — no API key, no network call, no per-token cost."""
+    def __init__(self, settings: Settings, embeddings: EmbeddingProvider):
+        """`embeddings` is the configured provider (embeddings.py); the store
+        only calls embed_documents/embed_query and reads its dimension."""
         self._settings = settings
-        self._embedder = embedder
+        self._embeddings = embeddings
 
         if settings.chroma_host:
             client = chromadb.HttpClient(host=settings.chroma_host, port=settings.chroma_port)
@@ -84,12 +83,12 @@ class HybridStore:
         if embeddings is None or len(embeddings) == 0:
             return  # empty collection: dimension gets set by our first insert
         existing_dim = len(embeddings[0])
-        model_dim = self._embedder.get_embedding_dimension()
+        model_dim = self._embeddings.dimension
         if existing_dim != model_dim:
             raise RuntimeError(
                 f"Chroma collection '{self._settings.collection_name}' holds "
                 f"{existing_dim}-dim vectors, but embedding model "
-                f"'{self._settings.embedding_model}' produces {model_dim}-dim. "
+                f"'{self._embeddings.model}' produces {model_dim}-dim. "
                 "It was built with a different embedding model — wipe the "
                 "Chroma data (delete ./chroma_db, or `docker compose down -v`) "
                 "and re-upload your documents."
@@ -140,27 +139,11 @@ class HybridStore:
                 doc["chunks"] += 1
         return sorted(docs.values(), key=lambda d: d["uploaded_at"] or "", reverse=True)
 
-    # --- embeddings ---------------------------------------------------------
-
-    async def _embed(self, texts: list[str]) -> list[list[float]]:
-        """Embed locally with sentence-transformers.
-
-        encode() is CPU-bound and synchronous, so it runs in a worker thread
-        to keep the event loop free. Note the model truncates inputs to its
-        max sequence length (256 word-pieces for MiniLM), so the dense leg
-        sees roughly the first half of a 600-token chunk — the BM25 leg
-        still scores the full text (documented limitation in the README).
-        """
-        vectors = await asyncio.to_thread(
-            self._embedder.encode, texts, normalize_embeddings=True
-        )
-        return [list(map(float, vector)) for vector in vectors]
-
     # --- ingestion ----------------------------------------------------------
 
     async def add_chunks(self, chunks: list[Chunk]) -> None:
         texts = [c.text for c in chunks]
-        embeddings = await self._embed(texts)
+        embeddings = await self._embeddings.embed_documents(texts)
         ids = [c.chunk_id for c in chunks]
         uploaded_at = datetime.now(timezone.utc).isoformat()
         metadatas = [
@@ -181,7 +164,7 @@ class HybridStore:
     # --- retrieval ----------------------------------------------------------
 
     async def embed_query(self, query: str) -> list[float]:
-        return (await self._embed([query]))[0]
+        return await self._embeddings.embed_query(query)
 
     async def search(self, query: str, doc_ids: list[str] | None = None) -> list[RetrievedChunk]:
         """Hybrid search: top candidates from each leg, fused with RRF.
@@ -213,7 +196,7 @@ class HybridStore:
         n = min(self._settings.rrf_candidates, self.count())
         scope = set(doc_ids) if doc_ids else None
 
-        # Dense leg: cosine similarity over local MiniLM embeddings in Chroma.
+        # Dense leg: cosine similarity over the provider's embeddings in Chroma.
         result = self._collection.query(
             query_embeddings=[query_vector],
             n_results=n,

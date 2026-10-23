@@ -4,8 +4,8 @@ The app uses three lru_cache singletons (settings, LLM gateway, store) plus
 a module-global DB session factory. The `client` fixture resets all of them
 around a temp environment: embedded Chroma in tmp_path, SQLite standing in
 for Postgres (same SQLAlchemy models and queries — dialect-neutral SQL),
-FakeLLM in place of the LLM gateway, and FakeEmbedder in place of the local
-sentence-transformers model — so no test ever makes a network call, loads
+FakeLLM in place of the LLM gateway, and FakeEmbeddings in place of the
+embedding provider — so no test ever makes a network call, loads
 torch, or spends a token.
 """
 import pytest
@@ -14,7 +14,7 @@ import config
 import deps
 from db import session as db_session
 from graph import nodes
-from tests.helpers import FakeEmbedder, FakeLLM
+from tests.helpers import FakeEmbeddings, FakeLLM
 
 
 @pytest.fixture
@@ -34,19 +34,21 @@ def app_env(tmp_path, monkeypatch, fake_llm):
     monkeypatch.setenv("COLLECTION_NAME", "test_documents")
     monkeypatch.delenv("CHROMA_HOST", raising=False)
     monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+    monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
 
     config.get_settings.cache_clear()
     deps.get_llm.cache_clear()
-    deps.get_embedder.cache_clear()
+    deps.get_embeddings.cache_clear()
     deps.get_store.cache_clear()
 
-    # Both the graph nodes (get_llm) and the store factory (get_embedder)
+    # Both the graph nodes (get_llm) and the store factory (get_embeddings)
     # must see the fakes. Embedder activity is mirrored onto the FakeLLM so
     # tests can assert "zero model traffic" via one object.
-    embedder = FakeEmbedder(record_into=fake_llm.embed_calls)
+    embeddings = FakeEmbeddings(record_into=fake_llm.embed_calls)
     monkeypatch.setattr(deps, "get_llm", lambda: fake_llm)
     monkeypatch.setattr(nodes, "get_llm", lambda: fake_llm)
-    monkeypatch.setattr(deps, "get_embedder", lambda: embedder)
+    monkeypatch.setattr(deps, "get_embeddings", lambda: embeddings)
 
     yield fake_llm
 

@@ -6,7 +6,7 @@ import pytest
 from config import Settings
 from ingestion.chunking import Chunk
 from ingestion.store import HybridStore
-from tests.helpers import FakeEmbedder
+from tests.helpers import FakeEmbeddings
 
 
 @pytest.fixture
@@ -18,7 +18,7 @@ async def store(tmp_path):
         collection_name="search_test",
         top_k=3,
     )
-    store = HybridStore(settings, FakeEmbedder())
+    store = HybridStore(settings, FakeEmbeddings())
     await store.add_chunks([
         Chunk(chunk_id=f"d1-{i}", doc_id="d1", filename="a.pdf", page_number=i + 1,
               chunk_index=i, text=f"Pump {i} runs at {400 + i} RPM in module {i}.")

@@ -33,10 +33,20 @@ class Settings(BaseSettings):
     # as one failed attempt). Free-tier requests occasionally hang for minutes.
     llm_request_timeout_s: float = 60.0
 
-    # --- Embeddings (local, free, offline — no provider embeddings API) ---
-    # A sentence-transformers model name; downloaded from HuggingFace on first
-    # use, then served from the local cache with no network or key required.
-    embedding_model: str = "all-MiniLM-L6-v2"
+    # --- Embeddings (embeddings.py) ---
+    # local: sentence-transformers on the CPU, no key or network (CI, offline
+    # dev). gemini: gemini-embedding-2 via the Gemini API key, or Vertex AI
+    # with EMBEDDING_USE_VERTEXAI=true.
+    embedding_provider: Literal["local", "gemini"] = "local"
+    # Empty -> the provider's default from EMBEDDING_DEFAULT_MODELS below.
+    embedding_model: str = ""
+    # Gemini output_dimensionality (128-3072; Google recommends 768/1536/3072).
+    # The local model's dimension is fixed by the model.
+    embedding_dimensions: int = 1536
+    embedding_batch_size: int = 100   # texts per Gemini embedding request
+    embedding_use_vertexai: bool = False
+    google_cloud_project: str | None = None   # Vertex only
+    google_cloud_location: str = "us-central1"
 
     # --- Vector store ---
     # If CHROMA_HOST is set (docker-compose), talk to a Chroma server over HTTP.
@@ -79,6 +89,7 @@ class Settings(BaseSettings):
         generation, grading = PROVIDER_DEFAULT_MODELS[self.llm_provider]
         self.generation_model = self.generation_model or generation
         self.grading_model = self.grading_model or grading
+        self.embedding_model = self.embedding_model or EMBEDDING_DEFAULT_MODELS[self.embedding_provider]
         return self
 
 
@@ -90,6 +101,12 @@ class Settings(BaseSettings):
 PROVIDER_DEFAULT_MODELS = {
     "gemini": ("gemini-3.5-flash-lite", "gemini-3.5-flash-lite"),
     "anthropic": ("claude-opus-4-8", "claude-haiku-4-5"),
+}
+
+
+EMBEDDING_DEFAULT_MODELS = {
+    "local": "all-MiniLM-L6-v2",
+    "gemini": "gemini-embedding-2",
 }
 
 

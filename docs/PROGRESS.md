@@ -154,6 +154,16 @@ Postgres + pgvector + full-text search replace Chroma and the in-memory BM25.
 - **Full-text search config: `english`** (stemming + English stop words).
   BM25 tokenized without stemming, so the sparse leg's ranking changes too;
   the benchmark reports each leg's ranks separately so that shows up.
+- **Full-text query semantics: any term (OR), ranked by `ts_rank_cd`.**
+  `plainto_tsquery`/`websearch_to_tsquery` AND every term together; on the
+  sample, the gold page of only 4 of 14 questions contained every query
+  term, so the sparse leg would go silent on most questions. The store
+  turns the `plainto_tsquery` ANDs into ORs: same stemming and stop words,
+  BM25-like any-term matching. Only matching chunks get a sparse rank.
+- **Filtered HNSW search uses iterative scans** (`SET LOCAL
+  hnsw.iterative_scan = relaxed_order`, re-sorted by exact distance in a
+  materialized CTE). A test with the HNSW index forced shows the control
+  query without them losing a small document's rows to the `doc_id` filter.
 - **Comparison design.** Run A: Chroma + BM25 + MiniLM (Phase 0). Run B:
   pgvector + FTS + MiniLM, the migration effect (B vs A). Run C: pgvector +
   FTS + `gemini-embedding-2`, the embedding effect (C vs B). The latency

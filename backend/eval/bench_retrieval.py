@@ -22,12 +22,17 @@ the pipeline's top_k cut. sample.pdf is chunked one chunk per page, so a
 page rank is a chunk rank.
 
 The index is built from eval/sample.pdf with the app's own extraction and
-chunking into a fresh directory (or reused with --chroma-dir). --store and
---embeddings pick the store and embedding provider being measured.
+chunking. --store and --embeddings pick the store and embedding provider
+being measured:
+  - chroma:   Chroma + in-memory BM25, in a fresh temporary directory (or
+              reused with --chroma-dir)
+  - pgvector: Postgres + pgvector + full-text search in --database-url
+              (default DATABASE_URL), migrated first; use an empty database
+              per provider, since the vector column's size follows it
 
 Usage (from backend/):
     python eval/bench_retrieval.py [--store chroma] [--embeddings local]
-        [--reps 20] [--warmup 1] [--out FILE.json]
+        [--database-url URL] [--reps 20] [--warmup 1] [--out FILE.json]
 """
 import argparse
 import asyncio
@@ -46,16 +51,23 @@ sys.path.insert(0, str(EVAL_DIR))
 
 from run_eval import percentile  # noqa: E402  same interpolation as the eval report
 
-STORES = ("chroma",)
+STORES = ("chroma", "pgvector")
 EMBEDDINGS = ("local", "gemini")
 RECALL_AT = (1, 3)
 
 
 def build_store(settings, store: str):
     from embeddings import build_embeddings
+
+    if store == "pgvector":
+        from db.session import init_db
+        from ingestion.pg_store import PgHybridStore
+
+        if not init_db(settings):  # runs the migrations
+            raise SystemExit("pgvector store: could not migrate --database-url")
+        return PgHybridStore(settings, build_embeddings(settings))
     from ingestion.store import HybridStore
 
-    assert store == "chroma", store
     return HybridStore(settings, build_embeddings(settings))
 
 
@@ -164,15 +176,20 @@ async def main() -> int:
     parser.add_argument("--warmup", type=int, default=1, help="Discarded calls per question")
     parser.add_argument("--chroma-dir", default=None,
                         help="Index directory (default: a fresh temporary one)")
+    parser.add_argument("--database-url", default=None,
+                        help="pgvector store: Postgres URL (default: DATABASE_URL)")
     parser.add_argument("--out", default=None, help="Write the results as JSON here")
     args = parser.parse_args()
 
     from config import Settings
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    chroma_dir = args.chroma_dir or tempfile.mkdtemp(prefix="documind-bench-")
+    chroma_dir = args.chroma_dir or (
+        tempfile.mkdtemp(prefix="documind-bench-") if args.store == "chroma" else "./chroma_db")
+    overrides = {"database_url": args.database_url} if args.database_url else {}
     settings = Settings(chroma_host=None, chroma_dir=chroma_dir,
-                        embedding_provider=args.embeddings, embedding_model="")
+                        embedding_provider=args.embeddings, embedding_model="",
+                        embedding_dimensions=0, **overrides)
     store = build_store(settings, args.store)
     doc_id = await ensure_indexed(store, settings, EVAL_DIR / dataset["document"])
 
@@ -218,7 +235,7 @@ async def main() -> int:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
         print(f"Wrote {args.out}")
-    if not args.chroma_dir:
+    if args.store == "chroma" and not args.chroma_dir:
         del store  # release Chroma's file handles before removing the index
         shutil.rmtree(chroma_dir, ignore_errors=True)
     return 0

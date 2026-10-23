@@ -45,6 +45,48 @@ class RetrievedChunk:
     similarity: float | None  # cosine similarity, only known for the dense leg
 
 
+def rrf_fuse(
+    dense: dict[str, tuple[int, float, str, dict]],
+    sparse: dict[str, tuple[int, str, dict]],
+    k: int,
+) -> list[RetrievedChunk]:
+    """Reciprocal Rank Fusion: score(c) = sum over legs of 1 / (k + rank).
+
+    `dense` maps chunk_id -> (rank, similarity, text, meta), `sparse` maps
+    chunk_id -> (rank, text, meta); meta has filename and page_number. Every
+    candidate from either leg comes back, sorted by fused score, keeping its
+    rank in each leg. Ties keep insertion order (dense candidates first).
+    """
+    fused: dict[str, RetrievedChunk] = {}
+    for cid, (rank, similarity, text, meta) in dense.items():
+        fused[cid] = RetrievedChunk(
+            chunk_id=cid,
+            text=text,
+            filename=meta["filename"],
+            page_number=meta["page_number"],
+            score=1.0 / (k + rank),
+            dense_rank=rank,
+            sparse_rank=None,
+            similarity=round(similarity, 4),
+        )
+    for cid, (rank, text, meta) in sparse.items():
+        if cid in fused:
+            fused[cid].score += 1.0 / (k + rank)
+            fused[cid].sparse_rank = rank
+        else:
+            fused[cid] = RetrievedChunk(
+                chunk_id=cid,
+                text=text,
+                filename=meta["filename"],
+                page_number=meta["page_number"],
+                score=1.0 / (k + rank),
+                dense_rank=None,
+                sparse_rank=rank,
+                similarity=None,
+            )
+    return sorted(fused.values(), key=lambda c: c.score, reverse=True)
+
+
 class HybridStore:
     def __init__(self, settings: Settings, embeddings: EmbeddingProvider):
         """`embeddings` is the configured provider (embeddings.py); the store
@@ -226,34 +268,4 @@ class HybridStore:
                 rank += 1
                 sparse[cid] = (rank, text, meta)
 
-        # Reciprocal Rank Fusion: score(c) = sum over legs of 1 / (k + rank).
-        k = self._settings.rrf_k
-        fused: dict[str, RetrievedChunk] = {}
-        for cid, (rank, similarity, text, meta) in dense.items():
-            fused[cid] = RetrievedChunk(
-                chunk_id=cid,
-                text=text,
-                filename=meta["filename"],
-                page_number=meta["page_number"],
-                score=1.0 / (k + rank),
-                dense_rank=rank,
-                sparse_rank=None,
-                similarity=round(similarity, 4),
-            )
-        for cid, (rank, text, meta) in sparse.items():
-            if cid in fused:
-                fused[cid].score += 1.0 / (k + rank)
-                fused[cid].sparse_rank = rank
-            else:
-                fused[cid] = RetrievedChunk(
-                    chunk_id=cid,
-                    text=text,
-                    filename=meta["filename"],
-                    page_number=meta["page_number"],
-                    score=1.0 / (k + rank),
-                    dense_rank=None,
-                    sparse_rank=rank,
-                    similarity=None,
-                )
-
-        return sorted(fused.values(), key=lambda c: c.score, reverse=True)
+        return rrf_fuse(dense, sparse, self._settings.rrf_k)

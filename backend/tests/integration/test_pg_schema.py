@@ -1,6 +1,7 @@
 """Migration 0002 on real Postgres + pgvector: the chunks table gets a
 vector column sized from EMBEDDING_DIMENSIONS, HNSW/GIN/doc_id indexes, and
 an 'english' tsvector; the log tables still match the models."""
+import pytest
 import sqlalchemy as sa
 from alembic.autogenerate import compare_metadata
 from alembic.migration import MigrationContext
@@ -56,6 +57,7 @@ def test_tsvector_uses_english_stemming_and_stop_words(pg_url):
     assert tsv == "'400':6 'cool':1 'pump':2 'rpm':7 'run':4"
 
 
+@pytest.mark.filterwarnings("ignore:Did not recognize type 'vector':sqlalchemy.exc.SAWarning")
 def test_log_tables_still_match_the_models(pg_url):
     engine = _migrate(pg_url, embedding_provider="local")
 

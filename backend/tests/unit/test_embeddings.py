@@ -178,7 +178,10 @@ def test_build_embeddings_fails_loudly_without_credentials():
                                   embedding_use_vertexai=True))
 
 
-def test_local_is_the_default_provider():
-    settings = Settings(_env_file=None)
+def test_gemini_is_the_default_provider_and_local_has_its_own_defaults():
+    default = Settings(_env_file=None)
+    local = Settings(_env_file=None, embedding_provider="local")
 
-    assert (settings.embedding_provider, settings.embedding_model) == ("local", "all-MiniLM-L6-v2")
+    assert (default.embedding_provider, default.embedding_model,
+            default.embedding_dimensions) == ("gemini", "gemini-embedding-2", 1536)
+    assert (local.embedding_model, local.embedding_dimensions) == ("all-MiniLM-L6-v2", 384)

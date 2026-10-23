@@ -2,8 +2,8 @@
 routing shortcut, refusal paths, the normal answer path, doc scoping, PII
 redaction, feedback — and the log rows each one must leave behind.
 
-The log DB is SQLite here (same SQLAlchemy models and dialect-neutral
-queries as the Postgres deployment) so CI stays hermetic.
+Each test runs against its own fresh Postgres + pgvector database (the
+chunk store and the query log), with the LLM and embeddings faked.
 """
 from db import session as db_session
 from tests.helpers import make_docx

@@ -1,4 +1,4 @@
-"""Full ingestion path through the API against real (embedded) Chroma:
+"""Full ingestion path through the API against real Postgres + pgvector:
 upload each supported format, verify chunks land in the index, verify
 /documents ordering, and verify API-level rejections."""
 from tests.helpers import make_docx, make_pdf
@@ -22,7 +22,7 @@ def test_pdf_docx_txt_ingest_and_are_listed_newest_first(client):
         assert body["chunks_created"] >= 1
         doc_ids.append(body["doc_id"])
 
-    # Index actually grew (real Chroma + BM25, not a mock).
+    # Index actually grew (real chunks table, not a mock).
     health = client.get("/health").json()
     assert health["chunks_indexed"] >= 3
 

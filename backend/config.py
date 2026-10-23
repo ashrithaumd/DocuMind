@@ -34,10 +34,10 @@ class Settings(BaseSettings):
     llm_request_timeout_s: float = 60.0
 
     # --- Embeddings (embeddings.py) ---
-    # local: sentence-transformers on the CPU, no key or network (CI, offline
-    # dev). gemini: gemini-embedding-2 via the Gemini API key, or Vertex AI
-    # with EMBEDDING_USE_VERTEXAI=true.
-    embedding_provider: Literal["local", "gemini"] = "local"
+    # gemini (default): gemini-embedding-2 via the Gemini API key, or Vertex
+    # AI with EMBEDDING_USE_VERTEXAI=true. local: sentence-transformers on the
+    # CPU, no key or network (CI, offline dev).
+    embedding_provider: Literal["local", "gemini"] = "gemini"
     # Empty -> the provider's default from EMBEDDING_DEFAULT_MODELS below.
     embedding_model: str = ""
     # Vector size: Gemini's output_dimensionality (128-3072; Google
@@ -50,16 +50,8 @@ class Settings(BaseSettings):
     google_cloud_project: str | None = None   # Vertex only
     google_cloud_location: str = "us-central1"
 
-    # --- Vector store ---
-    # If CHROMA_HOST is set (docker-compose), talk to a Chroma server over HTTP.
-    # Otherwise fall back to an embedded on-disk instance (plain local dev).
-    chroma_host: str | None = None
-    chroma_port: int = 8000
-    chroma_dir: str = "./chroma_db"
-    collection_name: str = "documents"
-
-    # --- Postgres audit / timing log ---
-    # Unset -> logging is disabled with a startup warning (app still works).
+    # --- Postgres: chunk store (pgvector + full-text) and query log ---
+    # Required: the chunks live here. Migrations run at startup.
     database_url: str | None = None
 
     # --- Auth ---

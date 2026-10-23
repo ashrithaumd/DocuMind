@@ -1,8 +1,9 @@
 """Database wiring + the small query-log API used by main.py.
 
-Deliberate behavior: observability must never take the product down. If
-DATABASE_URL is unset or Postgres is unreachable, we warn and keep serving —
-every log call is individually guarded.
+The same Postgres holds the chunk store (ingestion/store.py), so the app
+needs it to serve at all; init_db runs the migrations at startup. Query
+logging itself stays fail-open: every log call is individually guarded, so
+a failed log write never fails a query.
 """
 import logging
 import statistics

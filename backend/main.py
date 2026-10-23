@@ -1,7 +1,7 @@
 """DocuMind API.
 
 Endpoints:
-    POST /upload        — validate + ingest a PDF/DOCX/TXT (chunks -> Chroma + BM25)
+    POST /upload        — validate + ingest a PDF/DOCX/TXT (chunks -> Postgres)
     GET  /documents     — uploaded documents, newest first
     POST /query         — run the full pipeline, return one JSON response
     POST /query/stream  — same pipeline over SSE: stage events, then the
@@ -44,11 +44,10 @@ logger = logging.getLogger("documind")
 async def lifespan(app: FastAPI):
     settings = get_settings()
     db.init_db(settings)
-    # Building the store loads the local embedding model (first run downloads
-    # it from HuggingFace, then it's served from cache, fully offline) and
-    # fails fast with a clear error if an existing Chroma collection was
-    # built with a different embedding model.
-    store = get_store()  # also rebuilds the BM25 index from Chroma
+    # The store fails fast with a clear error if the chunks table is missing
+    # or was built for a different embedding model (vector size or model
+    # name). With EMBEDDING_PROVIDER=local this also loads the model.
+    store = get_store()
     logger.info("Store ready: %d chunks indexed.", store.count())
     if not settings.api_key:
         logger.warning("API_KEY not set — endpoints are unauthenticated (dev mode).")
@@ -188,9 +187,13 @@ async def upload_document(file: UploadFile = File(...)):
     try:
         await get_store().add_chunks(chunks)
     except Exception as exc:
-        # Embeddings are local now, so a failure here is a server-side problem
-        # (model cache, disk, Chroma) — surface that clearly, not a bare 500.
         logger.exception("Embedding/indexing failed during ingestion")
+        kind = classify_error(exc)
+        if kind:
+            # Embedding provider capacity (quota, overload, timeout): retry later.
+            raise HTTPException(
+                status_code=503, detail=f"Embedding provider unavailable ({kind}); try again later."
+            ) from exc
         raise HTTPException(
             status_code=500,
             detail="Embedding or indexing failed server-side — see backend logs.",

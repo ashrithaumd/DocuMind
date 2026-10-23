@@ -1,12 +1,12 @@
 """Fixtures shared by unit and integration tests.
 
-The app uses three lru_cache singletons (settings, LLM gateway, store) plus
-a module-global DB session factory. The `client` fixture resets all of them
-around a temp environment: embedded Chroma in tmp_path, SQLite standing in
-for Postgres (same SQLAlchemy models and queries — dialect-neutral SQL),
-FakeLLM in place of the LLM gateway, and FakeEmbeddings in place of the
-embedding provider — so no test ever makes a network call, loads
-torch, or spends a token.
+The app uses lru_cache singletons (settings, LLM gateway, embedding
+provider, store) plus a module-global DB session factory. The `client`
+fixture resets all of them around a temp environment: a fresh Postgres +
+pgvector database per test (pg_url, from TEST_POSTGRES_URL; those tests skip
+without it), FakeLLM in place of the LLM gateway, and FakeEmbeddings in place
+of the embedding provider, so no test ever calls a model, loads torch, or
+spends a token. Unit tests that only need the log tables use SQLite.
 """
 import pytest
 
@@ -23,19 +23,19 @@ def fake_llm():
 
 
 @pytest.fixture
-def app_env(tmp_path, monkeypatch, fake_llm):
-    """Fresh settings + stubbed LLM/embedder + temp Chroma/SQLite for one test."""
+def app_env(pg_url, monkeypatch, fake_llm):
+    """Fresh settings + stubbed LLM/embeddings + a fresh Postgres database."""
     monkeypatch.setenv("LLM_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
     monkeypatch.delenv("GENERATION_MODEL", raising=False)
     monkeypatch.delenv("GRADING_MODEL", raising=False)
-    monkeypatch.setenv("CHROMA_DIR", str(tmp_path / "chroma"))
-    monkeypatch.setenv("DATABASE_URL", f"sqlite:///{tmp_path / 'log.db'}")
-    monkeypatch.setenv("COLLECTION_NAME", "test_documents")
-    monkeypatch.delenv("CHROMA_HOST", raising=False)
+    monkeypatch.setenv("DATABASE_URL", pg_url)
     monkeypatch.delenv("API_KEY", raising=False)
-    monkeypatch.delenv("EMBEDDING_PROVIDER", raising=False)
+    # FakeEmbeddings stands in for the provider; the chunks table must be
+    # sized for its 32-dim vectors.
+    monkeypatch.setenv("EMBEDDING_PROVIDER", "local")
     monkeypatch.delenv("EMBEDDING_MODEL", raising=False)
+    monkeypatch.setenv("EMBEDDING_DIMENSIONS", "32")
 
     config.get_settings.cache_clear()
     deps.get_llm.cache_clear()
@@ -52,8 +52,10 @@ def app_env(tmp_path, monkeypatch, fake_llm):
 
     yield fake_llm
 
-    # Next test rebuilds everything from its own tmp_path.
+    # Next test rebuilds everything against its own database.
     config.get_settings.cache_clear()
+    if deps.get_store.cache_info().currsize:
+        deps.get_store()._engine.dispose()  # release pooled connections to the test database
     deps.get_store.cache_clear()
     db_session._session_factory = None
 

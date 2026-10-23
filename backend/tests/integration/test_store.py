@@ -1,4 +1,4 @@
-"""The Postgres hybrid store on real pgvector (fresh database per test, from
+"""The hybrid store on real Postgres + pgvector (fresh database per test, from
 TEST_POSTGRES_URL; skipped without it): ingestion, both legs, RRF fusion,
 doc scoping, filtered HNSW search with iterative scans, OR-semantics
 full-text matching, and the startup checks against a mismatched provider."""
@@ -8,7 +8,7 @@ import pytest
 from config import Settings
 from db import session as db_session
 from ingestion.chunking import Chunk
-from ingestion.pg_store import PgHybridStore
+from ingestion.store import HybridStore
 from tests.helpers import FakeEmbeddings
 
 
@@ -18,10 +18,10 @@ def _settings(url, **overrides) -> Settings:
                        "top_k": 3, **overrides})
 
 
-def _store(url, embeddings=None, **overrides) -> PgHybridStore:
+def _store(url, embeddings=None, **overrides) -> HybridStore:
     settings = _settings(url, **overrides)
     assert db_session.init_db(settings)
-    return PgHybridStore(settings, embeddings or FakeEmbeddings())
+    return HybridStore(settings, embeddings or FakeEmbeddings())
 
 
 def _chunks(doc_id, texts, filename="a.pdf"):
@@ -129,7 +129,7 @@ async def test_store_refuses_a_different_dimension(pg_url):
     assert db_session.init_db(settings)
 
     with pytest.raises(RuntimeError, match=r"vector\(16\).*vector\(32\)"):
-        PgHybridStore(settings, FakeEmbeddings())
+        HybridStore(settings, FakeEmbeddings())
 
 
 async def test_store_refuses_vectors_from_another_model(pg_url):
@@ -140,9 +140,9 @@ async def test_store_refuses_vectors_from_another_model(pg_url):
         model = "other-model"
 
     with pytest.raises(RuntimeError, match="fake-embeddings"):
-        PgHybridStore(_settings(pg_url), OtherModel())
+        HybridStore(_settings(pg_url), OtherModel())
 
 
 def test_store_needs_the_migrations(pg_url):
     with pytest.raises(RuntimeError, match="run the migrations"):
-        PgHybridStore(_settings(pg_url), FakeEmbeddings())
+        HybridStore(_settings(pg_url), FakeEmbeddings())

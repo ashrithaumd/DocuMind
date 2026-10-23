@@ -8,7 +8,7 @@ N timed calls. Two parts of a search are timed separately:
   - embed_ms:  embedding the query (local MiniLM here; a network call once
                a hosted embedding provider is used)
   - search_ms: everything after that: the vector query, the sparse leg and
-               RRF fusion (HybridStore.search_with_vector)
+               RRF fusion (store.search_with_vector)
 
 The report gives n, p50/p95/p99 for embed, search and their total, plus
 per-question p50/p95. search_ms is the store's latency; embed_ms depends on
@@ -22,26 +22,22 @@ the pipeline's top_k cut. sample.pdf is chunked one chunk per page, so a
 page rank is a chunk rank.
 
 The index is built from eval/sample.pdf with the app's own extraction and
-chunking. --store and --embeddings pick the store and embedding provider
-being measured:
-  - chroma:   Chroma + in-memory BM25, in a fresh temporary directory (or
-              reused with --chroma-dir)
-  - pgvector: Postgres + pgvector + full-text search in --database-url
-              (default DATABASE_URL), migrated first; use an empty database
-              per provider, since the vector column's size follows it
+chunking, in Postgres (pgvector + full-text search) at --database-url
+(default DATABASE_URL), migrated first. Use an empty database per
+embedding provider: the vector column's size follows the provider.
+--embeddings picks the provider being measured. (Phase 0's Chroma + BM25
+run is kept in docs/baseline/phase0/retrieval_bench_split.json.)
 
 Usage (from backend/):
-    python eval/bench_retrieval.py [--store chroma] [--embeddings local]
+    python eval/bench_retrieval.py [--embeddings local|gemini]
         [--database-url URL] [--reps 20] [--warmup 1] [--out FILE.json]
 """
 import argparse
 import asyncio
 import json
 import platform
-import shutil
 import statistics
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -51,23 +47,17 @@ sys.path.insert(0, str(EVAL_DIR))
 
 from run_eval import percentile  # noqa: E402  same interpolation as the eval report
 
-STORES = ("chroma", "pgvector")
 EMBEDDINGS = ("local", "gemini")
 RECALL_AT = (1, 3)
 
 
-def build_store(settings, store: str):
+def build_store(settings):
+    from db.session import init_db
     from embeddings import build_embeddings
-
-    if store == "pgvector":
-        from db.session import init_db
-        from ingestion.pg_store import PgHybridStore
-
-        if not init_db(settings):  # runs the migrations
-            raise SystemExit("pgvector store: could not migrate --database-url")
-        return PgHybridStore(settings, build_embeddings(settings))
     from ingestion.store import HybridStore
 
+    if not init_db(settings):  # runs the migrations
+        raise SystemExit("Could not connect to or migrate the database (--database-url)")
     return HybridStore(settings, build_embeddings(settings))
 
 
@@ -170,27 +160,21 @@ async def ranking_quality(store, pairs: list[dict], doc_ids: list[str]) -> dict 
 async def main() -> int:
     parser = argparse.ArgumentParser(description="Retrieval-only benchmark (no LLM calls).")
     parser.add_argument("--dataset", default=str(EVAL_DIR / "dataset.json"))
-    parser.add_argument("--store", choices=STORES, default="chroma")
     parser.add_argument("--embeddings", choices=EMBEDDINGS, default="local")
     parser.add_argument("--reps", type=int, default=20, help="Timed calls per question")
     parser.add_argument("--warmup", type=int, default=1, help="Discarded calls per question")
-    parser.add_argument("--chroma-dir", default=None,
-                        help="Index directory (default: a fresh temporary one)")
     parser.add_argument("--database-url", default=None,
-                        help="pgvector store: Postgres URL (default: DATABASE_URL)")
+                        help="Postgres URL (default: DATABASE_URL)")
     parser.add_argument("--out", default=None, help="Write the results as JSON here")
     args = parser.parse_args()
 
     from config import Settings
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    chroma_dir = args.chroma_dir or (
-        tempfile.mkdtemp(prefix="documind-bench-") if args.store == "chroma" else "./chroma_db")
     overrides = {"database_url": args.database_url} if args.database_url else {}
-    settings = Settings(chroma_host=None, chroma_dir=chroma_dir,
-                        embedding_provider=args.embeddings, embedding_model="",
+    settings = Settings(embedding_provider=args.embeddings, embedding_model="",
                         embedding_dimensions=0, **overrides)
-    store = build_store(settings, args.store)
+    store = build_store(settings)
     doc_id = await ensure_indexed(store, settings, EVAL_DIR / dataset["document"])
 
     questions = [pair["question"] for pair in dataset["pairs"]]
@@ -198,7 +182,7 @@ async def main() -> int:
     result = {
         "what": "store.embed_query() + store.search_with_vector() scoped to the sample "
                 "document; no LLM calls",
-        "store": args.store,
+        "store": "pgvector",
         "embeddings": args.embeddings,
         "reps_per_question": args.reps,
         "warmup_per_question": args.warmup,
@@ -213,7 +197,7 @@ async def main() -> int:
         "ranking_quality": await ranking_quality(store, dataset["pairs"], [doc_id]),
     }
 
-    print(f"Retrieval-only, store={args.store} embeddings={args.embeddings}: "
+    print(f"Retrieval-only, store=pgvector embeddings={args.embeddings}: "
           f"{result['questions']} questions x {args.reps} reps "
           f"(+{args.warmup} warm-up each), {result['index_chunks']} chunks indexed")
     for part in ("embed", "search", "total"):
@@ -235,9 +219,6 @@ async def main() -> int:
         Path(args.out).parent.mkdir(parents=True, exist_ok=True)
         Path(args.out).write_text(json.dumps(result, indent=2), encoding="utf-8")
         print(f"Wrote {args.out}")
-    if args.store == "chroma" and not args.chroma_dir:
-        del store  # release Chroma's file handles before removing the index
-        shutil.rmtree(chroma_dir, ignore_errors=True)
     return 0
 
 

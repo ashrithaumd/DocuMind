@@ -107,6 +107,45 @@ also covers the default-scope lookup and PII redaction.
 reported as mean with min/max. This is a single pass, so it shows no judge
 variance.
 
+## Phase 1
+
+Postgres + pgvector + full-text search replace Chroma and the in-memory BM25.
+
+### Decisions (2026-10-23)
+
+- **Embeddings: `gemini-embedding-2` at `output_dimensionality=1536`, stored
+  as `vector(1536)`.** It takes 8,192 input tokens, so 600-token chunks are
+  embedded whole (MiniLM truncated at 256 word-pieces), and it normalizes
+  reduced dimensions itself. 1536 is one of Google's recommended sizes and
+  fits pgvector's 2,000-dimension HNSW limit for `vector`, so there are no
+  `halfvec` casts. A 3072-dimension `halfvec` variant stays possible later
+  as a migration plus re-embed.
+- **Deviation from the build prompt: AI Studio key, not Vertex AI.** The
+  prompt names Vertex Gemini as the primary embedding provider. Vertex AI
+  embeddings need a billing account, and Vertex express mode (the no-billing
+  route) supports only listed Gemini text/image models, no embedding model;
+  this project runs on the free tier with no billing. The Gemini provider
+  uses the `google-genai` SDK, which serves both, so Vertex is a config switch
+  inside the same provider with no code change.
+- **Data-use caveat accepted.** Free-tier Gemini API content is "Used to
+  improve our products". Acceptable here because every corpus in this project
+  is fictional.
+- **Embedding quota is discovered, not looked up.** Google doesn't publish
+  free-tier embedding limits (only AI Studio shows them). `sample.pdf` is 5
+  chunks, so the limit is read from the first real calls and their quota
+  errors, as in Phase 0, including whether one batch request counts as one
+  request.
+- **Full-text search config: `english`** (stemming + English stop words).
+  BM25 tokenized without stemming, so the sparse leg's ranking changes too;
+  the benchmark reports each leg's ranks separately so that shows up.
+- **Comparison design.** Run A: Chroma + BM25 + MiniLM (Phase 0). Run B:
+  pgvector + FTS + MiniLM, the migration effect (B vs A). Run C: pgvector +
+  FTS + `gemini-embedding-2`, the embedding effect (C vs B). The latency
+  claim uses `search_ms`; query embedding (`embed_ms`) is reported
+  separately, since Gemini's is a network call. Retrieval quality is MRR and
+  recall@1/@3 against hand-verified gold pages. RAGAS: one pass each for A
+  and B, three passes (mean, min/max) for C.
+
 ## Phase 2 notes
 
 - **LLM diagnostics become admin-only.** Phase 0 gates the raw provider error

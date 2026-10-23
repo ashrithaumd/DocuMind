@@ -1,8 +1,9 @@
 # Backend test suite: unit + integration, no secrets needed.
-# LLM calls (both providers' SDK clients) are stubbed, embeddings are stubbed
-# (the real ones are local sentence-transformers anyway), Chroma runs
-# embedded, and the log DB is SQLite — the suite is hermetic and keyless by
-# design. The RAGAS eval is NOT run here: it needs a real provider key.
+# LLM calls (both providers' SDK clients) and embeddings are stubbed, so the
+# suite is keyless by design. The chunk store and query log run on a real
+# Postgres + pgvector service container (a fresh database per test); unit
+# tests that only need the log tables use SQLite. The RAGAS eval is NOT run
+# here: it needs a real provider key.
 name: tests
 
 on:
@@ -14,6 +15,21 @@ jobs:
     # Pinned: setup-python has no 3.12.8 build for Ubuntu 26.04, which
     # ubuntu-latest is migrating to.
     runs-on: ubuntu-24.04
+    services:
+      postgres:
+        # Same image as docker-compose.yml.
+        image: pgvector/pgvector:0.8.7-pg16
+        env:
+          POSTGRES_USER: documind
+          POSTGRES_PASSWORD: documind
+          POSTGRES_DB: documind
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U documind"
+          --health-interval 3s
+          --health-timeout 3s
+          --health-retries 20
     steps:
       - uses: actions/checkout@v4
 
@@ -38,4 +54,8 @@ jobs:
 
       - name: Run tests
         working-directory: backend
+        env:
+          TEST_POSTGRES_URL: postgresql+psycopg2://documind:documind@localhost:5432/documind
+          # Postgres tests must run here, not skip.
+          REQUIRE_POSTGRES_TESTS: "1"
         run: python -m pytest tests -v

@@ -83,6 +83,8 @@ def pg_url():
 
     admin_url = os.environ.get("TEST_POSTGRES_URL")
     if not admin_url:
+        if os.environ.get("REQUIRE_POSTGRES_TESTS"):  # CI: a skip would hide the tests
+            pytest.fail("REQUIRE_POSTGRES_TESTS is set but TEST_POSTGRES_URL is not")
         pytest.skip("TEST_POSTGRES_URL not set (needs a pgvector Postgres)")
     name = f"documind_test_{uuid.uuid4().hex[:12]}"
     admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")

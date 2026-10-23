@@ -67,6 +67,84 @@ def test_non_json_error_and_transport_failure_still_recorded():
     assert (samples[1]["stage"], samples[1]["error"]) == ("api", "ReadTimeout")
 
 
+def test_each_question_is_scored_and_persisted_before_the_next_runs(tmp_path):
+    results = tmp_path / run_eval.RESULTS_FILE
+    events = []
+
+    def score(sample):
+        events.append(("score", sample["user_input"]))
+        sample.update(faithfulness=1.0, context_precision=1.0)
+
+    def record(sample):
+        events.append(("record", sample["user_input"]))
+        run_eval.append_result(results, sample)
+
+    client = client_for({"q2": failed(503, "generate", "unavailable")})
+    run_eval.run_questions(client, "http://api", PAIRS, score=score, record=record)
+
+    assert events == [("score", "q1"), ("record", "q1"), ("record", "q2"),
+                      ("score", "q3"), ("record", "q3"), ("score", "q4"), ("record", "q4")]
+    saved = run_eval.load_results(results)
+    assert saved["q1"]["faithfulness"] == 1.0
+    assert saved["q2"]["outcome"] == "error"
+
+
+def test_judge_daily_quota_stops_the_run_after_saving_that_question(tmp_path):
+    results = tmp_path / run_eval.RESULTS_FILE
+    scored = []
+
+    def score(sample):
+        scored.append(sample["user_input"])
+        return "judge daily quota exhausted" if sample["user_input"] == "q2" else None
+
+    samples, stop = run_eval.run_questions(
+        client_for({}), "http://api", PAIRS, score=score,
+        record=lambda s: run_eval.append_result(results, s))
+
+    assert scored == ["q1", "q2"]
+    assert [s["outcome"] for s in samples] == ["answered", "answered", "not_run", "not_run"]
+    assert stop == "judge daily quota exhausted at question 2"
+    assert set(run_eval.load_results(results)) == {"q1", "q2"}  # not_run isn't persisted
+
+
+def test_resume_skips_finished_questions_and_reruns_the_rest(tmp_path):
+    results = tmp_path / run_eval.RESULTS_FILE
+    base = {"reference": "r", "timings": {}}
+    for record in (
+        {"user_input": "q1", "outcome": "answered", "faithfulness": 1.0, "context_precision": 1.0},
+        {"user_input": "q2", "outcome": "refused_no_context"},
+        {"user_input": "q3", "outcome": "answered", "faithfulness": 1.0, "context_precision": None},
+        {"user_input": "q4", "outcome": "error", "stage": "generate", "error": "unavailable"},
+    ):
+        run_eval.append_result(results, {**base, **record})
+    with results.open("a", encoding="utf-8") as fh:
+        fh.write('{"user_input": "q5", "outc')  # torn line from a killed run
+
+    done = {q: r for q, r in run_eval.load_results(results).items() if run_eval.is_finished(r)}
+    queried = []
+
+    def handler(request):
+        question = json.loads(request.content)["question"]
+        queried.append(question)
+        return answered(question)
+
+    samples, _ = run_eval.run_questions(httpx.Client(transport=httpx.MockTransport(handler)),
+                                        "http://api", PAIRS, done=done)
+
+    assert set(done) == {"q1", "q2"}
+    assert queried == ["q3", "q4"]  # partly scored and errored questions run again
+    assert [s["outcome"] for s in samples] == ["answered", "refused_no_context", "answered", "answered"]
+
+
+def test_judge_requests_are_totalled_across_resumed_samples():
+    samples = [
+        {"judge_requests": {"gemini-3.1-flash-lite": 7}},
+        {"judge_requests": {"gemini-3.1-flash-lite": 9}},
+        {},
+    ]
+    assert run_eval.total_judge_requests(samples) == {"gemini-3.1-flash-lite": 16}
+
+
 def test_summary_counts_every_outcome_and_averages_only_scored():
     samples = [
         {"outcome": "answered", "faithfulness": 1.0, "context_precision": 0.5, "timings": {}},

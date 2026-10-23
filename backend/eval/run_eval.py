@@ -14,12 +14,19 @@ Every question ends in exactly one recorded outcome: the pipeline's own
 "not_run" (the run stopped first). Nothing is dropped silently. A daily-quota
 error from any model stops the run; everything already scored is kept.
 
+Durability: each question is queried and, if answered, scored straight away;
+its record is then appended to results.jsonl in the output directory before
+the next question starts. A killed run loses at most the question in flight.
+--resume reloads results.jsonl and skips questions already finished (refused,
+or answered and fully scored); errored, not-run and partly scored questions
+are run again. The last record per question wins.
+
 Usage:
     1. Start the stack (docker compose up, or uvicorn locally).
     2. Upload the sample document once:  see --ingest below.
-    3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR]
+    3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR] [--resume]
 
-Outputs report.json and report.md (default: eval/).
+Outputs results.jsonl, report.json and report.md (default: eval/).
 """
 import argparse
 import json
@@ -46,6 +53,7 @@ EVAL_DIR = Path(__file__).parent
 #              a 400 — Sonnet 4.6 is the strongest Claude that still accepts them.
 JUDGE_DEFAULTS = {"gemini": "gemini-3.1-flash-lite", "anthropic": "claude-sonnet-4-6"}
 
+RESULTS_FILE = "results.jsonl"
 STAGES = ("retrieval_ms", "grading_ms", "generation_ms", "groundedness_ms", "total_ms")
 METRICS = ("faithfulness", "context_precision")
 
@@ -93,13 +101,55 @@ def _api_error(exc: httpx.HTTPError) -> tuple[str, str]:
     return "api", type(exc).__name__  # timeout / connection error
 
 
-def run_questions(client: httpx.Client, api: str, pairs: list[dict]) -> tuple[list[dict], str | None]:
+def is_finished(sample: dict) -> bool:
+    """Nothing left to spend quota on: refused, or answered and fully scored."""
+    if sample["outcome"].startswith("refused"):
+        return True
+    return sample["outcome"] == "answered" and all(sample.get(m) is not None for m in METRICS)
+
+
+def load_results(path: Path) -> dict[str, dict]:
+    """question -> its latest record in results.jsonl (later lines win). A
+    torn last line from a killed run is skipped."""
+    records: dict[str, dict] = {}
+    if not path.exists():
+        return records
+    for line in path.read_text(encoding="utf-8").splitlines():
+        try:
+            record = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        records[record["user_input"]] = record
+    return records
+
+
+def append_result(path: Path, sample: dict) -> None:
+    with path.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(sample) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+
+
+def run_questions(client: httpx.Client, api: str, pairs: list[dict], score=None,
+                  record=None, done: dict[str, dict] | None = None) -> tuple[list[dict], str | None]:
     """Every pair through the live pipeline. Returns (samples, stop_reason):
     one sample per pair, always — a failed question is recorded as "error"
-    and the run continues; after a daily-quota error the rest are "not_run"."""
+    and the run continues; after a daily-quota error the rest are "not_run".
+
+    score(sample) scores an answered sample in place and returns a stop
+    reason or None; record(sample) persists a finished question before the
+    next one starts; `done` maps questions finished by an earlier run, which
+    are reused rather than re-queried."""
     samples: list[dict] = []
     stop_reason = None
+    done = done or {}
     for i, pair in enumerate(pairs, start=1):
+        if pair["question"] in done:
+            sample = done[pair["question"]]
+            print(f"[{i:2d}/{len(pairs)}] {sample['outcome']:20s} {pair['question'][:60]} (resumed)",
+                  flush=True)
+            samples.append(sample)
+            continue
         sample = {"user_input": pair["question"], "reference": pair["reference"], "timings": {}}
         if stop_reason:
             sample["outcome"] = "not_run"
@@ -120,6 +170,12 @@ def run_questions(client: httpx.Client, api: str, pairs: list[dict]) -> tuple[li
                 )
         detail = f" [{sample['stage']}: {sample['error']}]" if sample["outcome"] == "error" else ""
         print(f"[{i:2d}/{len(pairs)}] {sample['outcome']:20s} {pair['question'][:60]}{detail}", flush=True)
+        if sample["outcome"] == "answered" and score:
+            judge_stop = score(sample)
+            if judge_stop and not stop_reason:
+                stop_reason = f"{judge_stop} at question {i}"
+        if record and sample["outcome"] != "not_run":
+            record(sample)
         samples.append(sample)
     return samples, stop_reason
 
@@ -195,17 +251,11 @@ def build_judge():
     return LangchainLLMWrapper(chat)
 
 
-def score_answered(answered: list[dict], judge, counter) -> str | None:
-    """Score each answered sample in place, one at a time, so a judge
-    daily-quota stop keeps everything scored before it. A metric the judge
-    failed on is None with the reason in sample["judge_error"]. Returns the
-    stop reason, if any."""
-    from ragas import EvaluationDataset, evaluate
-    from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference
+def judge_run_config():
     from ragas.run_config import RunConfig
 
     gemini = os.environ.get("LLM_PROVIDER", "gemini") == "gemini"
-    run_config = RunConfig(
+    return RunConfig(
         timeout=300,  # long contexts can exceed the 180s default
         # Only transient errors are retried; a daily quota is not.
         exception_types=(TransientJudgeError,) if gemini else (Exception,),
@@ -213,30 +263,50 @@ def score_answered(answered: list[dict], judge, counter) -> str | None:
         # free-tier RPM, so throttle there (JUDGE_WORKERS overrides).
         max_workers=int(os.environ.get("JUDGE_WORKERS") or (2 if gemini else 16)),
     )
-    metrics = [Faithfulness(), LLMContextPrecisionWithReference()]
 
-    for i, sample in enumerate(answered, start=1):
-        if counter.daily_quota_hit:
-            sample.update(faithfulness=None, context_precision=None,
-                          judge_error="not scored: judge daily quota exhausted")
-            continue
-        dataset = EvaluationDataset.from_list(
-            [{k: sample[k] for k in ("user_input", "reference", "response", "retrieved_contexts")}]
-        )
-        errors_before = len(counter.errors)
-        result = evaluate(dataset=dataset, metrics=metrics, llm=judge,
-                          run_config=run_config, show_progress=False, raise_exceptions=False)
-        row = result.to_pandas().iloc[0]
-        precision_col = next(c for c in row.index if "context_precision" in c)
-        for name, col in (("faithfulness", "faithfulness"), ("context_precision", precision_col)):
-            value = float(row[col])
-            sample[name] = None if math.isnan(value) else round(value, 3)
-        if sample["faithfulness"] is None or sample["context_precision"] is None:
-            sample["judge_error"] = "; ".join(counter.errors[errors_before:])[:400] or "judge returned no score"
-        print(f"  scored {i}/{len(answered)}: faithfulness={sample['faithfulness']} "
-              f"context_precision={sample['context_precision']}", flush=True)
 
+def score_sample(sample: dict, judge, counter, run_config) -> str | None:
+    """Score one answered sample in place. A metric the judge failed on is
+    None with the reason in sample["judge_error"]; the judge requests this
+    sample cost are kept in sample["judge_requests"] so a resumed run can
+    still total them. Returns a stop reason on a judge daily quota."""
+    from ragas import EvaluationDataset, evaluate
+    from ragas.metrics import Faithfulness, LLMContextPrecisionWithReference
+
+    if counter.daily_quota_hit:
+        sample.update(faithfulness=None, context_precision=None,
+                      judge_error="not scored: judge daily quota exhausted")
+        return "judge daily quota exhausted"
+    dataset = EvaluationDataset.from_list(
+        [{k: sample[k] for k in ("user_input", "reference", "response", "retrieved_contexts")}]
+    )
+    errors_before = len(counter.errors)
+    requests_before = dict(counter.requests)
+    result = evaluate(dataset=dataset, metrics=[Faithfulness(), LLMContextPrecisionWithReference()],
+                      llm=judge, run_config=run_config, show_progress=False, raise_exceptions=False)
+    row = result.to_pandas().iloc[0]
+    precision_col = next(c for c in row.index if "context_precision" in c)
+    for name, col in (("faithfulness", "faithfulness"), ("context_precision", precision_col)):
+        value = float(row[col])
+        sample[name] = None if math.isnan(value) else round(value, 3)
+    sample.pop("judge_error", None)
+    if sample["faithfulness"] is None or sample["context_precision"] is None:
+        sample["judge_error"] = "; ".join(counter.errors[errors_before:])[:400] or "judge returned no score"
+    sample["judge_requests"] = {
+        model: n - requests_before.get(model, 0) for model, n in counter.requests.items()
+        if n - requests_before.get(model, 0)
+    }
+    print(f"  scored: faithfulness={sample['faithfulness']} "
+          f"context_precision={sample['context_precision']}", flush=True)
     return "judge daily quota exhausted" if counter.daily_quota_hit else None
+
+
+def total_judge_requests(samples: list[dict]) -> dict[str, int]:
+    totals: dict[str, int] = {}
+    for sample in samples:
+        for model, n in sample.get("judge_requests", {}).items():
+            totals[model] = totals.get(model, 0) + n
+    return totals
 
 
 # --- reporting -----------------------------------------------------------------------
@@ -358,7 +428,22 @@ def main() -> int:
         "--ingest", action="store_true",
         help="Upload eval/sample.pdf to the API before querying",
     )
+    parser.add_argument(
+        "--resume", action="store_true",
+        help=f"Continue from OUT_DIR/{RESULTS_FILE}, skipping finished questions",
+    )
     args = parser.parse_args()
+
+    out_dir = Path(args.out_dir)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    results_path = out_dir / RESULTS_FILE
+    if results_path.exists() and not args.resume:
+        print(f"{results_path} already exists. Pass --resume to continue it, "
+              "or move it away to start over.")
+        return 2
+    done = {q: r for q, r in load_results(results_path).items() if is_finished(r)}
+    if done:
+        print(f"Resuming: {len(done)} question(s) already finished in {results_path}")
 
     load_dotenv()  # the RAGAS judge needs the provider key (see build_judge)
 
@@ -377,21 +462,27 @@ def main() -> int:
         response.raise_for_status()
         print(f"Ingested {pdf_path.name}: {response.json()}")
 
-    samples, app_stop = run_questions(client, args.api, dataset["pairs"])
-    stop_reasons = [app_stop] if app_stop else []
+    judging: dict = {}
+
+    def score(sample: dict) -> str | None:
+        if not judging:  # built on first use: a run with no answers needs no judge
+            judging["judge"] = build_judge()
+            judging["counter"] = JudgeCallCounter()
+            judging["judge"].langchain_llm.callbacks = [judging["counter"]]
+            judging["run_config"] = judge_run_config()
+        return score_sample(sample, judging["judge"], judging["counter"], judging["run_config"])
+
+    samples, stop = run_questions(client, args.api, dataset["pairs"], score=score,
+                                  record=lambda s: append_result(results_path, s), done=done)
+    stop_reasons = [stop] if stop else []
 
     answered = [s for s in samples if s["outcome"] == "answered"]
-    judge_calls: dict = {"requests_per_model": {}, "errors": []}
-    if answered:
-        judge = build_judge()
-        counter = JudgeCallCounter()
-        judge.langchain_llm.callbacks = [counter]
-        judge_stop = score_answered(answered, judge, counter)
-        if judge_stop:
-            stop_reasons.append(judge_stop)
-        judge_calls = {"requests_per_model": counter.requests, "errors": counter.errors}
-    else:
+    if not answered:
         print("Nothing answered, nothing to score — did you forget --ingest?")
+    judge_calls = {
+        "requests_per_model": total_judge_requests(samples),
+        "errors_this_run": judging["counter"].errors if judging else [],
+    }
 
     summary = summarize(samples, stop_reasons)
     latency = latency_table(samples)
@@ -403,13 +494,13 @@ def main() -> int:
             "are both small Gemini Flash-Lite models, so self-preference bias in the "
             "RAGAS scores is possible."
         )
-    write_reports(Path(args.out_dir), dataset, Path(args.dataset).name, samples,
+    write_reports(out_dir, dataset, Path(args.dataset).name, samples,
                   summary, latency, judge_calls, caveats)
 
     print("\nSummary:", json.dumps(summary, indent=2))
     print("Latency:", json.dumps(latency, indent=2))
     print("Judge calls:", json.dumps(judge_calls, indent=2))
-    print(f"Wrote {Path(args.out_dir) / 'report.json'} and {Path(args.out_dir) / 'report.md'}")
+    print(f"Wrote {results_path}, {out_dir / 'report.json'} and {out_dir / 'report.md'}")
     return 0 if answered else 1
 
 

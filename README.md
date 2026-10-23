@@ -218,6 +218,8 @@ cd backend
 
 This uploads `sample.pdf`, runs all 14 questions, and writes `eval/report.md` and `eval/report.json` with per-question scores and means. Questions the pipeline refuses are excluded from scoring and reported separately, since a refusal is a distinct outcome rather than a zero. (`--ingest` also makes `sample.pdf` the most recent upload, so default document scoping points the eval at the right document.)
 
+Each question is scored as soon as it's answered and its record is appended to `results.jsonl` in the output directory (`--out-dir`, default `eval/`), so a killed run keeps every finished question. Re-run with `--resume` to skip finished questions (refused, or answered and fully scored) and retry the rest; without `--resume` the harness refuses to overwrite an existing `results.jsonl`.
+
 **Historical result (2026-07-15, Claude stack — not comparable to current runs):** faithfulness 1.0, context precision 0.917 over 12 answered questions; 2 of 14 were refused (`refused_no_context`). Both the system under test (Claude generation and grading) and the judge (`claude-sonnet-4-6`) have since changed to Gemini, so a difference from a Gemini run can't be attributed to either one. The Gemini baseline (3 passes, mean with min/max) will replace this section; see `docs/PROGRESS.md`.
 
 Note on pins: the eval uses `ragas>=0.4,<0.5`. Older ragas (0.2/0.3) requires the langchain-core 0.3 line, which conflicts with the langchain-core 1.x that langgraph 1.x needs, so 0.4 is the version that lets the app and the eval share one environment. `langchain-community` is pinned to 0.4.1 because ragas 0.4.3 imports a module (`chat_models.vertexai`) that 0.4.2 removed.

@@ -340,12 +340,17 @@ def call_accounting(samples: list[dict]) -> dict:
     often it was seen."""
     app_requests: dict[str, int] = {}
     app_failures: dict[str, int] = {}
+    tokens: dict[str, dict] = {}
     judge_failures = 0
     quotas: dict[str, int] = {}
     for sample in samples:
         usage = sample.get("llm_usage") or {}
         for model, n in usage.get("attempts_per_model", {}).items():
             app_requests[model] = app_requests.get(model, 0) + n
+        for role, counts in usage.get("tokens_per_role", {}).items():
+            totals = tokens.setdefault(role, dict.fromkeys(counts, 0))
+            for field, n in counts.items():
+                totals[field] = totals.get(field, 0) + n
         texts = []
         for failure in usage.get("failures", []):
             app_failures[failure["model"]] = app_failures.get(failure["model"], 0) + 1
@@ -357,6 +362,11 @@ def call_accounting(samples: list[dict]) -> dict:
     return {
         "app_requests_per_model": app_requests,
         "app_failed_attempts_per_model": app_failures,
+        # Live counts from the provider's usage metadata (successful calls).
+        "app_tokens_per_role": {
+            role: {**t, "mean_prompt_tokens": round(t["prompt_tokens"] / t["calls"], 1)}
+            for role, t in tokens.items() if t.get("calls")
+        },
         "judge_requests_per_model": total_judge_requests(samples),
         "judge_failed_attempts": judge_failures,
         "quota_hits": quotas,
@@ -487,6 +497,16 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
         *[f"| {model} | judge | {n} | {calls.get('judge_failed_attempts', 0)} |"
           for model, n in calls.get("judge_requests_per_model", {}).items()],
         "",
+        *([
+            "App tokens per role, measured from live calls (provider usage metadata).",
+            "",
+            "| Role | Calls | Prompt tokens | Mean prompt/call | Output tokens | Thinking tokens |",
+            "|---|---|---|---|---|---|",
+            *[f"| {role} | {t['calls']} | {t['prompt_tokens']} | {t['mean_prompt_tokens']} | "
+              f"{t['output_tokens']} | {t['thinking_tokens']} |"
+              for role, t in calls["app_tokens_per_role"].items()],
+            "",
+        ] if calls.get("app_tokens_per_role") else []),
         *[f"- Quota hit: `{hit}` ×{n}" for hit, n in calls.get("quota_hits", {}).items()],
         "",
         "| # | Question | Outcome | Faithfulness | Context precision | Notes |",

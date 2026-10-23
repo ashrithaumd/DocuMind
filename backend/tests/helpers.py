@@ -39,14 +39,14 @@ class FakeLLM:
         self.chat_calls: list[dict] = []
         self.embed_calls: list[list[str]] = []
 
-    async def complete_text(self, model, system, user, max_tokens=4096) -> str:
-        self.chat_calls.append({"model": model, "system": system, "user": user})
+    async def complete_text(self, model, system, user, max_tokens=4096, role="") -> str:
+        self.chat_calls.append({"model": model, "system": system, "user": user, "role": role})
         if self.generate_error is not None:
             raise self.generate_error
         return self.answer
 
-    async def complete_json(self, model, system, user, schema, max_tokens=1024) -> dict:
-        self.chat_calls.append({"model": model, "system": system, "user": user})
+    async def complete_json(self, model, system, user, schema, max_tokens=1024, role="") -> dict:
+        self.chat_calls.append({"model": model, "system": system, "user": user, "role": role})
         if "relevance grader" in system:
             return {"relevant": self.relevant}
         if "groundedness auditor" in system:

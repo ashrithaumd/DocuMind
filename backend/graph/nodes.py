@@ -172,7 +172,7 @@ async def grade_node(state: GraphState) -> dict:
         f"{_numbered_context(state['chunks'])}"
     )
     verdict = await get_llm().complete_json(
-        get_settings().grading_model, _GRADE_SYSTEM, user, _GRADE_SCHEMA
+        get_settings().grading_model, _GRADE_SYSTEM, user, _GRADE_SCHEMA, role="grade"
     )
     return {
         "grade_relevant": bool(verdict.get("relevant", False)),
@@ -218,7 +218,7 @@ async def generate_node(state: GraphState) -> dict:
         )
 
     answer = await get_llm().complete_text(
-        get_settings().generation_model, _GENERATE_SYSTEM, user
+        get_settings().generation_model, _GENERATE_SYSTEM, user, role="generate"
     )
 
     # Citations list = the excerpts the answer actually references; fall back
@@ -274,7 +274,8 @@ async def groundedness_check_node(state: GraphState) -> dict:
         f"Answer to verify:\n{state['answer']}"
     )
     verdict = await get_llm().complete_json(
-        get_settings().grading_model, _GROUNDEDNESS_SYSTEM, user, _GROUNDEDNESS_SCHEMA
+        get_settings().grading_model, _GROUNDEDNESS_SYSTEM, user, _GROUNDEDNESS_SCHEMA,
+        role="groundedness",
     )
     grounded = bool(verdict.get("grounded", False))
 

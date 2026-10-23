@@ -49,7 +49,7 @@ services:
       - chroma_data:/data
 
   postgres:
-    image: postgres:16-alpine
+    image: postgres:16.14-alpine
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-documind}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-documind}

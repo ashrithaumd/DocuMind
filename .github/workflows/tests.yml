@@ -11,13 +11,15 @@ on:
 
 jobs:
   backend:
-    runs-on: ubuntu-latest
+    # Pinned: setup-python has no 3.12.8 build for Ubuntu 26.04, which
+    # ubuntu-latest is migrating to.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
 
       - uses: actions/setup-python@v5
         with:
-          python-version: "3.12"
+          python-version: "3.12.8"  # same as backend/Dockerfile and backend/.venv
           cache: pip
           cache-dependency-path: |
             backend/requirements.txt

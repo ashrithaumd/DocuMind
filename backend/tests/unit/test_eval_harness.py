@@ -229,3 +229,23 @@ def test_judge_error_classification():
     assert run_eval.is_transient("Error calling model 'x' (UNAVAILABLE): 503 UNAVAILABLE")
     assert run_eval.is_transient("500 INTERNAL. Internal error encountered.")
     assert not run_eval.is_transient("400 INVALID_ARGUMENT: bad schema")
+
+
+def test_reports_record_the_commit_and_uncommitted_changes(tmp_path):
+    samples = [{"user_input": "q1", "outcome": "refused_no_context", "timings": {}}]
+    summary = run_eval.summarize(samples, [])
+
+    run_eval.write_reports(tmp_path, {"document": "sample.pdf"}, "dataset.json", samples,
+                           summary, {}, {}, code={"git_sha": "abc123",
+                                                 "dirty_files": ["backend/graph/nodes.py"]})
+
+    report = json.loads((tmp_path / "report.json").read_text(encoding="utf-8"))
+    assert report["code"] == {"git_sha": "abc123", "dirty_files": ["backend/graph/nodes.py"]}
+    markdown = (tmp_path / "report.md").read_text(encoding="utf-8")
+    assert "Code: `abc123` **with uncommitted changes:** `backend/graph/nodes.py`" in markdown
+
+
+def test_code_version_reads_this_checkout():
+    code = run_eval.code_version()
+    assert code["git_sha"] is None or len(code["git_sha"]) == 40
+    assert isinstance(code["dirty_files"], list)

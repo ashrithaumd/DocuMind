@@ -29,6 +29,9 @@ class Settings(BaseSettings):
     grading_thinking_level: Literal["", "minimal", "low", "medium", "high"] = "minimal"
     # Attempts per call on 429/overloaded errors (exponential backoff between).
     llm_max_attempts: int = 5
+    # Seconds before a single Gemini request is abandoned and retried (counts
+    # as one failed attempt). Free-tier requests occasionally hang for minutes.
+    llm_request_timeout_s: float = 60.0
 
     # --- Embeddings (local, free, offline — no provider embeddings API) ---
     # A sentence-transformers model name; downloaded from HuggingFace on first

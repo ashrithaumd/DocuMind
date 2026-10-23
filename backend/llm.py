@@ -18,8 +18,8 @@ and a refused/blocked generation returns "" (which then fails the
 groundedness gate) — the pipeline refuses rather than crashing or waving an
 answer through.
 
-Rate limits: transient errors (429 rate limit, Gemini 500 INTERNAL, 503/529 overloaded)
-are retried with bounded exponential backoff, logged per attempt. A Gemini
+Rate limits: transient errors (429 rate limit, Gemini 500 INTERNAL, 503/529 overloaded,
+and a Gemini request exceeding LLM_REQUEST_TIMEOUT_S) are retried with bounded exponential backoff, logged per attempt. A Gemini
 per-DAY quota 429 is not retried — it won't clear for hours — and the quota
 id/limit from the error is logged so the real free-tier numbers are visible.
 """
@@ -39,10 +39,14 @@ logger = logging.getLogger(__name__)
 class _BackoffLLM:
     """Shared retry loop. Subclasses say which exceptions are retryable."""
 
-    def __init__(self, max_attempts: int = 5, base_delay_s: float = 2.0, max_delay_s: float = 60.0):
+    def __init__(self, max_attempts: int = 5, base_delay_s: float = 2.0, max_delay_s: float = 60.0,
+                 request_timeout_s: float | None = None):
         self._max_attempts = max_attempts
         self._base_delay_s = base_delay_s
         self._max_delay_s = max_delay_s
+        # Per attempt; None = wait indefinitely. A hung request raises
+        # TimeoutError, which the subclass may treat as retryable.
+        self._request_timeout_s = request_timeout_s
 
     def _retry_delay(self, exc: Exception) -> float | None:
         """Seconds the server asked us to wait (0.0 = no hint), or None if
@@ -52,7 +56,7 @@ class _BackoffLLM:
     async def _call(self, model: str, request):
         for attempt in range(1, self._max_attempts + 1):
             try:
-                return await request()
+                return await asyncio.wait_for(request(), self._request_timeout_s)
             except Exception as exc:
                 hint = self._retry_delay(exc)
                 if hint is None or attempt == self._max_attempts:
@@ -102,6 +106,10 @@ class GeminiLLM(_BackoffLLM):
         )
 
     def _retry_delay(self, exc: Exception) -> float | None:
+        # A request that hung past the per-request timeout: free-tier
+        # requests occasionally stall for minutes, so retry it.
+        if isinstance(exc, TimeoutError):
+            return 0.0
         # 429 rate limit, 500 transient INTERNAL, 503 overloaded.
         if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 500, 503):
             return None
@@ -248,9 +256,11 @@ class ClaudeLLM(_BackoffLLM):
 
 def classify_error(exc: BaseException) -> str | None:
     """Provider-neutral kind for an LLM error that escaped the gateway's
-    retries: "daily_quota", "rate_limited", "unavailable", or None if it
+    retries: "daily_quota", "rate_limited", "unavailable", "timeout", or None if it
     isn't a provider capacity error. Lets the API report what failed without
     leaking raw provider messages."""
+    if isinstance(exc, TimeoutError):
+        return "timeout"
     if isinstance(exc, genai_errors.APIError):
         if exc.code == 429:
             daily = any(
@@ -280,6 +290,7 @@ def build_llm(settings) -> GeminiLLM | ClaudeLLM:
         return GeminiLLM(
             genai.Client(api_key=settings.gemini_api_key),
             checker_thinking_level=settings.grading_thinking_level,
+            request_timeout_s=settings.llm_request_timeout_s,
             **backoff,
         )
     if not settings.anthropic_api_key:

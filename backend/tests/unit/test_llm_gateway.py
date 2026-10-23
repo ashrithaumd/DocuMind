@@ -233,6 +233,26 @@ async def test_gemini_503_overloaded_is_retried():
     assert len(create.calls) == 2
 
 
+async def test_gemini_hung_request_times_out_and_is_retried():
+    import asyncio
+
+    class _HangsOnce:
+        def __init__(self):
+            self.calls = 0
+
+        async def __call__(self, **kwargs):
+            self.calls += 1
+            if self.calls == 1:
+                await asyncio.Event().wait()  # never returns
+            return gemini_reply("ok")
+
+    create = _HangsOnce()
+    client = SimpleNamespace(aio=SimpleNamespace(models=SimpleNamespace(generate_content=create)))
+    gateway = GeminiLLM(client, request_timeout_s=0.05)
+    assert await gateway.complete_text("m", "sys", "q") == "ok"
+    assert create.calls == 2
+
+
 async def test_gemini_honours_server_retry_delay(no_sleep):
     client, _ = gemini_client(
         gemini_error(429, quota_id="GenerateRequestsPerMinutePerProjectPerModel-FreeTier",
@@ -287,6 +307,7 @@ def test_default_provider_is_gemini_with_free_tier_models():
     gateway = build_llm(settings)
     assert isinstance(gateway, GeminiLLM)
     assert gateway._checker_thinking.thinking_level == genai_types.ThinkingLevel.MINIMAL
+    assert gateway._request_timeout_s == 60.0
 
 
 def test_anthropic_provider_keeps_claude_defaults():
@@ -325,4 +346,5 @@ def test_classify_error_kinds():
     assert classify_error(gemini_error(400)) is None
     assert classify_error(claude_error(429)) == "rate_limited"
     assert classify_error(claude_error(529)) == "unavailable"
+    assert classify_error(TimeoutError()) == "timeout"
     assert classify_error(ValueError("bug")) is None

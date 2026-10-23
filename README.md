@@ -140,6 +140,7 @@ LLM settings in `.env`:
 | `GRADING_MODEL` | provider default | `gemini-3.5-flash-lite` / `claude-haiku-4-5` |
 | `GRADING_THINKING_LEVEL` | `minimal` | Gemini thinking level for the checker calls; empty = model default |
 | `LLM_MAX_ATTEMPTS` | `5` | Attempts per call on 429/overloaded before the error surfaces |
+| `LLM_REQUEST_TIMEOUT_S` | `60` | Seconds before a single Gemini request is abandoned; counts as one retryable attempt |
 
 - Web UI: http://localhost:3000 (set `FRONTEND_PORT` in `.env` if 3000 is taken)
 - API docs: http://localhost:8000/docs (set `BACKEND_PORT` in `.env` if 8000 is taken)

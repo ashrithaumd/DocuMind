@@ -48,7 +48,7 @@ class RetrievedChunk:
 class HybridStore:
     def __init__(self, settings: Settings, embedder):
         """`embedder` is a sentence-transformers model (or anything exposing
-        encode() and get_sentence_embedding_dimension()). Embeddings are
+        encode() and get_embedding_dimension()). Embeddings are
         computed locally — no API key, no network call, no per-token cost."""
         self._settings = settings
         self._embedder = embedder
@@ -84,7 +84,7 @@ class HybridStore:
         if embeddings is None or len(embeddings) == 0:
             return  # empty collection: dimension gets set by our first insert
         existing_dim = len(embeddings[0])
-        model_dim = self._embedder.get_sentence_embedding_dimension()
+        model_dim = self._embedder.get_embedding_dimension()
         if existing_dim != model_dim:
             raise RuntimeError(
                 f"Chroma collection '{self._settings.collection_name}' holds "

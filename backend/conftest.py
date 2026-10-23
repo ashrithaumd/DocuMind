@@ -5,4 +5,4 @@ import os
 import sys
 
 sys.path.insert(0, os.path.dirname(__file__))
-os.environ.setdefault("ANTHROPIC_API_KEY", "test-key-not-real")
+os.environ.setdefault("GEMINI_API_KEY", "test-key-not-real")

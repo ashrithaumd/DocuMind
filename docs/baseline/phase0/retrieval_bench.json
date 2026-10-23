@@ -1,0 +1,106 @@
+{
+  "what": "HybridStore.search() scoped to the sample document; no LLM calls",
+  "reps_per_question": 20,
+  "warmup_per_question": 1,
+  "questions": 14,
+  "index_chunks": 5,
+  "embedding_model": "all-MiniLM-L6-v2",
+  "rrf_candidates": 12,
+  "top_k": 6,
+  "platform": "Windows 11, Python 3.12.8, AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+  "latency_ms": {
+    "n": 280,
+    "p50": 14.9,
+    "p95": 19.0,
+    "p99": 21.9,
+    "mean": 15.3,
+    "min": 12.3,
+    "max": 24.3,
+    "per_question": [
+      {
+        "question": "At what altitude does the Aurora-9 station orbit?",
+        "n": 20,
+        "p50": 14.3,
+        "p95": 17.1
+      },
+      {
+        "question": "How many crop varieties are grown on the station, and across how many greenhouse modules?",
+        "n": 20,
+        "p50": 15.1,
+        "p95": 19.8
+      },
+      {
+        "question": "What is the growing area of Botany Bay A compared to the other modules?",
+        "n": 20,
+        "p50": 15.4,
+        "p95": 17.0
+      },
+      {
+        "question": "What CO2 concentration is maintained in the greenhouse during photoperiod hours?",
+        "n": 20,
+        "p50": 15.1,
+        "p95": 17.9
+      },
+      {
+        "question": "What are the day and night temperature setpoints in the greenhouse modules?",
+        "n": 20,
+        "p50": 14.5,
+        "p95": 16.9
+      },
+      {
+        "question": "How much of the station's water does the reclamation loop recover?",
+        "n": 20,
+        "p50": 14.9,
+        "p95": 18.9
+      },
+      {
+        "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
+        "n": 20,
+        "p50": 14.9,
+        "p95": 16.6
+      },
+      {
+        "question": "What roles make up the six-person crew?",
+        "n": 20,
+        "p50": 14.6,
+        "p95": 16.3
+      },
+      {
+        "question": "How often is preventive maintenance performed on the environmental control system, and who performs it?",
+        "n": 20,
+        "p50": 14.7,
+        "p95": 21.7
+      },
+      {
+        "question": "What must the crew do if an ammonia leak alarm sounds?",
+        "n": 20,
+        "p50": 15.2,
+        "p95": 16.9
+      },
+      {
+        "question": "Why does fire suppression in the greenhouse modules use CO2 flooding instead of water mist?",
+        "n": 20,
+        "p50": 16.3,
+        "p95": 20.9
+      },
+      {
+        "question": "How quickly can the emergency return vehicle undock, and how many people does it seat?",
+        "n": 20,
+        "p50": 15.3,
+        "p95": 19.1
+      },
+      {
+        "question": "Where are the primary and backup ground stations located?",
+        "n": 20,
+        "p50": 14.5,
+        "p95": 16.6
+      },
+      {
+        "question": "How long is science imagery stored onboard before archival downlink?",
+        "n": 20,
+        "p50": 15.3,
+        "p95": 17.0
+      }
+    ]
+  }
+}

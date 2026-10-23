@@ -2,23 +2,22 @@
 
 lru_cache gives us lazy, exactly-once construction without a DI framework.
 Two independent backends live here on purpose:
-  - get_llm():      Anthropic — every reasoning call (grade/generate/verify)
+  - get_llm():      the LLM gateway (Gemini by default, Anthropic via
+                    LLM_PROVIDER) — every reasoning call (grade/generate/verify)
   - get_embedder(): sentence-transformers — local, free, no key, no network
-This split is the whole provider story: Anthropic has no embeddings API, so
-embeddings run locally instead of pulling in a second paid provider.
+Embeddings stay local whichever LLM provider is active, so switching
+providers never invalidates the vector index.
 """
 from functools import lru_cache
 
-from anthropic import AsyncAnthropic
-
 from config import get_settings
 from ingestion.store import HybridStore
-from llm import ClaudeLLM
+from llm import ClaudeLLM, GeminiLLM, build_llm
 
 
 @lru_cache
-def get_llm() -> ClaudeLLM:
-    return ClaudeLLM(AsyncAnthropic(api_key=get_settings().anthropic_api_key))
+def get_llm() -> GeminiLLM | ClaudeLLM:
+    return build_llm(get_settings())
 
 
 @lru_cache

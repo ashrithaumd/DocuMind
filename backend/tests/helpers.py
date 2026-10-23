@@ -15,7 +15,9 @@ def _fake_vector(text: str) -> list[float]:
 
 
 class FakeLLM:
-    """Stands in for llm.ClaudeLLM (the app's single LLM gateway). Dispatches
+    """Stands in for the app's single LLM gateway (llm.GeminiLLM /
+    llm.ClaudeLLM — same interface; tests/unit/test_llm_gateway.py covers the
+    real classes against stubbed SDK clients). Dispatches
     on the system prompt (grader / groundedness auditor / generator) and
     records every call so tests can assert call counts and prompt contents.
 
@@ -33,11 +35,14 @@ class FakeLLM:
         self.relevant = True
         self.grounded: bool | list[bool] = True
         self.answer = "The document says the pump runs at 400 RPM [1]."
+        self.generate_error: Exception | None = None  # raised by generation if set
         self.chat_calls: list[dict] = []
         self.embed_calls: list[list[str]] = []
 
     async def complete_text(self, model, system, user, max_tokens=4096) -> str:
         self.chat_calls.append({"model": model, "system": system, "user": user})
+        if self.generate_error is not None:
+            raise self.generate_error
         return self.answer
 
     async def complete_json(self, model, system, user, schema, max_tokens=1024) -> dict:
@@ -63,7 +68,9 @@ class FakeLLM:
 
 class FakeEmbedder:
     """Stands in for the sentence-transformers model: same interface the
-    store uses (encode + get_sentence_embedding_dimension), zero deps."""
+    store uses (encode + get_embedding_dimension, the sentence-transformers 6
+    name — deliberately not the deprecated get_sentence_embedding_dimension),
+    zero deps."""
 
     def __init__(self, record_into: list | None = None):
         self.embed_calls = record_into if record_into is not None else []
@@ -72,7 +79,7 @@ class FakeEmbedder:
         self.embed_calls.append(list(texts))
         return [_fake_vector(t) for t in texts]
 
-    def get_sentence_embedding_dimension(self) -> int:
+    def get_embedding_dimension(self) -> int:
         return 32
 
 

@@ -19,12 +19,13 @@ while the graph runs, then the verified answer. Trust-first over latency-first
 import asyncio
 import json
 import logging
+import re
 import time
 from contextlib import asynccontextmanager
 
 from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from config import get_settings
@@ -33,6 +34,7 @@ from deps import get_store
 from graph.pipeline import pipeline
 from ingestion.chunking import chunk_pages
 from ingestion.extract import IngestionError, validate_and_extract
+from llm import classify_error, track_usage
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
 logger = logging.getLogger("documind")
@@ -210,11 +212,35 @@ async def list_documents():
     return {"documents": get_store().list_documents()}
 
 
+def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
+    """Structured failure for /query: which pipeline node failed and a
+    provider-neutral error kind (raw provider messages stay in the server
+    log). With EXPOSE_LLM_DIAGNOSTICS on, it also carries the full error text
+    and every LLM attempt the request made, so the eval report can record
+    quota ids and limits. LLM capacity errors are 503 (retry later); anything
+    else is 500."""
+    # LangGraph notes the failing node on the exception:
+    # "During task with name 'generate' and id '...'".
+    notes = " ".join(getattr(exc, "__notes__", []))
+    match = re.search(r"During task with name '(\w+)'", notes)
+    stage = match.group(1) if match else "pipeline"
+    kind = classify_error(exc)
+    logger.exception("Pipeline failed at %s (%s)", stage, kind or "internal")
+    content = {"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal"}
+    if get_settings().expose_llm_diagnostics:
+        content |= {"message": f"{type(exc).__name__}: {exc}", "llm_usage": llm_usage}
+    return JSONResponse(status_code=503 if kind else 500, content=content)
+
+
 @app.post("/query", dependencies=[Depends(require_api_key)])
 async def query(request: QueryRequest):
     """Non-streaming variant — used by the eval harness and handy for curl."""
     start = time.perf_counter()
-    state = await pipeline.ainvoke(_initial_state(request))
+    with track_usage() as llm_usage:
+        try:
+            state = await pipeline.ainvoke(_initial_state(request))
+        except Exception as exc:
+            return _pipeline_error(exc, llm_usage)
     total_ms = round((time.perf_counter() - start) * 1000, 1)
 
     query_id = await asyncio.to_thread(
@@ -224,7 +250,7 @@ async def query(request: QueryRequest):
     if state.get("outcome") == "rejected_input":
         raise HTTPException(status_code=422, detail=state["rejection"])
 
-    return {
+    response = {
         "query_id": query_id,
         "answer": state.get("answer", ""),
         "outcome": state.get("outcome", "error"),
@@ -245,6 +271,11 @@ async def query(request: QueryRequest):
         ],
         "timings": {**state.get("timings", {}), "total_ms": total_ms},
     }
+    if get_settings().expose_llm_diagnostics:
+        # Attempts per model and the full text of every failed attempt
+        # (retried ones included), for the eval report.
+        response["llm_usage"] = llm_usage
+    return response
 
 
 @app.post("/query/stream", dependencies=[Depends(require_api_key)])

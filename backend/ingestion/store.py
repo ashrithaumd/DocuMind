@@ -180,6 +180,9 @@ class HybridStore:
 
     # --- retrieval ----------------------------------------------------------
 
+    async def embed_query(self, query: str) -> list[float]:
+        return (await self._embed([query]))[0]
+
     async def search(self, query: str, doc_ids: list[str] | None = None) -> list[RetrievedChunk]:
         """Hybrid search: top candidates from each leg, fused with RRF.
 
@@ -189,12 +192,28 @@ class HybridStore:
         """
         if self.count() == 0:
             return []
+        return await self.search_with_vector(query, await self.embed_query(query), doc_ids)
+
+    async def search_with_vector(
+        self, query: str, query_vector: list[float], doc_ids: list[str] | None = None
+    ) -> list[RetrievedChunk]:
+        """search() with the query already embedded, so the benchmark can
+        time embedding and search separately."""
+        return (await self.fused_ranking(query, query_vector, doc_ids))[: self._settings.top_k]
+
+    async def fused_ranking(
+        self, query: str, query_vector: list[float], doc_ids: list[str] | None = None
+    ) -> list[RetrievedChunk]:
+        """Every candidate from either leg, fused and sorted, before the top_k
+        cut. Each chunk keeps its rank in each leg (the benchmark reports
+        per-leg ranks of the gold page from this)."""
+        if self.count() == 0:
+            return []
 
         n = min(self._settings.rrf_candidates, self.count())
         scope = set(doc_ids) if doc_ids else None
 
         # Dense leg: cosine similarity over local MiniLM embeddings in Chroma.
-        query_vector = (await self._embed([query]))[0]
         result = self._collection.query(
             query_embeddings=[query_vector],
             n_results=n,
@@ -254,5 +273,4 @@ class HybridStore:
                     similarity=None,
                 )
 
-        ranked = sorted(fused.values(), key=lambda c: c.score, reverse=True)
-        return ranked[: self._settings.top_k]
+        return sorted(fused.values(), key=lambda c: c.score, reverse=True)

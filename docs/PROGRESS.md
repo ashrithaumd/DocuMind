@@ -115,3 +115,19 @@ variance.
   flag off, clients get provider-neutral errors and the details stay in the
   server log. Phase 2 replaces the global flag with a role check: only admin
   callers get diagnostics.
+- **Fix the pre-existing frontend lint error.** `src/App.tsx:24` calls
+  setState synchronously inside an effect (`react-hooks` rule). It predates
+  the Phase 0 dependency pins, which didn't change any resolved version.
+- **Add the frontend to CI:** `npm ci && npm run lint && npm run build`
+  (today CI runs only the backend suite, so this error went unnoticed).
+
+## Phase 6 notes
+
+- **Q7 and Q12 are false refusals.** Both answers are in `sample.pdf`, but the
+  relevance grader (`gemini-3.5-flash-lite`) rejected the retrieved chunks
+  (`refused_no_context`) in both Phase 0 passes. The July 2026 Claude run
+  refused the same two questions, and the README described those as correct
+  refusals ("refused rather than guessed, consistent with the refusal-first
+  design"). The Phase 6 eval adds a **false-refusal rate** metric (questions
+  with an answer in the document that end in a refusal), and the README
+  wording is corrected when the eval is rewritten. No fix now.

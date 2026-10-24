@@ -177,6 +177,13 @@ Postgres + pgvector + full-text search replace Chroma and the in-memory BM25.
   Gemini-embedding backend (~240 MB) and the eval harness (~230 MB) don't
   load it. Below the threshold, the run doesn't start. Claude Code's
   low-memory reaper stays enabled.
+- **Before pushing, run the full suite in an environment that matches CI**:
+  a fresh environment with exactly the files CI installs, or the backend
+  Docker image, against pgvector. The local venv isn't enough, because it
+  has packages CI doesn't: `test_eval_harness_does_not_load_torch`
+  (5c6a524) passed locally and failed in CI, which never installed
+  `eval/requirements.txt`.
+  Changes to the CI workflow itself are verified by the CI run.
 
 ### Results: runs B and C (2026-10-23)
 

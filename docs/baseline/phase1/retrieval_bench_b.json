@@ -1,0 +1,359 @@
+{
+  "what": "store.search_with_vector() on a stored query vector (search_ms) and store.embed_query() (embed_ms), scoped to the sample document; no LLM calls",
+  "method": "per question: 1 untimed embed (the vector used for every search and for ranking quality), embed_reps timed embeds, warmup untimed searches, reps timed searches on the stored vector",
+  "store": "pgvector",
+  "embeddings": "local",
+  "reps_per_question": 20,
+  "warmup_per_question": 1,
+  "embed_reps_per_question": 3,
+  "questions": 14,
+  "index_chunks": 5,
+  "embedding_model": "all-MiniLM-L6-v2",
+  "rrf_candidates": 12,
+  "top_k": 6,
+  "platform": "Windows 11, Python 3.12.8, AMD64 Family 25 Model 117 Stepping 2, AuthenticAMD",
+  "latency_ms": {
+    "embed": {
+      "n": 42,
+      "p50": 13.8,
+      "p95": 17.8,
+      "p99": 19.5,
+      "mean": 14.4,
+      "min": 11.6,
+      "max": 19.8,
+      "per_question": [
+        {
+          "question": "At what altitude does the Aurora-9 station orbit?",
+          "n": 3,
+          "p50": 19.0,
+          "p95": 19.7
+        },
+        {
+          "question": "How many crop varieties are grown on the station, and across how many greenhouse modules?",
+          "n": 3,
+          "p50": 13.5,
+          "p95": 15.4
+        },
+        {
+          "question": "What is the growing area of Botany Bay A compared to the other modules?",
+          "n": 3,
+          "p50": 16.0,
+          "p95": 16.4
+        },
+        {
+          "question": "What CO2 concentration is maintained in the greenhouse during photoperiod hours?",
+          "n": 3,
+          "p50": 17.3,
+          "p95": 17.8
+        },
+        {
+          "question": "What are the day and night temperature setpoints in the greenhouse modules?",
+          "n": 3,
+          "p50": 13.8,
+          "p95": 14.8
+        },
+        {
+          "question": "How much of the station's water does the reclamation loop recover?",
+          "n": 3,
+          "p50": 13.9,
+          "p95": 15.9
+        },
+        {
+          "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
+          "n": 3,
+          "p50": 13.6,
+          "p95": 15.6
+        },
+        {
+          "question": "What roles make up the six-person crew?",
+          "n": 3,
+          "p50": 13.8,
+          "p95": 14.0
+        },
+        {
+          "question": "How often is preventive maintenance performed on the environmental control system, and who performs it?",
+          "n": 3,
+          "p50": 13.9,
+          "p95": 14.2
+        },
+        {
+          "question": "What must the crew do if an ammonia leak alarm sounds?",
+          "n": 3,
+          "p50": 13.2,
+          "p95": 13.7
+        },
+        {
+          "question": "Why does fire suppression in the greenhouse modules use CO2 flooding instead of water mist?",
+          "n": 3,
+          "p50": 14.0,
+          "p95": 14.2
+        },
+        {
+          "question": "How quickly can the emergency return vehicle undock, and how many people does it seat?",
+          "n": 3,
+          "p50": 13.6,
+          "p95": 14.8
+        },
+        {
+          "question": "Where are the primary and backup ground stations located?",
+          "n": 3,
+          "p50": 13.6,
+          "p95": 13.7
+        },
+        {
+          "question": "How long is science imagery stored onboard before archival downlink?",
+          "n": 3,
+          "p50": 14.5,
+          "p95": 15.2
+        }
+      ]
+    },
+    "search": {
+      "n": 280,
+      "p50": 8.3,
+      "p95": 9.8,
+      "p99": 11.1,
+      "mean": 8.4,
+      "min": 6.9,
+      "max": 17.7,
+      "per_question": [
+        {
+          "question": "At what altitude does the Aurora-9 station orbit?",
+          "n": 20,
+          "p50": 8.6,
+          "p95": 11.6
+        },
+        {
+          "question": "How many crop varieties are grown on the station, and across how many greenhouse modules?",
+          "n": 20,
+          "p50": 8.5,
+          "p95": 8.9
+        },
+        {
+          "question": "What is the growing area of Botany Bay A compared to the other modules?",
+          "n": 20,
+          "p50": 8.4,
+          "p95": 9.7
+        },
+        {
+          "question": "What CO2 concentration is maintained in the greenhouse during photoperiod hours?",
+          "n": 20,
+          "p50": 8.3,
+          "p95": 9.5
+        },
+        {
+          "question": "What are the day and night temperature setpoints in the greenhouse modules?",
+          "n": 20,
+          "p50": 8.4,
+          "p95": 9.2
+        },
+        {
+          "question": "How much of the station's water does the reclamation loop recover?",
+          "n": 20,
+          "p50": 8.6,
+          "p95": 9.6
+        },
+        {
+          "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
+          "n": 20,
+          "p50": 7.9,
+          "p95": 9.4
+        },
+        {
+          "question": "What roles make up the six-person crew?",
+          "n": 20,
+          "p50": 8.2,
+          "p95": 9.7
+        },
+        {
+          "question": "How often is preventive maintenance performed on the environmental control system, and who performs it?",
+          "n": 20,
+          "p50": 8.3,
+          "p95": 9.6
+        },
+        {
+          "question": "What must the crew do if an ammonia leak alarm sounds?",
+          "n": 20,
+          "p50": 8.2,
+          "p95": 10.2
+        },
+        {
+          "question": "Why does fire suppression in the greenhouse modules use CO2 flooding instead of water mist?",
+          "n": 20,
+          "p50": 8.0,
+          "p95": 9.1
+        },
+        {
+          "question": "How quickly can the emergency return vehicle undock, and how many people does it seat?",
+          "n": 20,
+          "p50": 8.3,
+          "p95": 9.6
+        },
+        {
+          "question": "Where are the primary and backup ground stations located?",
+          "n": 20,
+          "p50": 7.8,
+          "p95": 9.2
+        },
+        {
+          "question": "How long is science imagery stored onboard before archival downlink?",
+          "n": 20,
+          "p50": 7.9,
+          "p95": 9.6
+        }
+      ]
+    }
+  },
+  "ranking_quality": {
+    "fused": {
+      "n": 14,
+      "mrr": 1.0,
+      "recall@1": 1.0,
+      "recall@3": 1.0
+    },
+    "dense": {
+      "n": 14,
+      "mrr": 0.893,
+      "recall@1": 0.786,
+      "recall@3": 1.0
+    },
+    "sparse": {
+      "n": 14,
+      "mrr": 0.964,
+      "recall@1": 0.929,
+      "recall@3": 1.0
+    },
+    "ties": {
+      "questions_with_top_tie": 0,
+      "questions_gold_rank_decided_by_tie": 0
+    },
+    "per_question": [
+      {
+        "question": "At what altitude does the Aurora-9 station orbit?",
+        "gold_page": 1,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "How many crop varieties are grown on the station, and across how many greenhouse modules?",
+        "gold_page": 1,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "What is the growing area of Botany Bay A compared to the other modules?",
+        "gold_page": 1,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "What CO2 concentration is maintained in the greenhouse during photoperiod hours?",
+        "gold_page": 2,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "What are the day and night temperature setpoints in the greenhouse modules?",
+        "gold_page": 2,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 2,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "How much of the station's water does the reclamation loop recover?",
+        "gold_page": 2,
+        "fused": 1,
+        "dense": 2,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
+        "gold_page": 2,
+        "fused": 1,
+        "dense": 2,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "What roles make up the six-person crew?",
+        "gold_page": 3,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "How often is preventive maintenance performed on the environmental control system, and who performs it?",
+        "gold_page": 3,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "What must the crew do if an ammonia leak alarm sounds?",
+        "gold_page": 4,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "Why does fire suppression in the greenhouse modules use CO2 flooding instead of water mist?",
+        "gold_page": 4,
+        "fused": 1,
+        "dense": 2,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "How quickly can the emergency return vehicle undock, and how many people does it seat?",
+        "gold_page": 4,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "Where are the primary and backup ground stations located?",
+        "gold_page": 5,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      },
+      {
+        "question": "How long is science imagery stored onboard before archival downlink?",
+        "gold_page": 5,
+        "fused": 1,
+        "dense": 1,
+        "sparse": 1,
+        "top_tied": false,
+        "gold_tied": false
+      }
+    ]
+  }
+}

@@ -2,8 +2,8 @@
 routing shortcut, refusal paths, the normal answer path, doc scoping, PII
 redaction, feedback — and the log rows each one must leave behind.
 
-The log DB is SQLite here (same SQLAlchemy models and dialect-neutral
-queries as the Postgres deployment) so CI stays hermetic.
+Each test runs against its own fresh Postgres + pgvector database (the
+chunk store and the query log), with the LLM and embeddings faked.
 """
 from db import session as db_session
 from tests.helpers import make_docx
@@ -286,7 +286,7 @@ def test_pipeline_failure_with_diagnostics_has_full_error_and_usage(client, app_
     # Full error text, so the eval report can record the quota id and limit.
     assert "GenerateRequestsPerDayPerProjectPerModel-FreeTier" in body["message"]
     assert "'quotaValue': '20'" in body["message"]
-    assert set(body["llm_usage"]) == {"attempts_per_model", "failures"}
+    assert set(body["llm_usage"]) == {"attempts_per_model", "failures", "calls", "tokens_per_role"}
 
 
 def test_answer_has_no_llm_usage_by_default(client, app_env):
@@ -305,7 +305,7 @@ def test_answer_with_diagnostics_has_llm_usage(client, app_env, monkeypatch):
     body = client.post("/query", json={"question": "How do vacation days accrue?"}).json()
 
     assert body["outcome"] == "answered"
-    assert set(body["llm_usage"]) == {"attempts_per_model", "failures"}
+    assert set(body["llm_usage"]) == {"attempts_per_model", "failures", "calls", "tokens_per_role"}
 
 
 def test_unexpected_pipeline_failure_is_500_internal(client, app_env):
@@ -317,3 +317,11 @@ def test_unexpected_pipeline_failure_is_500_internal(client, app_env):
     assert response.status_code == 500
     assert response.json()["stage"] == "generate"
     assert response.json()["error"] == "internal"
+
+
+def test_each_llm_call_names_its_pipeline_role(client, app_env):
+    _ingest_two_docs(client)
+
+    client.post("/query", json={"question": "How do vacation days accrue?"})
+
+    assert [call["role"] for call in app_env.chat_calls] == ["grade", "generate", "groundedness"]

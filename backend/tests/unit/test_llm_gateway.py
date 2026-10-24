@@ -362,3 +362,42 @@ def test_classify_error_kinds():
     assert classify_error(claude_error(529)) == "unavailable"
     assert classify_error(TimeoutError()) == "timeout"
     assert classify_error(ValueError("bug")) is None
+
+
+async def test_gemini_records_provider_token_counts_per_call_and_role():
+    from llm import track_usage
+
+    reply = gemini_reply('{"relevant": true}')
+    reply.usage_metadata = genai_types.GenerateContentResponseUsageMetadata(
+        prompt_token_count=812, candidates_token_count=5, thoughts_token_count=31)
+    plain = gemini_reply("answer")
+    plain.usage_metadata = genai_types.GenerateContentResponseUsageMetadata(
+        prompt_token_count=900, candidates_token_count=40)  # no thinking: field omitted
+    client, _ = gemini_client(gemini_error(503), reply, plain, gemini_reply("untagged"))
+    gateway = GeminiLLM(client)
+    with track_usage() as usage:
+        await gateway.complete_json("m", "sys", "q", SCHEMA, role="grade")
+        await gateway.complete_text("m", "sys", "q", role="generate")
+        await gateway.complete_text("m", "sys", "q")  # no role: not recorded
+
+    # The failed attempt carries no usage; only the successful call counts.
+    assert usage["calls"] == [
+        {"role": "grade", "model": "m", "prompt_tokens": 812, "output_tokens": 5, "thinking_tokens": 31},
+        {"role": "generate", "model": "m", "prompt_tokens": 900, "output_tokens": 40, "thinking_tokens": 0},
+    ]
+    assert usage["tokens_per_role"]["grade"] == {
+        "calls": 1, "prompt_tokens": 812, "output_tokens": 5, "thinking_tokens": 31}
+
+
+async def test_claude_records_input_and_output_tokens():
+    from llm import track_usage
+
+    reply = claude_reply('{"relevant": true}')
+    reply.usage = SimpleNamespace(input_tokens=700, output_tokens=9)
+    client, _ = claude_client(reply)
+    with track_usage() as usage:
+        await ClaudeLLM(client).complete_json("m", "sys", "q", SCHEMA, role="grade")
+
+    assert usage["calls"] == [
+        {"role": "grade", "model": "m", "prompt_tokens": 700, "output_tokens": 9, "thinking_tokens": None}]
+    assert usage["tokens_per_role"]["grade"]["thinking_tokens"] == 0

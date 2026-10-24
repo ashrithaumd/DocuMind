@@ -1,0 +1,155 @@
+{
+  "what": "grading-call input tokens (system prompt + user content), counted with countTokens on reconstructed prompts",
+  "model": "gemini-3.5-flash-lite",
+  "results": "..\\docs\\baseline\\phase1\\ragas_c\\pass1\\results.jsonl",
+  "old_max_chars": 700,
+  "truncated_700": {
+    "n": 14,
+    "mean": 950.1,
+    "total": 13301,
+    "min": 946,
+    "max": 954
+  },
+  "full": {
+    "n": 14,
+    "mean": 1228.1,
+    "total": 17193,
+    "min": 1224,
+    "max": 1232
+  },
+  "increase": {
+    "n": 14,
+    "mean": 278,
+    "total": 3892,
+    "min": 278,
+    "max": 278
+  },
+  "per_question": [
+    {
+      "q": 1,
+      "question": "At what altitude does the Aurora-9 station orbit?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 947,
+      "full": 1225,
+      "increase": 278
+    },
+    {
+      "q": 2,
+      "question": "How many crop varieties are grown on the station, and across how many greenhouse modules?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 953,
+      "full": 1231,
+      "increase": 278
+    },
+    {
+      "q": 3,
+      "question": "What is the growing area of Botany Bay A compared to the other modules?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 951,
+      "full": 1229,
+      "increase": 278
+    },
+    {
+      "q": 4,
+      "question": "What CO2 concentration is maintained in the greenhouse during photoperiod hours?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 951,
+      "full": 1229,
+      "increase": 278
+    },
+    {
+      "q": 5,
+      "question": "What are the day and night temperature setpoints in the greenhouse modules?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 950,
+      "full": 1228,
+      "increase": 278
+    },
+    {
+      "q": 6,
+      "question": "How much of the station's water does the reclamation loop recover?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 950,
+      "full": 1228,
+      "increase": 278
+    },
+    {
+      "q": 7,
+      "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
+      "outcome": "refused_no_context",
+      "excerpts": 5,
+      "truncated_700": 952,
+      "full": 1230,
+      "increase": 278
+    },
+    {
+      "q": 8,
+      "question": "What roles make up the six-person crew?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 946,
+      "full": 1224,
+      "increase": 278
+    },
+    {
+      "q": 9,
+      "question": "How often is preventive maintenance performed on the environmental control system, and who performs it?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 953,
+      "full": 1231,
+      "increase": 278
+    },
+    {
+      "q": 10,
+      "question": "What must the crew do if an ammonia leak alarm sounds?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 948,
+      "full": 1226,
+      "increase": 278
+    },
+    {
+      "q": 11,
+      "question": "Why does fire suppression in the greenhouse modules use CO2 flooding instead of water mist?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 953,
+      "full": 1231,
+      "increase": 278
+    },
+    {
+      "q": 12,
+      "question": "How quickly can the emergency return vehicle undock, and how many people does it seat?",
+      "outcome": "refused_no_context",
+      "excerpts": 5,
+      "truncated_700": 954,
+      "full": 1232,
+      "increase": 278
+    },
+    {
+      "q": 13,
+      "question": "Where are the primary and backup ground stations located?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 946,
+      "full": 1224,
+      "increase": 278
+    },
+    {
+      "q": 14,
+      "question": "How long is science imagery stored onboard before archival downlink?",
+      "outcome": "answered",
+      "excerpts": 5,
+      "truncated_700": 947,
+      "full": 1225,
+      "increase": 278
+    }
+  ]
+}

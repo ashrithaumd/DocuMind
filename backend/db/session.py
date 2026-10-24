@@ -1,12 +1,16 @@
 """Database wiring + the small query-log API used by main.py.
 
-Deliberate behavior: observability must never take the product down. If
-DATABASE_URL is unset or Postgres is unreachable, we warn and keep serving —
-every log call is individually guarded.
+The same Postgres holds the chunk store (ingestion/store.py), so the app
+needs it to serve at all; init_db runs the migrations at startup. Query
+logging itself stays fail-open: every log call is individually guarded, so
+a failed log write never fails a query.
 """
 import logging
 import statistics
+from pathlib import Path
 
+from alembic import command
+from alembic.config import Config
 from sqlalchemy import create_engine, inspect, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
@@ -15,19 +19,24 @@ from db.models import Base, Feedback, QueryLog
 
 logger = logging.getLogger(__name__)
 
+ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
+# The revision matching the schema create_all built before Alembic.
+BASELINE_REVISION = "0001"
+BASELINE_TABLES = ("query_logs", "feedback")
+
 _session_factory: sessionmaker | None = None
 
 
 def init_db(settings: Settings) -> bool:
-    """Create the engine and tables. Returns True if logging is active."""
+    """Create the engine and migrate the schema to the latest revision.
+    Returns True if logging is active."""
     global _session_factory
     if not settings.database_url:
         logger.warning("DATABASE_URL not set — query logging is DISABLED.")
         return False
     try:
         engine = create_engine(settings.database_url, pool_pre_ping=True)
-        Base.metadata.create_all(engine)
-        _add_missing_columns(engine)
+        migrate(engine, settings)
         _session_factory = sessionmaker(bind=engine, expire_on_commit=False)
         logger.info("Query logging enabled (Postgres).")
         return True
@@ -36,27 +45,46 @@ def init_db(settings: Settings) -> bool:
         return False
 
 
-def _add_missing_columns(engine) -> None:
-    """Forward-only micro-migration: ADD COLUMN for any model column missing
-    from an existing table. create_all only creates whole tables, so without
-    this a database from an earlier version would silently keep the old
-    schema. All columns added after v1 are nullable, which is what makes this
-    safe. A real migration tool (Alembic) is the upgrade path if schema
-    changes ever get more interesting than additive nullable columns.
+def migrate(engine, settings: Settings) -> None:
+    """Run Alembic to head on this engine. Migrations read `settings` (the
+    chunk vector size comes from EMBEDDING_DIMENSIONS), not the global ones.
+
+    A database created by create_all before Alembic existed (tables but no
+    alembic_version) is adopted first: columns a newer Phase 0 model added
+    are filled in, then it's stamped at the baseline revision, whose schema
+    it now matches.
     """
-    inspector = inspect(engine)
+    config = Config(str(ALEMBIC_INI))
     with engine.begin() as conn:
-        for table in Base.metadata.sorted_tables:
-            if not inspector.has_table(table.name):
-                continue
-            existing = {c["name"] for c in inspector.get_columns(table.name)}
-            for column in table.columns:
-                if column.name not in existing:
-                    conn.execute(text(
-                        f"ALTER TABLE {table.name} ADD COLUMN "
-                        f"{column.name} {column.type.compile(engine.dialect)}"
-                    ))
-                    logger.info("Schema migrated: added %s.%s", table.name, column.name)
+        config.attributes["connection"] = conn
+        config.attributes["settings"] = settings
+        inspector = inspect(conn)
+        if inspector.has_table("query_logs") and not inspector.has_table("alembic_version"):
+            _add_missing_columns(conn)
+            command.stamp(config, BASELINE_REVISION)
+            logger.info("Adopted a pre-Alembic database at revision %s.", BASELINE_REVISION)
+        command.upgrade(config, "head")
+
+
+def _add_missing_columns(conn) -> None:
+    """ADD COLUMN for any baseline-table column missing from a pre-Alembic
+    database (all columns added after v1 are nullable, which makes this
+    safe). Only used when adopting such a database; every later schema
+    change is an Alembic revision.
+    """
+    inspector = inspect(conn)
+    for name in BASELINE_TABLES:
+        table = Base.metadata.tables[name]
+        if not inspector.has_table(name):
+            continue
+        existing = {c["name"] for c in inspector.get_columns(name)}
+        for column in table.columns:
+            if column.name not in existing:
+                conn.execute(text(
+                    f"ALTER TABLE {name} ADD COLUMN "
+                    f"{column.name} {column.type.compile(conn.dialect)}"
+                ))
+                logger.info("Schema migrated: added %s.%s", name, column.name)
 
 
 def log_query(record: dict) -> int | None:

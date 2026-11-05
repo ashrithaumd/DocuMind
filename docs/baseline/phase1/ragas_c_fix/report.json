@@ -1,7 +1,9 @@
 {
   "code": {
-    "git_sha": "904663865a306d5cdb02b6c741e1d365a7b940f4",
-    "dirty_files": []
+    "git_sha": "8874fb7ec7799485a111a3b5bc3f262ed66926bf",
+    "dirty_files": [
+      "docs/baseline/phase1/ragas_c_fix/results.jsonl"
+    ]
   },
   "summary": {
     "questions": 14,
@@ -9,41 +11,41 @@
     "refused": 0,
     "errored": 0,
     "not_run": 0,
-    "stopped": "judge daily quota exhausted at question 7",
+    "stopped": null,
     "faithfulness_scored": 14,
-    "mean_faithfulness": 1.0,
-    "context_precision_scored": 13,
-    "mean_context_precision": 0.923
+    "mean_faithfulness": 0.964,
+    "context_precision_scored": 14,
+    "mean_context_precision": 0.929
   },
   "latency_ms": {
     "retrieval_ms": {
       "n": 14,
-      "p50": 579.9,
+      "p50": 598.7,
       "p95": 913.4,
       "label": "baseline"
     },
     "grading_ms": {
       "n": 14,
-      "p50": 990.0,
-      "p95": 1620.1,
+      "p50": 991.9,
+      "p95": 2575.6,
       "label": "queue-dominated (free tier), not representative"
     },
     "generation_ms": {
       "n": 14,
-      "p50": 729.7,
+      "p50": 744.5,
       "p95": 1315.8,
       "label": "queue-dominated (free tier), not representative"
     },
     "groundedness_ms": {
       "n": 14,
-      "p50": 840.5,
+      "p50": 874.1,
       "p95": 1112.2,
       "label": "queue-dominated (free tier), not representative"
     },
     "total_ms": {
       "n": 14,
-      "p50": 3253.1,
-      "p95": 4368.4,
+      "p50": 3274.5,
+      "p95": 5045.0,
       "label": "queue-dominated (free tier), not representative"
     }
   },
@@ -71,18 +73,17 @@
       "groundedness": {
         "calls": 14,
         "prompt_tokens": 17561,
-        "output_tokens": 256,
+        "output_tokens": 262,
         "thinking_tokens": 0,
         "mean_prompt_tokens": 1254.4
       }
     },
     "judge_requests_per_model": {
-      "gemini-3.1-flash-lite": 98
+      "gemini-3.1-flash-lite": 100
     },
-    "judge_failed_attempts": 3,
+    "judge_failed_attempts": 2,
     "quota_hits": {
-      "GenerateRequestsPerMinutePerProjectPerModel-FreeTier (limit 15)": 2,
-      "GenerateRequestsPerDayPerProjectPerModel-FreeTier (limit 500)": 1
+      "GenerateRequestsPerMinutePerProjectPerModel-FreeTier (limit 15)": 2
     }
   },
   "caveats": [
@@ -497,14 +498,11 @@
     {
       "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
       "outcome": "answered",
-      "faithfulness": 1.0,
-      "context_precision": null,
-      "judge_error": "GenerateRequestsPerDayPerProjectPerModel-FreeTier (limit 500)",
-      "judge_errors": [
-        "DailyQuotaExhausted: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 500, model: gemini-3.1-flash-lite, description: Generate content requests per day limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 6h25m26.811355813s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per day limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerDayPerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '500'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '23126s'}]}}"
-      ],
+      "faithfulness": 0.5,
+      "context_precision": 1.0,
+      "judge_errors": [],
       "judge_requests": {
-        "gemini-3.1-flash-lite": 5
+        "gemini-3.1-flash-lite": 7
       },
       "llm_usage": {
         "attempts_per_model": {
@@ -531,7 +529,7 @@
             "role": "groundedness",
             "model": "gemini-3.5-flash-lite",
             "prompt_tokens": 1255,
-            "output_tokens": 14,
+            "output_tokens": 20,
             "thinking_tokens": 0
           }
         ],
@@ -551,17 +549,17 @@
           "groundedness": {
             "calls": 1,
             "prompt_tokens": 1255,
-            "output_tokens": 14,
+            "output_tokens": 20,
             "thinking_tokens": 0
           }
         }
       },
       "timings": {
-        "retrieval_ms": 394.2,
-        "grading_ms": 992.0,
-        "generation_ms": 619.4,
-        "groundedness_ms": 824.2,
-        "total_ms": 2838.1
+        "retrieval_ms": 757.6,
+        "grading_ms": 2606.7,
+        "generation_ms": 803.8,
+        "groundedness_ms": 920.8,
+        "total_ms": 5103.0
       }
     },
     {
@@ -1033,5 +1031,10 @@
         "total_ms": 3464.3
       }
     }
+  ],
+  "notes": [
+    "Two code SHAs, no code change between them. Questions 1-6 and 8-14 ran on 9046638 (clean); Q7's final record ran on 8874fb7. `git diff --stat 9046638 8874fb7 -- backend/` is empty: between them only docs, eval result files, .env.example and the CI workflow changed.",
+    "The dirty file recorded above, docs/baseline/phase1/ragas_c_fix/results.jsonl, is this run's own output: --resume appends to it before the report records the git state. No other tracked file was modified during the run.",
+    "Q7 has three records in results.jsonl (the last one counts): the first pass (judge timeouts, unscored); a --resume on 9046638 (faithfulness 1.0, context precision stopped by the judge's daily quota); and a --resume on 8874fb7 after the quota reset (faithfulness 0.5, context precision 1.0). Each resume re-queries the question and re-judges both metrics. The 1.0 and 0.5 faithfulness scores are for essentially the same answer, a near-verbatim restatement of the source sentence: judge variance, not a pipeline change."
   ]
 }

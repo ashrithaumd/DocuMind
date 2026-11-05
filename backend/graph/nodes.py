@@ -224,6 +224,10 @@ async def generate_node(state: GraphState) -> dict:
     # Citations list = the excerpts the answer actually references; fall back
     # to all retrieved chunks if the model produced no [n] markers.
     cited_numbers = {int(m) for m in re.findall(r"\[(\d+)\]", answer)}
+    # The snippet only fills the citation chip's hover tooltip (Chat.tsx); the
+    # generator and groundedness check read full chunks, so the cut can't change an answer.
+    # shortcut: it shows the chunk's start, not the cited sentence, which can sit
+    # later (eval Q7's is near char 940); send the cited passage if the UI gets a source view.
     citations = [
         {
             "n": i,

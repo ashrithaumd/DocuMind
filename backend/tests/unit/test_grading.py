@@ -1,4 +1,5 @@
-"""Relevance grading sees each retrieved chunk in full."""
+"""Grading, generation and groundedness see each retrieved chunk in full; only
+the citation tooltip's snippet is cut."""
 import pytest
 
 import config
@@ -30,3 +31,18 @@ async def test_grader_sees_text_past_700_chars(fake_llm):
     assert update["grade_relevant"] is True
     (call,) = fake_llm.chat_calls
     assert fact in call["user"]
+
+
+async def test_snippet_cut_does_not_reach_generation_or_groundedness(fake_llm):
+    fact = "any parameter out of range for more than 5 minutes triggers a Tier-2 alarm"
+    text = "Filler about the greenhouse. " * 10 + fact
+    assert text.index(fact) > 200
+    chunk = {"chunk_id": "c1", "text": text, "filename": "sample.pdf", "page_number": 2}
+    state = {"question": "What happens after 5 minutes?", "chunks": [chunk]}
+
+    update = await nodes.generate_node(state)
+    await nodes.groundedness_check_node({**state, "answer": update["answer"]})
+
+    generate, groundedness = fake_llm.chat_calls
+    assert fact in generate["user"] and fact in groundedness["user"]
+    assert update["citations"][0]["snippet"] == text[:200]

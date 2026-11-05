@@ -445,3 +445,11 @@ false-refusal rate.
   measure, each against the false-refusal rate from the Phase 6 eval:
   grading only the top-N fused chunks, for example. An option that refuses
   answerable questions again isn't cheaper, it's broken.
+
+## Phase 8 notes
+
+- **Citation tooltips should show the cited sentence.** The tooltip shows the
+  first 200 characters of the chunk (`generate_node` in `graph/nodes.py`), not
+  the sentence the answer cites. Show that sentence or a window around it,
+  with a test using eval Q7, whose cited sentence is near character 940, so
+  today's tooltip doesn't show it.

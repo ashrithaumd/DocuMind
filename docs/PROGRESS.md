@@ -184,6 +184,20 @@ Postgres + pgvector + full-text search replace Chroma and the in-memory BM25.
   (5c6a524) passed locally and failed in CI, which never installed
   `eval/requirements.txt`.
   Changes to the CI workflow itself are verified by the CI run.
+- **Phase 1 close-out suite run (2026-11-05, 15053b8): 200 passed, 0 skipped.**
+  It ran on a clean export of the commit (no `.env`) in a fresh venv built with
+  CI's three install commands, against `pgvector/pgvector:0.8.7-pg16` with
+  `REQUIRE_POSTGRES_TESTS=1`. The host was Windows, not CI's `ubuntu-24.04`, so
+  the CI run still has the last word. The eval install uninstalled no app
+  package.
+  - **Memory limit, this run only:** at least 3.5 GB free to start, with Docker
+    up, and stop below 1 GB free. The usual 4 GB rule was sized for runs that
+    load torch's model weights; this suite's heaviest measured process was far
+    smaller.
+  - **Measured (2-second samples, so short spikes can be missed):** 5.18 GB free
+    at the start, 4.29 GB at the lowest. The pytest process tree peaked at
+    0.47 GB and the Docker VM at 1.52 GB (during install; 1.23 GB during
+    pytest). The stop rule never fired.
 
 ### Results: runs B and C (2026-10-23)
 

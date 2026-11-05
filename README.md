@@ -225,11 +225,12 @@ Each report records the git commit it ran on and any uncommitted changes, and, w
 
 Each question is scored as soon as it's answered and its record is appended to `results.jsonl` in the output directory (`--out-dir`, default `eval/`), so a killed run keeps every finished question. Re-run with `--resume` to skip finished questions (refused, or answered and fully scored) and retry the rest; without `--resume` the harness refuses to overwrite an existing `results.jsonl`.
 
-**Current result (2026-10-23, pgvector + `gemini-embedding-2`, after the grader fix; `docs/baseline/phase1/ragas_c_fix/`):** 14 of 14 questions answered, 0 refused; faithfulness 1.0 (14/14), context precision 0.923 (13/14; one score is pending a judge daily-quota reset). Before the fix, the relevance grader saw only the first 700 characters of each excerpt and refused two answerable questions whose answers sit later in their chunk; the earlier "2 of 14 refused" results were those false refusals, not correct refusals. The two 0.5 context-precision scores come from an RRF tie broken dense-first.
+**Current result (pgvector + `gemini-embedding-2`, after the grader fix; `docs/baseline/phase1/ragas_c_fix/`):** 14 of 14 questions answered, 0 refused; faithfulness 0.964 (14/14), context precision 0.929 (14/14). Before the fix, the relevance grader saw only the first 700 characters of each excerpt and refused two answerable questions whose answers sit later in their chunk; the earlier "2 of 14 refused" results were those false refusals, not correct refusals. The two 0.5 context-precision scores come from an RRF tie broken dense-first.
 
 Read these numbers with their caveats:
 
-- **Tiny corpus.** One small fictional document, 5 chunks, 14 questions. It can't tell embedding models apart, and three passes before the fix gave identical scores: the set is too easy to show judge variance, which doesn't make the judge deterministic.
+- **Tiny corpus.** One small fictional document, 5 chunks, 14 questions. It can't tell embedding models apart.
+- **Judge variance.** Faithfulness isn't stable even on this set. Re-judging Q7's stored answer, a near-verbatim restatement of its source sentence, gave 1.0, 1.0, 0.0, 1.0, 1.0 (`python eval/rejudge_faithfulness.py`, which keeps each statement's verdict). Q7 alone can move the faithfulness mean between 0.929 and 1.0. Only Q7 was re-judged; three passes before the fix gave identical scores on the 12 questions answered then.
 - **Small models on both sides.** Generator and judge are both Gemini Flash-Lite models, so self-preference bias is possible.
 
 The Phase 0/1 comparison runs and the token cost of the fix are in `docs/PROGRESS.md`; reports are under `docs/baseline/`.

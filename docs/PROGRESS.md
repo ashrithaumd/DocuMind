@@ -49,7 +49,7 @@ request tally, failed attempts (503/500) count against it too.
 model as grading, everywhere: config, README and `.env.example`, not just the
 eval. `gemini-3.6-flash` remains an opt-in for demos.
 
-**Why:** the baseline has to be re-run after Phase 1, Phase 6 and Phase 12 with
+**Why:** the baseline has to be re-run after Phase 1, Phase 6 and Phase 10 with
 the same generator, and development queries share the quota. A 20-request/day
 generator would make every comparison take several days. The resume-critical
 metrics (recall@k, MRR, ACL leakage, `retrieval_ms`) don't depend on the
@@ -264,10 +264,12 @@ scores on every question:
 Outcomes were identical too (12 answered, 2 refused each pass). Judge
 traffic varied (98 / 94 / 85 requests; 14 / 10 / 1 failed attempts, all
 the 15-per-minute quota, all retried); the scores didn't. This doesn't
-mean the judge is deterministic: it runs at temperature 1.0. It means the
-dataset is too easy to show judge variance: every claim is a short fact
-lifted from one page, and context precision on 5 chunks has few possible
-values. A harder corpus is needed before the min/max columns say anything.
+mean the judge is deterministic: it runs at temperature 1.0. These 12
+questions didn't show judge variance: every claim is a short fact lifted
+from one page, and context precision on 5 chunks has few possible values.
+Q7, which these passes refused, did show it once answered (see "Q7
+re-judge" below). A harder corpus is needed before the min/max columns say
+anything.
 
 ### Grader fix: before/after (2026-10-23)
 
@@ -275,8 +277,10 @@ Fix: 8cbc2e4, "fix(graph): grade full excerpts instead of the first 700
 characters", with a regression test that places the answer past character
 700 (`tests/unit/test_grading.py`). The after pass ran on run C's setup
 (`ragas_c` database, `gemini-embedding-2`, same 5 chunks, no re-upload) on
-committed code; its report records `9046638` (clean). Artifacts:
-`docs/baseline/phase1/ragas_c_fix/` and
+committed code: 13 questions on `9046638` (clean), and Q7's final record on
+`8874fb7`, which has no `backend/` diff from it. The report records
+`8874fb7` with its own `results.jsonl` as the only uncommitted file.
+Artifacts: `docs/baseline/phase1/ragas_c_fix/` and
 `docs/baseline/phase1/grading_tokens/`.
 
 **The first after-pass report was replaced.** Doc drafts (`README.md`,
@@ -296,22 +300,44 @@ pass.
 |---|---|---|
 | Answered | 12/14 | **14/14** |
 | False refusals | 2 (Q7, Q12) | **0** |
-| Faithfulness | 1.0 (12/12) | 1.0 (14/14) |
-| Context precision | 0.917 (12/12) | 0.923 (13/14) |
+| Faithfulness | 1.0 (12/12) | 0.964 (14/14) |
+| Context precision | 0.917 (12/12) | 0.929 (14/14) |
 
 - **Q12** is answered and fully scored: faithfulness 1.0, context
   precision 1.0.
 - **Q7** is answered ("…triggers a Tier-2 alarm to the Systems Engineer on
-  duty [1]", matching the reference) with faithfulness 1.0, but **not yet
-  fully scored**: its context precision is missing. The first attempt's
-  two judge jobs timed out (RAGAS `TimeoutError`); the `--resume` retry
-  scored faithfulness, then hit the judge's daily quota
+  duty [1]", matching the reference) and fully scored: faithfulness 0.5,
+  context precision 1.0. It took three attempts. The first attempt's two
+  judge jobs timed out (RAGAS `TimeoutError`); the first `--resume` scored
+  faithfulness 1.0, then hit the judge's daily quota
   (`GenerateRequestsPerDayPerProjectPerModel-FreeTier`, limit 500) on
-  context precision. TODO: re-run with `--resume` after the daily reset.
+  context precision; the second, after the reset, gave the final record.
 - **No other question's outcome or score changed**: the other 12 match all
   three run C passes exactly, including Q3 and Q9 at 0.5 (the tie
-  artifact above). Context precision moves from 0.917 to 0.923 only
-  because Q12 adds a 1.0; over the same 12 questions it's unchanged.
+  artifact above). Context precision moves from 0.917 to 0.929 only
+  because Q7 and Q12 each add a 1.0; over the same 12 questions it's
+  unchanged. Faithfulness moves from 1.0 to 0.964 only because of Q7's 0.5.
+
+**Q7 re-judge (2026-11-05).** Q7 scored faithfulness 1.0 and then 0.5 on
+essentially the same answer, so `eval/rejudge_faithfulness.py` (f727f1a)
+re-judged the stored answer against its stored contexts 5 times, with no
+pipeline call, keeping each statement's verdict
+(`docs/baseline/phase1/ragas_c_fix/q7_rejudge.jsonl`). Scores: **1.0, 1.0,
+0.0, 1.0, 1.0** (mean 0.8; 10 judge requests).
+
+This supports judge variance: the input never changed and the score covered
+0.0 to 1.0. The answer restates the source sentence nearly word for word,
+and four passes marked both extracted claims supported. Pass 3 extracted
+the rule's condition as its own claim ("An environmental parameter is out
+of range for more than five minutes"), then rejected both claims because
+the context doesn't say that event occurred, while quoting the sentence
+that supports the answer. The 0.5 record kept no verdicts, so its cause
+isn't known.
+
+The reported mean stays 0.964, as measured. Q7 alone moves it between 0.929
+(Q7 at 0.0) and 1.0 (Q7 at 1.0), so differences of that size on this dataset
+aren't meaningful. Only Q7 was re-judged; the other 13 questions' variance
+isn't measured.
 
 **Grading-call input tokens per question.** Before/after numbers are
 *counted with countTokens on reconstructed prompts*
@@ -398,6 +424,11 @@ false-refusal rate.
   chunk text anywhere in the pipeline (grading, generation, groundedness,
   embedding input, logging) must be justified in a comment and covered by a
   test that places the answer past the cut.
+- **Record per-statement faithfulness verdicts in the main harness.** Every
+  pass keeps each statement's verdict, not just `rejudge_faithfulness.py`, and
+  the report gives each question's min/max across passes. The Q7 re-judge
+  (Phase 1) showed that one judge misread of a conditional rule can swing a
+  question from 1.0 to 0.0, which a mean alone would hide.
 
 ## Phase 7 notes
 

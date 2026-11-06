@@ -1,0 +1,402 @@
+{
+  "summary": {
+    "questions": 14,
+    "answered": 12,
+    "refused": 2,
+    "errored": 0,
+    "not_run": 0,
+    "stopped": null,
+    "faithfulness_scored": 12,
+    "mean_faithfulness": 1.0,
+    "context_precision_scored": 12,
+    "mean_context_precision": 0.917
+  },
+  "latency_ms": {
+    "retrieval_ms": {
+      "n": 14,
+      "p50": 418.7,
+      "p95": 577.9,
+      "label": "baseline"
+    },
+    "grading_ms": {
+      "n": 14,
+      "p50": 902.5,
+      "p95": 1440.0,
+      "label": "queue-dominated (free tier), not representative"
+    },
+    "generation_ms": {
+      "n": 12,
+      "p50": 698.4,
+      "p95": 845.3,
+      "label": "queue-dominated (free tier), not representative"
+    },
+    "groundedness_ms": {
+      "n": 12,
+      "p50": 805.0,
+      "p95": 1137.9,
+      "label": "queue-dominated (free tier), not representative"
+    },
+    "total_ms": {
+      "n": 14,
+      "p50": 2997.6,
+      "p95": 3735.8,
+      "label": "queue-dominated (free tier), not representative"
+    }
+  },
+  "calls": {
+    "app_requests_per_model": {
+      "gemini-embedding-2": 14,
+      "gemini-3.5-flash-lite": 38
+    },
+    "app_failed_attempts_per_model": {},
+    "judge_requests_per_model": {
+      "gemini-3.1-flash-lite": 98
+    },
+    "judge_failed_attempts": 14,
+    "quota_hits": {
+      "GenerateRequestsPerMinutePerProjectPerModel-FreeTier (limit 15)": 14
+    }
+  },
+  "caveats": [
+    "The default generator (gemini-3.5-flash-lite) and the judge (gemini-3.1-flash-lite) are both small Gemini Flash-Lite models, so self-preference bias in the RAGAS scores is possible."
+  ],
+  "per_question": [
+    {
+      "question": "At what altitude does the Aurora-9 station orbit?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 402.3,
+        "grading_ms": 2185.9,
+        "generation_ms": 653.7,
+        "groundedness_ms": 801.6,
+        "total_ms": 4057.6
+      }
+    },
+    {
+      "question": "How many crop varieties are grown on the station, and across how many greenhouse modules?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 558.9,
+        "grading_ms": 960.0,
+        "generation_ms": 630.5,
+        "groundedness_ms": 1405.9,
+        "total_ms": 3562.5
+      }
+    },
+    {
+      "question": "What is the growing area of Botany Bay A compared to the other modules?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 0.5,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 417.6,
+        "grading_ms": 902.5,
+        "generation_ms": 693.8,
+        "groundedness_ms": 706.5,
+        "total_ms": 2727.5
+      }
+    },
+    {
+      "question": "What CO2 concentration is maintained in the greenhouse during photoperiod hours?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 613.2,
+        "grading_ms": 901.8,
+        "generation_ms": 838.5,
+        "groundedness_ms": 794.6,
+        "total_ms": 3154.6
+      }
+    },
+    {
+      "question": "What are the day and night temperature setpoints in the greenhouse modules?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 526.3,
+        "grading_ms": 902.5,
+        "generation_ms": 853.6,
+        "groundedness_ms": 717.7,
+        "total_ms": 3006.9
+      }
+    },
+    {
+      "question": "How much of the station's water does the reclamation loop recover?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 396.3,
+        "grading_ms": 1038.4,
+        "generation_ms": 723.0,
+        "groundedness_ms": 850.9,
+        "total_ms": 3016.1
+      }
+    },
+    {
+      "question": "What happens if an environmental parameter stays out of range for more than five minutes?",
+      "outcome": "refused_no_context",
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 1
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 342.6,
+        "grading_ms": 712.5,
+        "total_ms": 1062.5
+      }
+    },
+    {
+      "question": "What roles make up the six-person crew?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 50.805422191s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '50s'}]}}"
+      ],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 8
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 318.8,
+        "grading_ms": 659.1,
+        "generation_ms": 652.3,
+        "groundedness_ms": 818.2,
+        "total_ms": 2458.0
+      }
+    },
+    {
+      "question": "How often is preventive maintenance performed on the environmental control system, and who performs it?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 0.5,
+      "judge_errors": [
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 42.236012076s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '42s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 38.133227124s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '38s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 37.797076351s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '37s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 36.343465632s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '36s'}]}}"
+      ],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 11
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 510.9,
+        "grading_ms": 970.7,
+        "generation_ms": 657.0,
+        "groundedness_ms": 859.5,
+        "total_ms": 3005.2
+      }
+    },
+    {
+      "question": "What must the crew do if an ammonia leak alarm sounds?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 385.3,
+        "grading_ms": 875.4,
+        "generation_ms": 737.0,
+        "groundedness_ms": 737.6,
+        "total_ms": 2743.1
+      }
+    },
+    {
+      "question": "Why does fire suppression in the greenhouse modules use CO2 flooding instead of water mist?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 533.0,
+        "grading_ms": 884.3,
+        "generation_ms": 801.0,
+        "groundedness_ms": 763.9,
+        "total_ms": 2990.0
+      }
+    },
+    {
+      "question": "How quickly can the emergency return vehicle undock, and how many people does it seat?",
+      "outcome": "refused_no_context",
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 1
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 419.8,
+        "grading_ms": 940.5,
+        "total_ms": 1368.2
+      }
+    },
+    {
+      "question": "Where are the primary and backup ground stations located?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 42.527530317s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '42s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 42.327846969s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '42s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 40.395225075s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '40s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 40.388327804s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '40s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 39.937785508s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '39s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 39.56197856s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '39s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 36.200140407s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '36s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 35.871665576s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'model': 'gemini-3.1-flash-lite', 'location': 'global'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '35s'}]}}",
+        "TransientJudgeError: Error calling model 'gemini-3.1-flash-lite' (RESOURCE_EXHAUSTED): 429 RESOURCE_EXHAUSTED. {'error': {'code': 429, 'message': 'You exceeded your current quota, please check your plan and billing details. For more information on this error, head to: https://ai.google.dev/gemini-api/docs/rate-limits. To monitor your current usage, head to: https://ai.dev/rate-limit. \\n* Quota exceeded for metric: generativelanguage.googleapis.com/generate_content_free_tier_requests, limit: 15, model: gemini-3.1-flash-lite, description: Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.\\nPlease retry in 35.308359266s.', 'status': 'RESOURCE_EXHAUSTED', 'details': [{'@type': 'type.googleapis.com/google.rpc.Help', 'links': [{'description': 'Learn more about Gemini API quotas', 'url': 'https://ai.google.dev/gemini-api/docs/rate-limits'}]}, {'@type': 'type.googleapis.com/google.rpc.QuotaFailure', 'violations': [{'description': 'Generate content requests per minute limit exceeded on Free Tier. See https://ai.google.dev/gemini-api/docs/rate-limits.', 'quotaMetric': 'generativelanguage.googleapis.com/generate_content_free_tier_requests', 'quotaId': 'GenerateRequestsPerMinutePerProjectPerModel-FreeTier', 'quotaDimensions': {'location': 'global', 'model': 'gemini-3.1-flash-lite'}, 'quotaValue': '15'}]}, {'@type': 'type.googleapis.com/google.rpc.RetryInfo', 'retryDelay': '35s'}]}}"
+      ],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 16
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 325.2,
+        "grading_ms": 722.4,
+        "generation_ms": 563.4,
+        "groundedness_ms": 808.5,
+        "total_ms": 2432.0
+      }
+    },
+    {
+      "question": "How long is science imagery stored onboard before archival downlink?",
+      "outcome": "answered",
+      "faithfulness": 1.0,
+      "context_precision": 1.0,
+      "judge_errors": [],
+      "judge_requests": {
+        "gemini-3.1-flash-lite": 7
+      },
+      "llm_usage": {
+        "attempts_per_model": {
+          "gemini-embedding-2": 1,
+          "gemini-3.5-flash-lite": 3
+        },
+        "failures": []
+      },
+      "timings": {
+        "retrieval_ms": 514.5,
+        "grading_ms": 1024.8,
+        "generation_ms": 703.0,
+        "groundedness_ms": 918.6,
+        "total_ms": 3167.8
+      }
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 # DocuMind — full local stack. `docker compose up --build` brings up:
 #   frontend  (nginx-served Vite build, proxies /api -> backend)
-#   backend   (FastAPI + LangGraph pipeline)
-#   chroma    (vector store, persisted in a named volume)
-#   postgres  (query/audit log, persisted in a named volume)
+#   backend   (FastAPI + LangGraph pipeline; runs DB migrations at startup)
+#   postgres  (pgvector: chunk store with vector + full-text search, and the
+#              query/audit log; persisted in a named volume)
 #
 # Secrets come from .env (see .env.example) — never hardcoded here.
 
@@ -27,29 +27,27 @@ services:
       GENERATION_MODEL: ${GENERATION_MODEL:-}
       GRADING_MODEL: ${GRADING_MODEL:-}
       GRADING_THINKING_LEVEL: ${GRADING_THINKING_LEVEL:-minimal}
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-0}
+      EMBEDDING_USE_VERTEXAI: ${EMBEDDING_USE_VERTEXAI:-false}
+      GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
+      GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
       API_KEY: ${API_KEY:-}
       EXPOSE_LLM_DIAGNOSTICS: ${EXPOSE_LLM_DIAGNOSTICS:-false}
-      CHROMA_HOST: chroma
-      CHROMA_PORT: 8000
       DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:-documind}@postgres:5432/${POSTGRES_DB:-documind}
     volumes:
-      # Embedding model cache (~90 MB, downloaded from HuggingFace on first
-      # start) — persisted so rebuilds/restarts don't re-download it.
+      # Local embedding model cache (~90 MB, only with EMBEDDING_PROVIDER=local;
+      # downloaded from HuggingFace on first start) — persisted so
+      # rebuilds/restarts don't re-download it.
       - hf_cache:/root/.cache/huggingface
     depends_on:
       postgres:
         condition: service_healthy
-      chroma:
-        condition: service_started
-
-  chroma:
-    # Same version as the chromadb client pinned in backend/requirements.txt.
-    image: chromadb/chroma:1.5.9
-    volumes:
-      - chroma_data:/data
 
   postgres:
-    image: postgres:16.14-alpine
+    # Postgres 16 with pgvector 0.8.7 (iterative index scans need >= 0.8).
+    image: pgvector/pgvector:0.8.7-pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-documind}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-documind}
@@ -63,6 +61,5 @@ services:
       retries: 10
 
 volumes:
-  chroma_data:
   postgres_data:
   hf_cache:

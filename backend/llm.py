@@ -26,7 +26,10 @@ id/limit from the error is logged so the real free-tier numbers are visible.
 Usage tracking: inside `with track_usage() as usage:`, every attempt is
 counted per model and every failed attempt is kept with its full error text
 (including a 429's quota id and limit), so a caller such as /query can
-report exactly what a request spent and what failed.
+report exactly what a request spent and what failed. Each successful call
+made with a `role` (grade, generate, groundedness) also records the
+provider's own token counts (prompt, output, thinking), per call and summed
+per role.
 """
 import asyncio
 import contextvars
@@ -44,13 +47,16 @@ logger = logging.getLogger(__name__)
 
 _usage: contextvars.ContextVar[dict | None] = contextvars.ContextVar("llm_usage", default=None)
 
+TOKEN_FIELDS = ("prompt_tokens", "output_tokens", "thinking_tokens")
+
 
 @contextmanager
 def track_usage():
-    """Collect {"attempts_per_model": {model: n}, "failures": [...]} for every
-    gateway call made inside the block (LangGraph nodes included: they run
-    in a copy of this context, which shares the same dict)."""
-    usage = {"attempts_per_model": {}, "failures": []}
+    """Collect {"attempts_per_model": {model: n}, "failures": [...],
+    "calls": [...], "tokens_per_role": {role: totals}} for every gateway call
+    made inside the block (LangGraph nodes included: they run in a copy of
+    this context, which shares the same dict)."""
+    usage = {"attempts_per_model": {}, "failures": [], "calls": [], "tokens_per_role": {}}
     token = _usage.set(usage)
     try:
         yield usage
@@ -75,14 +81,19 @@ class _BackoffLLM:
         `exc` must not be retried."""
         raise NotImplementedError
 
-    async def _call(self, model: str, request):
+    def _token_counts(self, response) -> dict:
+        """{prompt_tokens, output_tokens, thinking_tokens} from the provider's
+        usage metadata; None where the provider doesn't report one."""
+        return dict.fromkeys(TOKEN_FIELDS)
+
+    async def _call(self, model: str, request, role: str = ""):
         usage = _usage.get()
         for attempt in range(1, self._max_attempts + 1):
             if usage is not None:
                 attempts = usage["attempts_per_model"]
                 attempts[model] = attempts.get(model, 0) + 1
             try:
-                return await asyncio.wait_for(request(), self._request_timeout_s)
+                response = await asyncio.wait_for(request(), self._request_timeout_s)
             except Exception as exc:
                 if usage is not None:
                     usage["failures"].append(
@@ -100,6 +111,20 @@ class _BackoffLLM:
                     type(exc).__name__, model, attempt, self._max_attempts, delay,
                 )
                 await asyncio.sleep(delay)
+            else:
+                if usage is not None and role:
+                    _record_tokens(usage, role, model, self._token_counts(response))
+                return response
+
+
+def _record_tokens(usage: dict, role: str, model: str, counts: dict) -> None:
+    usage["calls"].append({"role": role, "model": model, **counts})
+    totals = usage["tokens_per_role"].setdefault(
+        role, {"calls": 0, **dict.fromkeys(TOKEN_FIELDS, 0)}
+    )
+    totals["calls"] += 1
+    for field in TOKEN_FIELDS:
+        totals[field] += counts.get(field) or 0
 
 
 # --- Gemini (default) ------------------------------------------------------------
@@ -123,6 +148,37 @@ def _gemini_error_details(exc: genai_errors.APIError) -> list[dict]:
     return details if isinstance(details, list) else []
 
 
+def gemini_retry_delay(exc: Exception) -> float | None:
+    """The Gemini retry decision, shared by the LLM gateway and the Gemini
+    embedding provider: seconds the server asked us to wait (0.0 = no hint),
+    or None if `exc` must not be retried."""
+    # A request that hung past the per-request timeout: free-tier
+    # requests occasionally stall for minutes, so retry it.
+    if isinstance(exc, TimeoutError):
+        return 0.0
+    # 429 rate limit, 500 transient INTERNAL, 503 overloaded.
+    if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 500, 503):
+        return None
+    hint = 0.0
+    for detail in _gemini_error_details(exc):
+        kind = detail.get("@type", "")
+        if kind.endswith("QuotaFailure"):
+            for violation in detail.get("violations", []):
+                quota_id = violation.get("quotaId", "")
+                logger.warning(
+                    "Gemini quota hit: %s (limit %s)",
+                    quota_id, violation.get("quotaValue", "?"),
+                )
+                if "PerDay" in quota_id:
+                    return None  # daily cap: retrying within seconds is pointless
+        elif kind.endswith("RetryInfo"):
+            try:
+                hint = float(str(detail.get("retryDelay", "0s")).rstrip("s"))
+            except ValueError:
+                pass
+    return hint
+
+
 class GeminiLLM(_BackoffLLM):
     def __init__(self, client: genai.Client, checker_thinking_level: str = "", **backoff):
         """`checker_thinking_level` applies to complete_json (the checker
@@ -136,31 +192,16 @@ class GeminiLLM(_BackoffLLM):
         )
 
     def _retry_delay(self, exc: Exception) -> float | None:
-        # A request that hung past the per-request timeout: free-tier
-        # requests occasionally stall for minutes, so retry it.
-        if isinstance(exc, TimeoutError):
-            return 0.0
-        # 429 rate limit, 500 transient INTERNAL, 503 overloaded.
-        if not isinstance(exc, genai_errors.APIError) or exc.code not in (429, 500, 503):
-            return None
-        hint = 0.0
-        for detail in _gemini_error_details(exc):
-            kind = detail.get("@type", "")
-            if kind.endswith("QuotaFailure"):
-                for violation in detail.get("violations", []):
-                    quota_id = violation.get("quotaId", "")
-                    logger.warning(
-                        "Gemini quota hit: %s (limit %s)",
-                        quota_id, violation.get("quotaValue", "?"),
-                    )
-                    if "PerDay" in quota_id:
-                        return None  # daily cap: retrying within seconds is pointless
-            elif kind.endswith("RetryInfo"):
-                try:
-                    hint = float(str(detail.get("retryDelay", "0s")).rstrip("s"))
-                except ValueError:
-                    pass
-        return hint
+        return gemini_retry_delay(exc)
+
+    def _token_counts(self, response) -> dict:
+        meta = response.usage_metadata
+        if meta is None:
+            return dict.fromkeys(TOKEN_FIELDS)
+        # Gemini omits thoughts_token_count when the model didn't think.
+        return {"prompt_tokens": meta.prompt_token_count,
+                "output_tokens": meta.candidates_token_count,
+                "thinking_tokens": meta.thoughts_token_count or 0}
 
     def _usable_text(self, model: str, response, what: str) -> str | None:
         """Response text, or None if the prompt/answer was blocked."""
@@ -178,7 +219,7 @@ class GeminiLLM(_BackoffLLM):
         return response.text or ""
 
     async def complete_text(
-        self, model: str, system: str, user: str, max_tokens: int = 4096
+        self, model: str, system: str, user: str, max_tokens: int = 4096, role: str = ""
     ) -> str:
         config = genai_types.GenerateContentConfig(
             system_instruction=system, max_output_tokens=max_tokens
@@ -188,11 +229,13 @@ class GeminiLLM(_BackoffLLM):
             lambda: self._client.aio.models.generate_content(
                 model=model, contents=user, config=config
             ),
+            role,
         )
         return self._usable_text(model, response, "generation") or ""
 
     async def complete_json(
-        self, model: str, system: str, user: str, schema: dict, max_tokens: int = 1024
+        self, model: str, system: str, user: str, schema: dict, max_tokens: int = 1024,
+        role: str = "",
     ) -> dict:
         """One-shot JSON call constrained by `schema` (structured output)."""
         config = genai_types.GenerateContentConfig(
@@ -207,6 +250,7 @@ class GeminiLLM(_BackoffLLM):
             lambda: self._client.aio.models.generate_content(
                 model=model, contents=user, config=config
             ),
+            role,
         )
         text = self._usable_text(model, response, "checker")
         if text is None:
@@ -237,8 +281,16 @@ class ClaudeLLM(_BackoffLLM):
             return 0.0
         return None
 
+    def _token_counts(self, response) -> dict:
+        usage = getattr(response, "usage", None)
+        if usage is None:
+            return dict.fromkeys(TOKEN_FIELDS)
+        # No thinking on these calls; Anthropic would count it in output_tokens.
+        return {"prompt_tokens": usage.input_tokens, "output_tokens": usage.output_tokens,
+                "thinking_tokens": None}
+
     async def complete_text(
-        self, model: str, system: str, user: str, max_tokens: int = 4096
+        self, model: str, system: str, user: str, max_tokens: int = 4096, role: str = ""
     ) -> str:
         response = await self._call(
             model,
@@ -248,6 +300,7 @@ class ClaudeLLM(_BackoffLLM):
                 system=system,
                 messages=[{"role": "user", "content": user}],
             ),
+            role,
         )
         if response.stop_reason == "refusal":
             logger.warning("Model %s refused a generation request", model)
@@ -255,7 +308,8 @@ class ClaudeLLM(_BackoffLLM):
         return "".join(block.text for block in response.content if block.type == "text")
 
     async def complete_json(
-        self, model: str, system: str, user: str, schema: dict, max_tokens: int = 1024
+        self, model: str, system: str, user: str, schema: dict, max_tokens: int = 1024,
+        role: str = "",
     ) -> dict:
         """One-shot JSON call constrained by `schema` (structured outputs)."""
         response = await self._call(
@@ -267,6 +321,7 @@ class ClaudeLLM(_BackoffLLM):
                 messages=[{"role": "user", "content": user}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
             ),
+            role,
         )
         if response.stop_reason == "refusal":
             logger.warning("Model %s refused a checker request", model)

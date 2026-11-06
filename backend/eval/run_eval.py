@@ -36,6 +36,7 @@ import math
 import os
 import re
 import statistics
+import subprocess
 import sys
 from pathlib import Path
 
@@ -339,12 +340,17 @@ def call_accounting(samples: list[dict]) -> dict:
     often it was seen."""
     app_requests: dict[str, int] = {}
     app_failures: dict[str, int] = {}
+    tokens: dict[str, dict] = {}
     judge_failures = 0
     quotas: dict[str, int] = {}
     for sample in samples:
         usage = sample.get("llm_usage") or {}
         for model, n in usage.get("attempts_per_model", {}).items():
             app_requests[model] = app_requests.get(model, 0) + n
+        for role, counts in usage.get("tokens_per_role", {}).items():
+            totals = tokens.setdefault(role, dict.fromkeys(counts, 0))
+            for field, n in counts.items():
+                totals[field] = totals.get(field, 0) + n
         texts = []
         for failure in usage.get("failures", []):
             app_failures[failure["model"]] = app_failures.get(failure["model"], 0) + 1
@@ -356,6 +362,11 @@ def call_accounting(samples: list[dict]) -> dict:
     return {
         "app_requests_per_model": app_requests,
         "app_failed_attempts_per_model": app_failures,
+        # Live counts from the provider's usage metadata (successful calls).
+        "app_tokens_per_role": {
+            role: {**t, "mean_prompt_tokens": round(t["prompt_tokens"] / t["calls"], 1)}
+            for role, t in tokens.items() if t.get("calls")
+        },
         "judge_requests_per_model": total_judge_requests(samples),
         "judge_failed_attempts": judge_failures,
         "quota_hits": quotas,
@@ -363,6 +374,22 @@ def call_accounting(samples: list[dict]) -> dict:
 
 
 # --- reporting -----------------------------------------------------------------------
+
+
+def code_version() -> dict:
+    """The commit this eval ran from and any tracked files changed since it
+    (untracked eval output doesn't count). It describes the backend only if
+    the backend was started from this same tree; git_sha is None outside a
+    git checkout."""
+    def git(*args: str) -> str:
+        return subprocess.run(["git", *args], cwd=EVAL_DIR, capture_output=True,
+                              text=True, check=True).stdout
+    try:
+        sha = git("rev-parse", "HEAD").strip()
+        changed = git("status", "--porcelain", "--untracked-files=no").splitlines()
+    except (OSError, subprocess.CalledProcessError):
+        return {"git_sha": None, "dirty_files": []}
+    return {"git_sha": sha, "dirty_files": [line[3:] for line in changed]}
 
 
 def percentile(values: list[float], pct: float) -> float:
@@ -411,7 +438,8 @@ def latency_table(samples: list[dict]) -> dict:
 
 
 def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list[dict],
-                  summary: dict, latency: dict, calls: dict, caveats: list[str] = ()) -> None:
+                  summary: dict, latency: dict, calls: dict, caveats: list[str] = (),
+                  code: dict | None = None) -> None:
     per_question = [
         {
             "question": s["user_input"],
@@ -424,7 +452,7 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
     ]
     out_dir.mkdir(parents=True, exist_ok=True)
     (out_dir / "report.json").write_text(
-        json.dumps({"summary": summary, "latency_ms": latency, "calls": calls,
+        json.dumps({"code": code, "summary": summary, "latency_ms": latency, "calls": calls,
                     "caveats": list(caveats), "per_question": per_question}, indent=2),
         encoding="utf-8",
     )
@@ -436,6 +464,11 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
         f"{summary['answered']} answered, {summary['refused']} refused, "
         f"{summary['errored']} errored, {summary['not_run']} not run",
     ]
+    if code and code.get("git_sha"):
+        dirty = code["dirty_files"]
+        lines += ["", f"Code: `{code['git_sha']}`" + (
+            f" **with uncommitted changes:** {', '.join(f'`{f}`' for f in dirty)}"
+            if dirty else " (clean)")]
     if summary["stopped"]:
         lines += ["", f"**Run stopped early:** {summary['stopped']}"]
     for caveat in caveats:
@@ -464,6 +497,16 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
         *[f"| {model} | judge | {n} | {calls.get('judge_failed_attempts', 0)} |"
           for model, n in calls.get("judge_requests_per_model", {}).items()],
         "",
+        *([
+            "App tokens per role, measured from live calls (provider usage metadata).",
+            "",
+            "| Role | Calls | Prompt tokens | Mean prompt/call | Output tokens | Thinking tokens |",
+            "|---|---|---|---|---|---|",
+            *[f"| {role} | {t['calls']} | {t['prompt_tokens']} | {t['mean_prompt_tokens']} | "
+              f"{t['output_tokens']} | {t['thinking_tokens']} |"
+              for role, t in calls["app_tokens_per_role"].items()],
+            "",
+        ] if calls.get("app_tokens_per_role") else []),
         *[f"- Quota hit: `{hit}` ×{n}" for hit, n in calls.get("quota_hits", {}).items()],
         "",
         "| # | Question | Outcome | Faithfulness | Context precision | Notes |",
@@ -557,7 +600,7 @@ def main() -> int:
             "RAGAS scores is possible."
         )
     write_reports(out_dir, dataset, Path(args.dataset).name, samples,
-                  summary, latency, calls, caveats)
+                  summary, latency, calls, caveats, code_version())
 
     print("\nSummary:", json.dumps(summary, indent=2))
     print("Latency:", json.dumps(latency, indent=2))

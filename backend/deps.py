@@ -4,13 +4,15 @@ lru_cache gives us lazy, exactly-once construction without a DI framework.
 Two independent backends live here on purpose:
   - get_llm():      the LLM gateway (Gemini by default, Anthropic via
                     LLM_PROVIDER) — every reasoning call (grade/generate/verify)
-  - get_embedder(): sentence-transformers — local, free, no key, no network
-Embeddings stay local whichever LLM provider is active, so switching
-providers never invalidates the vector index.
+  - get_embeddings(): the embedding provider (EMBEDDING_PROVIDER: local
+                    sentence-transformers or Gemini). It is chosen
+                    independently of LLM_PROVIDER, so switching LLM providers
+                    never invalidates the vector index.
 """
 from functools import lru_cache
 
 from config import get_settings
+from embeddings import EmbeddingProvider, build_embeddings
 from ingestion.store import HybridStore
 from llm import ClaudeLLM, GeminiLLM, build_llm
 
@@ -21,14 +23,10 @@ def get_llm() -> GeminiLLM | ClaudeLLM:
 
 
 @lru_cache
-def get_embedder():
-    # Imported lazily: torch is heavy, and tests that stub the embedder
-    # shouldn't pay the import cost.
-    from sentence_transformers import SentenceTransformer
-
-    return SentenceTransformer(get_settings().embedding_model)
+def get_embeddings() -> EmbeddingProvider:
+    return build_embeddings(get_settings())
 
 
 @lru_cache
 def get_store() -> HybridStore:
-    return HybridStore(get_settings(), get_embedder())
+    return HybridStore(get_settings(), get_embeddings())

@@ -27,13 +27,20 @@ def _loaded_modules(code: str, env: dict) -> str:
 
 
 def test_backend_startup_with_gemini_embeddings_does_not_load_torch(pg_url, app_url):
+    from config import Settings
+    from db.session import migrate_database
+
+    # The migrate step first, as the owner; the backend never sees that URL.
+    migrate_database(Settings(_env_file=None, database_url=app_url, migration_database_url=pg_url,
+                              embedding_provider="gemini", embedding_model="",
+                              embedding_dimensions=0))
     code = (
         "from fastapi.testclient import TestClient\n"
         "import deps, main\n"
         "with TestClient(main.app):\n"
         "    assert type(deps.get_embeddings()).__name__ == 'GeminiEmbeddings'\n"
     )
-    env = {"DATABASE_URL": app_url, "MIGRATION_DATABASE_URL": pg_url, "EMBEDDING_PROVIDER": "gemini", "EMBEDDING_MODEL": "",
+    env = {"DATABASE_URL": app_url, "MIGRATION_DATABASE_URL": "", "EMBEDDING_PROVIDER": "gemini", "EMBEDDING_MODEL": "",
            "EMBEDDING_DIMENSIONS": "0", "GEMINI_API_KEY": "test-key-not-real",
            "LLM_PROVIDER": "gemini", "PYTHONPATH": str(BACKEND)}
 

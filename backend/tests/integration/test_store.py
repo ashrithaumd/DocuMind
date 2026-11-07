@@ -29,7 +29,7 @@ def _settings(urls, **overrides) -> Settings:
 def _store(urls, embeddings=None, **overrides) -> HybridStore:
     """A store scoped to org o1 (RLS: it sees and writes only o1's rows)."""
     settings = _settings(urls, **overrides)
-    assert db_session.init_db(settings)
+    db_session.migrate_database(settings)
     engine = sa.create_engine(urls[0])
     with engine.begin() as conn:
         conn.execute(sa.text("INSERT INTO orgs VALUES ('o1', 'Org 1') ON CONFLICT DO NOTHING"))
@@ -144,21 +144,21 @@ async def test_filtered_hnsw_search_uses_iterative_scans(urls):
 
 async def test_store_refuses_a_different_dimension(urls):
     settings = _settings(urls, embedding_dimensions=16)
-    assert db_session.init_db(settings)
+    db_session.migrate_database(settings)
 
     with pytest.raises(RuntimeError, match=r"vector\(16\).*vector\(32\)"):
         HybridStore(settings, FakeEmbeddings())
 
 
-async def test_store_refuses_vectors_from_another_model(urls):
-    store = _store(urls)
+async def test_migrate_step_refuses_vectors_from_another_model(urls):
+    # Checked as the owner, across every org's chunks (RLS would hide them
+    # from the app role).
+    store = _store(urls, embedding_model="fake-embeddings")
     await store.add_chunks(_chunks("d1", PUMPS))
 
-    class OtherModel(FakeEmbeddings):
-        model = "other-model"
-
-    with pytest.raises(RuntimeError, match="fake-embeddings"):
-        HybridStore(_settings(urls), OtherModel())
+    with pytest.raises(RuntimeError, match=r"\['fake-embeddings'\].*'other-model'"):
+        db_session.migrate_database(_settings(urls, embedding_model="other-model"))
+    db_session.migrate_database(_settings(urls, embedding_model="fake-embeddings"))  # same model: fine
 
 
 def test_store_needs_the_migrations(urls):
@@ -169,7 +169,7 @@ def test_store_needs_the_migrations(urls):
 
 def test_store_refuses_a_connection_that_bypasses_rls(urls):
     settings = _settings(urls)
-    assert db_session.init_db(settings)
+    db_session.migrate_database(settings)
     as_owner = settings.model_copy(update={"database_url": urls[0]})  # a superuser here
     with pytest.raises(RuntimeError, match="bypasses row-level security"):
         HybridStore(as_owner, FakeEmbeddings())

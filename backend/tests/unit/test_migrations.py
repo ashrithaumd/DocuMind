@@ -1,4 +1,4 @@
-"""Alembic at startup: a fresh database is migrated to head, a database
+"""The migrate step (db.session.migrate_database): a fresh database is migrated to head, a database
 created by create_all before Alembic is adopted (missing columns added,
 stamped at the baseline), re-running is a no-op, and the migrations
 produce exactly the schema the models describe."""
@@ -29,7 +29,7 @@ def _revision(engine) -> str | None:
 def test_fresh_database_is_migrated_to_head(tmp_path):
     settings = _settings(tmp_path)
 
-    assert db_session.init_db(settings)
+    db_session.migrate_database(settings)
 
     engine = sa.create_engine(settings.database_url)
     assert _revision(engine) == _head()
@@ -38,7 +38,7 @@ def test_fresh_database_is_migrated_to_head(tmp_path):
 
 def test_migrations_match_the_models(tmp_path):
     settings = _settings(tmp_path)
-    db_session.init_db(settings)
+    db_session.migrate_database(settings)
 
     engine = sa.create_engine(settings.database_url)
     with engine.connect() as conn:
@@ -58,7 +58,7 @@ def test_pre_alembic_database_is_adopted(tmp_path):
             "INSERT INTO query_logs (question, outcome, regenerated) VALUES ('q', 'answered', 0)"
         ))
 
-    assert db_session.init_db(settings)
+    db_session.migrate_database(settings)
 
     assert _revision(engine) == _head()
     columns = {c["name"] for c in sa.inspect(engine).get_columns("query_logs")}
@@ -70,7 +70,7 @@ def test_pre_alembic_database_is_adopted(tmp_path):
 def test_migrating_twice_is_a_no_op(tmp_path):
     settings = _settings(tmp_path)
 
-    assert db_session.init_db(settings)
-    assert db_session.init_db(settings)
+    db_session.migrate_database(settings)
+    db_session.migrate_database(settings)
 
     assert _revision(sa.create_engine(settings.database_url)) == _head()

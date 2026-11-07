@@ -12,7 +12,7 @@ from db.models import Base
 
 
 def _migrate(url, **overrides) -> sa.Engine:
-    assert db_session.init_db(Settings(_env_file=None, database_url=url, **overrides))
+    db_session.migrate_database(Settings(_env_file=None, database_url=url, **overrides))
     return sa.create_engine(url)
 
 

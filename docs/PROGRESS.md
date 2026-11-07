@@ -394,7 +394,7 @@ false-refusal rate.
 Status (2026-11-06): plan and RLS decision recorded; commits 1-4 done (CI chore + guard,
 migration 0003, get_principal and /me, revoked-token check on /admin/*,
 clock-skew fix, live Firebase check script, documind_app role and RLS on
-chunks and documents).
+chunks and documents, separate migrate step).
 
 ### Auth provider: Firebase Auth (option A)
 
@@ -518,8 +518,8 @@ caller happened to have every permission.
    transaction (used by commit 8's script). Tests: an access change updates
    every chunk at once, and no chunk's access ever differs from its
    document's. `/documents` reads the `documents` table under RLS.
-   **Also in this commit: drop the clearance default (migration 0005;
-   0004 is commit 5's RLS).**
+   **Also in this commit: drop the clearance default (migration 0006;
+   0004 is commit 5's RLS, 0005 drops its SECURITY DEFINER function).**
    0003 gave `chunks.clearance` and `documents.clearance` `NOT NULL DEFAULT
    0`. The commit that makes chunk writes copy org, team and clearance from
    the `documents` row also drops both defaults, so a write that forgets
@@ -569,6 +569,23 @@ does it). Until commit 8 lands, the eval harness can't authenticate.
   `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated
   Node.js 20 and are being forced onto Node 24. Bump both to their Node 24
   majors, checked against each action's release notes.
+
+- **Owner credentials stay out of the app process (decided 2026-11-07).**
+  Migrations, setting documind_app's password and the embedding-model check
+  run as a one-shot migrate step (`backend/migrate.py`; the `migrate` service
+  in docker-compose, which the backend waits for with
+  `service_completed_successfully`). The backend gets only `DATABASE_URL`
+  (documind_app) and refuses to start if `MIGRATION_DATABASE_URL` is set.
+
+## Phase 3 notes
+
+- **Check the query plan under RLS on the real corpus.** Run EXPLAIN
+  ANALYZE on both retrieval legs (the HNSW iterative scan and the full-text
+  search) as documind_app with an access context set, on the Phase 3
+  corpus, and record whether the HNSW and GIN indexes are used and the
+  timings. In the Phase 2 tests, with seq scans disabled, the planner chose
+  the `org_id` btree plus an exact sort over HNSW when every row was in the
+  caller's org; at real scale that plan would be slow.
 
 ## Phase 6 notes
 
@@ -634,3 +651,12 @@ does it). Until commit 8 lands, the eval harness can't authenticate.
   the sentence the answer cites. Show that sentence or a window around it,
   with a test using eval Q7, whose cited sentence is near character 940, so
   today's tooltip doesn't show it.
+
+## Phase 9 notes
+
+- **Run the migrate step as a Cloud Run job**, not inside the service: the
+  job gets the owner credentials (`MIGRATION_DATABASE_URL`), the service
+  only documind_app's (`DATABASE_URL`), each from Secret Manager, and a
+  deploy runs the job to completion before rolling out the service. On a
+  managed Postgres whose owner isn't a superuser, the migration role needs
+  BYPASSRLS for the embedding-model check (`db.session._check_embedding_models`).

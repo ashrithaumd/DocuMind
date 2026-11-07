@@ -55,9 +55,9 @@ class Settings(BaseSettings):
     # role, which row-level security applies to; the store refuses to start
     # on a superuser, BYPASSRLS or table-owner connection.
     database_url: str | None = None
-    # The owner role that runs the migrations at startup (and sets
-    # documind_app's password from DATABASE_URL). Empty = DATABASE_URL, which
-    # only works for databases without the chunk store (e.g. SQLite tests).
+    # The owner role, for the one-shot migrate step only (migrate.py): it
+    # runs the migrations and sets documind_app's password from DATABASE_URL.
+    # The backend refuses to start if this is set in its environment.
     migration_database_url: str | None = None
 
     # --- Auth (auth.py) ---

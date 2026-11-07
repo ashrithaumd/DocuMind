@@ -22,8 +22,10 @@ their incomparable score scales: only ranks matter.
 Phase 0 used Chroma for the dense leg and an in-memory BM25 for the sparse
 one (see docs/PROGRESS.md for the before/after comparison).
 
-The store refuses to start if the vector column's size or the stored
-embedding_model doesn't match the configured provider.
+The store refuses to start if the vector column's size doesn't match the
+configured provider. (Whether stored vectors came from another model is
+checked by the migrate step, which can see every org's chunks:
+db.session._check_embedding_models.)
 
 Access control is row-level security in Postgres (migration 0004), not
 filtering here. `store.scoped(access)` returns a copy bound to one caller's
@@ -220,25 +222,12 @@ class HybridStore:
             if column is None:
                 raise RuntimeError("No chunks table: run the migrations (alembic upgrade head) "
                                    "against DATABASE_URL first.")
-            if conn.execute(sa.text(
-                    "SELECT to_regprocedure('chunk_embedding_models()')")).scalar() is None:
-                raise RuntimeError("The chunk store needs migration 0004: run the migrations "
-                                   "(alembic upgrade head) against DATABASE_URL first.")
-            # Every org's chunks, past RLS: model names only (migration 0004).
-            models = conn.execute(sa.text("SELECT chunk_embedding_models()")).scalars().all()
         expected = f"vector({self._embeddings.dimension})"
         if column != expected:
             raise RuntimeError(
                 f"The chunks table holds {column}, but embedding model '{self._embeddings.model}' "
                 f"produces {expected}. It was built for a different embedding model: use a fresh "
                 "database (or drop the chunks table and alembic_version) and re-upload your documents."
-            )
-        foreign = [m for m in models if m != self._embeddings.model]
-        if foreign:
-            raise RuntimeError(
-                f"The chunks table holds vectors from {foreign}, but the configured embedding "
-                f"model is '{self._embeddings.model}'. Vectors from different models aren't "
-                "comparable: use a fresh database and re-upload your documents."
             )
 
     # --- index maintenance -------------------------------------------------

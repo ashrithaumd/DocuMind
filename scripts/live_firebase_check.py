@@ -122,10 +122,13 @@ def start_local_stack() -> subprocess.Popen:
     time.sleep(2)  # the image restarts once after init
     env = {**os.environ,
            "DATABASE_URL": LOCAL_APP_DB,
-           "MIGRATION_DATABASE_URL": LOCAL_DB,
            "FIREBASE_PROJECT_ID": setting("FIREBASE_PROJECT_ID"),
            "GOOGLE_APPLICATION_CREDENTIALS": setting("GOOGLE_APPLICATION_CREDENTIALS"),
            "EMBEDDING_PROVIDER": "gemini"}  # no torch; startup makes no embedding call
+    env.pop("MIGRATION_DATABASE_URL", None)
+    # The migrate step, as the owner; the backend itself never gets that URL.
+    subprocess.run([sys.executable, "migrate.py"], cwd=REPO / "backend", check=True,
+                   env={**env, "MIGRATION_DATABASE_URL": LOCAL_DB}, capture_output=True)
     proc = subprocess.Popen([sys.executable, "-m", "uvicorn", "main:app", "--port", "8011"],
                             cwd=REPO / "backend", env=env, stdout=LOG.open("w"),
                             stderr=subprocess.STDOUT)

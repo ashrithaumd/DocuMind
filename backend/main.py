@@ -49,6 +49,12 @@ logger = logging.getLogger("documind")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if settings.migration_database_url:
+        # Owner credentials belong to the one-shot migrate step (migrate.py),
+        # never to the serving process: with them, one bug could undo RLS.
+        raise RuntimeError("MIGRATION_DATABASE_URL is set in the backend's environment. "
+                           "Run migrations with `python migrate.py` (the migrate service) and "
+                           "give the backend only DATABASE_URL (the documind_app role).")
     db.init_db(settings)
     # The store fails fast with a clear error if the chunks table is missing
     # or was built for a different embedding model (vector size or model

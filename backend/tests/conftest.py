@@ -14,7 +14,9 @@ or drop the Authorization header. Permission tests sign in explicitly as a
 viewer instead (see test_rls.py), never through that default admin.
 
 Postgres roles: migrations run as the TEST_POSTGRES_URL user (the owner,
-pg_url); the app connects as documind_app (app_url), so RLS applies to it.
+pg_url), as their own step before the app starts, like the migrate service;
+the app connects as documind_app (app_url), so RLS applies to it, and never
+sees MIGRATION_DATABASE_URL.
 """
 import pytest
 
@@ -49,7 +51,7 @@ def app_env(pg_url, app_url, monkeypatch, fake_llm, token_checker):
     monkeypatch.delenv("GENERATION_MODEL", raising=False)
     monkeypatch.delenv("GRADING_MODEL", raising=False)
     monkeypatch.setenv("DATABASE_URL", app_url)
-    monkeypatch.setenv("MIGRATION_DATABASE_URL", pg_url)
+    monkeypatch.delenv("MIGRATION_DATABASE_URL", raising=False)  # the app must refuse it
     monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
     # FakeEmbeddings stands in for the provider; the chunks table must be
     # sized for its 32-dim vectors.
@@ -90,6 +92,9 @@ def client(app_env, pg_url):
 
     from main import app
 
+    # The migrate step, as the owner, before the app starts.
+    db_session.migrate_database(config.get_settings().model_copy(
+        update={"migration_database_url": pg_url}))
     with TestClient(app) as test_client:
         engine = sa.create_engine(pg_url)
         with engine.begin() as conn:

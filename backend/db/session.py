@@ -1,9 +1,16 @@
 """Database wiring + the small query-log API used by main.py.
 
 The same Postgres holds the chunk store (ingestion/store.py), so the app
-needs it to serve at all; init_db runs the migrations at startup. Query
-logging itself stays fail-open: every log call is individually guarded, so
-a failed log write never fails a query.
+needs it to serve at all. Query logging itself stays fail-open: every log
+call is individually guarded, so a failed log write never fails a query.
+
+Two separate steps, so the app process never holds owner credentials:
+  - migrate_database(): the one-shot migrate step (backend/migrate.py; the
+    `migrate` service in docker-compose, a Cloud Run job in Phase 9). As the
+    owner (MIGRATION_DATABASE_URL): Alembic to head, documind_app's password
+    from DATABASE_URL, and the embedding-model check across every org.
+  - init_db(): the app's startup. Connects as documind_app (DATABASE_URL)
+    for the query log; migrates nothing.
 """
 import logging
 import statistics
@@ -28,20 +35,27 @@ BASELINE_TABLES = ("query_logs", "feedback")
 _session_factory: sessionmaker | None = None
 
 
+def migrate_database(settings: Settings) -> None:
+    """The migrate step, as the owner (MIGRATION_DATABASE_URL; DATABASE_URL
+    when unset, for single-role databases such as the SQLite log tests).
+    Raises on any failure: the app must not start on a half-migrated
+    database."""
+    owner = create_engine(settings.migration_database_url or settings.database_url)
+    try:
+        migrate(owner, settings)
+    finally:
+        owner.dispose()
+
+
 def init_db(settings: Settings) -> bool:
-    """Migrate the schema to the latest revision as the owner
-    (MIGRATION_DATABASE_URL, default DATABASE_URL), then log through the app's
-    own connection (DATABASE_URL). Returns True if logging is active."""
+    """The app's query-log connection (DATABASE_URL, documind_app). The schema
+    must already be migrated (migrate_database). Returns True if logging is
+    active."""
     global _session_factory
     if not settings.database_url:
         logger.warning("DATABASE_URL not set — query logging is DISABLED.")
         return False
     try:
-        owner = create_engine(settings.migration_database_url or settings.database_url)
-        try:
-            migrate(owner, settings)
-        finally:
-            owner.dispose()
         engine = create_engine(settings.database_url, pool_pre_ping=True)
         _session_factory = sessionmaker(bind=engine, expire_on_commit=False)
         logger.info("Query logging enabled (Postgres).")
@@ -71,6 +85,29 @@ def migrate(engine, settings: Settings) -> None:
             logger.info("Adopted a pre-Alembic database at revision %s.", BASELINE_REVISION)
         command.upgrade(config, "head")
         _sync_app_role_password(conn, settings)
+        _check_embedding_models(conn, settings)
+
+
+def _check_embedding_models(conn, settings: Settings) -> None:
+    """Refuse to go on if the chunks hold vectors from another embedding
+    model: vectors from two models aren't comparable. It reads every org's
+    chunks, so the migration role must be able to bypass RLS."""
+    if conn.dialect.name != "postgresql" or not inspect(conn).has_table("chunks"):
+        return
+    # shortcut: true for the Docker Postgres owner (a superuser). On managed
+    # Postgres (Phase 9) the migration role needs BYPASSRLS for this check.
+    if not conn.execute(text("SELECT rolsuper OR rolbypassrls FROM pg_roles "
+                             "WHERE rolname = current_user")).scalar():
+        raise RuntimeError("The migration role can't bypass row-level security, so it can't "
+                           "check every org's embedding model. Give it BYPASSRLS.")
+    models = conn.execute(text("SELECT DISTINCT embedding_model FROM chunks")).scalars().all()
+    foreign = [m for m in models if m != settings.embedding_model]
+    if foreign:
+        raise RuntimeError(
+            f"The chunks table holds vectors from {foreign}, but the configured embedding "
+            f"model is '{settings.embedding_model}'. Vectors from different models aren't "
+            "comparable: use a fresh database and re-upload your documents."
+        )
 
 
 def _sync_app_role_password(conn, settings: Settings) -> None:

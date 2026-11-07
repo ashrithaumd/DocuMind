@@ -83,12 +83,11 @@ def build_store(settings):
     """The store, scoped to the bench org (created if missing)."""
     import sqlalchemy as sa
 
-    from db.session import init_db
+    from db.session import migrate_database
     from embeddings import build_embeddings
     from ingestion.store import Access, HybridStore
 
-    if not init_db(settings):  # runs the migrations
-        raise SystemExit("Could not connect to or migrate the database (--database-url)")
+    migrate_database(settings)  # as the owner (--migration-database-url)
     owner = sa.create_engine(settings.migration_database_url or settings.database_url)
     with owner.begin() as conn:
         conn.execute(sa.text("INSERT INTO orgs VALUES (:org, 'Benchmark') ON CONFLICT DO NOTHING"),

@@ -167,7 +167,7 @@ npm install
 npm run dev                     # Vite proxies /api to localhost:8000
 ```
 
-Outside Docker the backend still needs Postgres with pgvector, because the chunks live there: set `DATABASE_URL` to the `documind_app` role (e.g. `postgresql+psycopg2://documind_app:change-me-too@localhost:5432/documind`) and `MIGRATION_DATABASE_URL` to the owner (e.g. `postgresql+psycopg2://documind:change-me@localhost:5432/documind`), and run `docker compose up postgres`. The backend runs the migrations as the owner at startup, then connects as `documind_app`, which row-level security applies to; it refuses to start on a superuser or table-owner connection.
+Outside Docker the backend still needs Postgres with pgvector, because the chunks live there: set `DATABASE_URL` to the `documind_app` role (e.g. `postgresql+psycopg2://documind_app:change-me-too@localhost:5432/documind`) run `docker compose up postgres`, then run the migrate step once with the owner's URL given only to it: `MIGRATION_DATABASE_URL=postgresql+psycopg2://documind:change-me@localhost:5432/documind python migrate.py` (from `backend/`). The backend connects only as `documind_app`, which row-level security applies to; it refuses to start on a superuser or table-owner connection, or with `MIGRATION_DATABASE_URL` set. In Docker, the one-shot `migrate` service does this before the backend starts.
 
 ## Observability
 

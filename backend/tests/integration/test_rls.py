@@ -251,16 +251,15 @@ def test_app_role_password_with_quotes_and_percent_signs_is_set_safely(pg_url, a
     tricky = "it's 100%: a:b@c"
     url = sa.engine.make_url(app_url).set(password=tricky).render_as_string(hide_password=False)
     try:
-        assert db_session.init_db(Settings(_env_file=None, database_url=url,
-                                           migration_database_url=pg_url, embedding_dimensions=32))
+        db_session.migrate_database(Settings(_env_file=None, database_url=url,
+                                             migration_database_url=pg_url, embedding_dimensions=32))
         engine = sa.create_engine(url)
         with engine.connect() as conn:
             assert conn.execute(sa.text("SELECT current_user")).scalar() == "documind_app"
         engine.dispose()
     finally:  # restore the password the rest of the suite uses
-        assert db_session.init_db(Settings(_env_file=None, database_url=app_url,
-                                           migration_database_url=pg_url, embedding_dimensions=32))
-        db_session._session_factory = None
+        db_session.migrate_database(Settings(_env_file=None, database_url=app_url,
+                                             migration_database_url=pg_url, embedding_dimensions=32))
 
 
 def test_bench_runs_under_rls_as_its_own_org(pg_url, app_url, monkeypatch):
@@ -279,4 +278,3 @@ def test_bench_runs_under_rls_as_its_own_org(pg_url, app_url, monkeypatch):
                                                  embedding_dimensions=32))
     assert store._access.org_id == bench_retrieval.BENCH_ORG
     assert store.count() == 0
-    db_session._session_factory = None

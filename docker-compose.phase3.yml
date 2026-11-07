@@ -1,0 +1,30 @@
+# The Phase 3 database: the real corpus, loaded with real embeddings, kept
+# apart from the demo stack in docker-compose.yml (its own project, volume
+# and port). Only Postgres runs here; the loader, the query-plan check and
+# the live runs connect from the host.
+#
+# Use scripts/phase3_db.py rather than this file directly: it generates the
+# passwords into .env, starts the database, runs the migrate step, and runs
+# commands with the database URLs in their environment (never printed).
+name: documind-phase3
+
+services:
+  db:
+    image: pgvector/pgvector:0.8.7-pg16
+    environment:
+      POSTGRES_USER: documind
+      POSTGRES_PASSWORD: ${PHASE3_POSTGRES_PASSWORD:?Run scripts/phase3_db.py init to generate it in .env}
+      POSTGRES_DB: documind
+    ports:
+      # Localhost only: nothing outside this machine can reach it.
+      - "127.0.0.1:${PHASE3_DB_PORT:-5450}:5432"
+    volumes:
+      - phase3_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U documind"]
+      interval: 3s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  phase3_pgdata:

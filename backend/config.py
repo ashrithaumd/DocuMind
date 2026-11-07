@@ -54,10 +54,10 @@ class Settings(BaseSettings):
     # Required: the chunks live here. Migrations run at startup.
     database_url: str | None = None
 
-    # --- Auth ---
-    # Single shared API key checked via the X-API-Key header.
-    # Unset -> auth disabled (local dev convenience).
-    api_key: str | None = None
+    # --- Auth (auth.py) ---
+    # Firebase project whose ID tokens are accepted. The service account key
+    # (GOOGLE_APPLICATION_CREDENTIALS) is read by the Firebase SDK itself.
+    firebase_project_id: str | None = None
     # Return raw provider error text and per-request LLM usage (attempts per
     # model, every failed attempt's message) from /query. Off by default:
     # clients get provider-neutral errors and the details stay in the server

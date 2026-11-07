@@ -193,6 +193,21 @@ class HybridStore:
             for r in rows
         ]
 
+    # --- users (migration 0003) ---------------------------------------------
+
+    def get_user(self, firebase_uid: str) -> dict | None:
+        """The user row for a Firebase uid, with its team ids; None if unknown."""
+        with self._engine.connect() as conn:
+            row = conn.execute(sa.text("""
+                SELECT u.user_id, u.firebase_uid, u.org_id, u.role, u.clearance, u.active,
+                       coalesce(array_agg(m.team_id ORDER BY m.team_id)
+                                FILTER (WHERE m.team_id IS NOT NULL), '{}') AS team_ids
+                FROM users u LEFT JOIN team_memberships m ON m.user_id = u.user_id
+                WHERE u.firebase_uid = :uid
+                GROUP BY u.user_id
+            """), {"uid": firebase_uid}).mappings().first()
+        return dict(row) if row else None
+
     # --- ingestion ----------------------------------------------------------
 
     async def add_chunks(self, chunks: list[Chunk]) -> None:

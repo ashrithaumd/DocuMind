@@ -391,8 +391,8 @@ false-refusal rate.
 
 ## Phase 2 plan
 
-Status (2026-11-06): plan and RLS decision recorded; commits 1-2 done (CI chore + guard,
-migration 0003).
+Status (2026-11-06): plan and RLS decision recorded; commits 1-3 done (CI chore + guard,
+migration 0003, get_principal and /me).
 
 ### Auth provider: Firebase Auth (option A)
 

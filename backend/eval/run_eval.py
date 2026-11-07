@@ -527,7 +527,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the RAGAS eval against a live API.")
     parser.add_argument("--api", default="http://localhost:8000", help="Backend base URL")
     parser.add_argument("--dataset", default=str(EVAL_DIR / "dataset.json"))
-    parser.add_argument("--api-key", default=None, help="X-API-Key if the gate is enabled")
     parser.add_argument(
         "--out-dir", default=str(EVAL_DIR),
         help="Where report.json / report.md are written (default: eval/)",
@@ -556,8 +555,9 @@ def main() -> int:
     load_dotenv()  # the RAGAS judge needs the provider key (see build_judge)
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    headers = {"X-API-Key": args.api_key} if args.api_key else {}
-    client = httpx.Client(headers=headers)
+    # shortcut: no Authorization header, so every call gets 401 until Phase 2
+    # commit 8 signs the harness in as the seeded eval admin.
+    client = httpx.Client()
 
     if args.ingest:
         pdf_path = EVAL_DIR / dataset["document"]

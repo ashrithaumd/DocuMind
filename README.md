@@ -147,7 +147,7 @@ LLM settings in `.env`:
 - API docs: http://localhost:8000/docs (set `BACKEND_PORT` in `.env` if 8000 is taken)
 - Health check: `GET http://localhost:8000/health`
 
-Setting `API_KEY` in `.env` makes every endpoint except `/health` require that value in an `X-API-Key` header. Leave it empty to run open locally.
+Every endpoint except `/me` and `/health` requires a Firebase ID token (`Authorization: Bearer ...`) for a user set up in Postgres, in the project named by `FIREBASE_PROJECT_ID`. Sign-in is being built in Phase 2: until the frontend login lands, the web UI can't call the API.
 
 ### Running without Docker
 

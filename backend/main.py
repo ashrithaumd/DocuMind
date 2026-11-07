@@ -8,7 +8,11 @@ Endpoints:
                           verified answer, citations, and outcome
     GET  /admin/logs    — recent query logs (Postgres)
     GET  /admin/stats   — outcome counts + per-stage latency percentiles
+    GET  /me            — who the token belongs to and whether they're set up
     GET  /health        — liveness + index size
+
+Every endpoint except /me and /health requires a signed-in, set-up user
+(auth.get_principal: 401 without a valid token, 403 if not set up).
 
 Streaming design note: the answer is only sent AFTER the groundedness check
 passes, so we cannot forward raw LLM tokens as they are produced (they might
@@ -23,11 +27,12 @@ import re
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from auth import get_me, get_principal
 from config import get_settings
 from db import session as db
 from deps import get_store
@@ -49,8 +54,8 @@ async def lifespan(app: FastAPI):
     # name). With EMBEDDING_PROVIDER=local this also loads the model.
     store = get_store()
     logger.info("Store ready: %d chunks indexed.", store.count())
-    if not settings.api_key:
-        logger.warning("API_KEY not set — endpoints are unauthenticated (dev mode).")
+    if not settings.firebase_project_id:
+        logger.warning("FIREBASE_PROJECT_ID not set: sign-in token checks will fail.")
     yield
 
 
@@ -63,13 +68,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-async def require_api_key(x_api_key: str | None = Header(default=None)):
-    """Single shared-key gate. When API_KEY is unset (local dev), it's open."""
-    expected = get_settings().api_key
-    if expected and x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
 
 
 class QueryRequest(BaseModel):
@@ -172,7 +170,7 @@ def _stage_detail(node: str, delta: dict) -> dict:
 # --- endpoints -----------------------------------------------------------------
 
 
-@app.post("/upload", dependencies=[Depends(require_api_key)])
+@app.post("/upload", dependencies=[Depends(get_principal)])
 async def upload_document(file: UploadFile = File(...)):
     settings = get_settings()
     file_bytes = await file.read()
@@ -209,7 +207,7 @@ async def upload_document(file: UploadFile = File(...)):
     }
 
 
-@app.get("/documents", dependencies=[Depends(require_api_key)])
+@app.get("/documents", dependencies=[Depends(get_principal)])
 async def list_documents():
     """Uploaded documents, newest first. The first entry is the default query scope."""
     return {"documents": get_store().list_documents()}
@@ -235,7 +233,7 @@ def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
     return JSONResponse(status_code=503 if kind else 500, content=content)
 
 
-@app.post("/query", dependencies=[Depends(require_api_key)])
+@app.post("/query", dependencies=[Depends(get_principal)])
 async def query(request: QueryRequest):
     """Non-streaming variant — used by the eval harness and handy for curl."""
     start = time.perf_counter()
@@ -281,7 +279,7 @@ async def query(request: QueryRequest):
     return response
 
 
-@app.post("/query/stream", dependencies=[Depends(require_api_key)])
+@app.post("/query/stream", dependencies=[Depends(get_principal)])
 async def query_stream(request: QueryRequest):
     async def event_stream():
         start = time.perf_counter()
@@ -334,7 +332,7 @@ async def query_stream(request: QueryRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.post("/feedback", dependencies=[Depends(require_api_key)])
+@app.post("/feedback", dependencies=[Depends(get_principal)])
 async def submit_feedback(request: FeedbackRequest):
     """Thumbs up/down (plus optional comment) for a logged query.
 
@@ -355,14 +353,19 @@ async def submit_feedback(request: FeedbackRequest):
     return {"status": "ok"}
 
 
-@app.get("/admin/logs", dependencies=[Depends(require_api_key)])
+@app.get("/admin/logs", dependencies=[Depends(get_principal)])
 async def admin_logs(limit: int = 20):
     return {"logs": await asyncio.to_thread(db.fetch_logs, min(limit, 100))}
 
 
-@app.get("/admin/stats", dependencies=[Depends(require_api_key)])
+@app.get("/admin/stats", dependencies=[Depends(get_principal)])
 async def admin_stats():
     return await asyncio.to_thread(db.fetch_stats)
+
+
+@app.get("/me")
+async def me(body: dict = Depends(get_me)):
+    return body
 
 
 @app.get("/health")

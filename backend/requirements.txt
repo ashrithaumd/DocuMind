@@ -28,3 +28,7 @@ sqlalchemy==2.1.6
 psycopg2-binary==2.9.13
 # Schema migrations (backend/migrations), run at startup by db.session.init_db.
 alembic==1.20.1
+
+# Firebase Auth ID-token checks (auth.py). Firebase only identifies the
+# user; org, role and clearance come from Postgres.
+firebase-admin==7.7.0

@@ -7,6 +7,10 @@ pgvector database per test (pg_url, from TEST_POSTGRES_URL; those tests skip
 without it), FakeLLM in place of the LLM gateway, and FakeEmbeddings in place
 of the embedding provider, so no test ever calls a model, loads torch, or
 spends a token. Unit tests that only need the log tables use SQLite.
+
+Auth: FakeTokenChecker replaces Firebase, and `client` signs in as a set-up
+user (TEST_UID, in org TEST_ORG) by default; tests about auth itself change
+or drop the Authorization header.
 """
 import pytest
 
@@ -14,7 +18,10 @@ import config
 import deps
 from db import session as db_session
 from graph import nodes
-from tests.helpers import FakeEmbeddings, FakeLLM
+from tests.helpers import FakeEmbeddings, FakeLLM, FakeTokenChecker
+
+TEST_ORG = "org-test"
+TEST_UID = "uid-test"
 
 
 @pytest.fixture
@@ -30,7 +37,7 @@ def app_env(pg_url, monkeypatch, fake_llm):
     monkeypatch.delenv("GENERATION_MODEL", raising=False)
     monkeypatch.delenv("GRADING_MODEL", raising=False)
     monkeypatch.setenv("DATABASE_URL", pg_url)
-    monkeypatch.delenv("API_KEY", raising=False)
+    monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
     # FakeEmbeddings stands in for the provider; the chunks table must be
     # sized for its 32-dim vectors.
     monkeypatch.setenv("EMBEDDING_PROVIDER", "local")
@@ -49,6 +56,7 @@ def app_env(pg_url, monkeypatch, fake_llm):
     monkeypatch.setattr(deps, "get_llm", lambda: fake_llm)
     monkeypatch.setattr(nodes, "get_llm", lambda: fake_llm)
     monkeypatch.setattr(deps, "get_embeddings", lambda: embeddings)
+    monkeypatch.setattr(deps, "get_token_checker", lambda: FakeTokenChecker())
 
     yield fake_llm
 
@@ -61,13 +69,23 @@ def app_env(pg_url, monkeypatch, fake_llm):
 
 
 @pytest.fixture
-def client(app_env):
-    """TestClient with lifespan (DB init + store build) executed."""
+def client(app_env, pg_url):
+    """TestClient with lifespan (DB init + store build) executed, signed in
+    as TEST_UID: an active admin in TEST_ORG."""
+    import sqlalchemy as sa
     from fastapi.testclient import TestClient
 
     from main import app
 
     with TestClient(app) as test_client:
+        engine = sa.create_engine(pg_url)
+        with engine.begin() as conn:
+            conn.execute(sa.text("INSERT INTO orgs VALUES (:org, 'Test org')"), {"org": TEST_ORG})
+            conn.execute(sa.text(
+                "INSERT INTO users (firebase_uid, org_id, role, clearance) "
+                "VALUES (:uid, :org, 'admin', 0)"), {"uid": TEST_UID, "org": TEST_ORG})
+        engine.dispose()
+        test_client.headers["Authorization"] = f"Bearer token:{TEST_UID}"
         yield test_client
 
 

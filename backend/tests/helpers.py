@@ -134,3 +134,15 @@ def make_docx(paragraphs: list[str]) -> bytes:
         document.add_paragraph(p)
     document.save(buf)
     return buf.getvalue()
+
+
+class FakeTokenChecker:
+    """Stands in for auth.FirebaseTokenChecker: token "token:<uid>" belongs to
+    <uid>; anything else is invalid. No emulator, no network."""
+
+    def verify(self, token: str) -> str:
+        from auth import InvalidToken
+
+        if not token.startswith("token:"):
+            raise InvalidToken("not a fake token")
+        return token.removeprefix("token:")

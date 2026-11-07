@@ -169,6 +169,30 @@ npm run dev                     # Vite proxies /api to localhost:8000
 
 Outside Docker the backend still needs Postgres with pgvector, because the chunks live there: set `DATABASE_URL` to the `documind_app` role (e.g. `postgresql+psycopg2://documind_app:change-me-too@localhost:5432/documind`) run `docker compose up postgres`, then run the migrate step once with the owner's URL given only to it: `MIGRATION_DATABASE_URL=postgresql+psycopg2://documind:change-me@localhost:5432/documind python migrate.py` (from `backend/`). The backend connects only as `documind_app`, which row-level security applies to; it refuses to start on a superuser or table-owner connection, or with `MIGRATION_DATABASE_URL` set. In Docker, the one-shot `migrate` service does this before the backend starts.
 
+## Authentication and access control
+
+**Firebase identifies the user; Postgres decides what they may see.** The web UI and the eval harness sign in with Firebase email/password and send the ID token as `Authorization: Bearer ...` on every call. The backend checks the token with the Firebase Admin SDK (allowing 5 seconds of clock skew, `FIREBASE_CLOCK_SKEW_SECONDS`), then loads the user's row from Postgres on every request: org, teams, role (`viewer`, `editor`, `admin`), integer clearance (higher sees more) and an `active` flag. Nothing about access lives in Firebase custom claims, so a change applies on the user's next request, not at their next token refresh.
+
+- **Deny by default.** No valid token: 401. A valid token whose user has no row, no org, or `active=false`: 403 on everything except `GET /me`, which always answers and says why (`unknown_user`, `no_org`, `inactive`). `/health` is open and reports nothing about the data.
+- **Roles.** Viewers ask questions and give feedback. Editors and admins also upload and change a document's access (`PATCH /documents/{doc_id}/access`), never into a team they're not in or above their own clearance. `/admin/*` is admin-only, also checks with Firebase that the token wasn't revoked, and shows only the admin's own org. LLM diagnostics (per-model request counts, token usage, raw provider errors) are returned only to admins.
+- **Row-level security does the filtering, not Python.** The app connects as `documind_app`, a role that isn't the table owner, isn't a superuser and can't bypass RLS; the backend refuses to start otherwise. Every transaction first sets `app.org_id`, `app.clearance` and `app.team_ids` for that transaction only (`set_config(..., true)`), from the user just loaded. `chunks` and `documents` (and the query and feedback logs, by org) are under `FORCE ROW LEVEL SECURITY` with one policy: same org, clearance at or below the user's, and the team empty (org-wide) or one of the user's. Both retrieval legs (the HNSW vector search with iterative scans, and the full-text search) run under it. A transaction with no context sees no rows.
+- **The `documents` table is the source of truth for access.** An upload writes the document's org, team and clearance (required, no default) and its chunks in one transaction, the chunks copying those values from the document row. An access change updates the document and every chunk in one statement, so they can't drift apart.
+- **Owner credentials never reach the app.** Migrations, setting `documind_app`'s password and the embedding-model check run as a separate one-shot step (`backend/migrate.py`; the `migrate` service in docker-compose, which the backend waits for). The backend gets only `DATABASE_URL` and refuses to start if `MIGRATION_DATABASE_URL` is in its environment.
+
+### Setting up the first admin
+
+1. In the Firebase console, create the project with email/password sign-in enabled, and create the user.
+2. Put the web config (`VITE_FIREBASE_*`), `FIREBASE_PROJECT_ID` and `GOOGLE_APPLICATION_CREDENTIALS` (the path to a service account key file kept outside the repo) in `.env`. docker-compose mounts that file read-only into the backend; it never goes into an image. Without these the backend refuses to start and says what is missing. CI fails if a key file is ever committed.
+3. Run the migrate step, then map the user to an admin with the owner's database URL:
+   `python scripts/setup_eval_admin.py --database-url OWNER_URL` (it looks the user's uid up by `EVAL_ADMIN_EMAIL`, creates org `eval`, and is safe to re-run; it accepts only `@documind.test` accounts). Further users and teams are rows in `users` and `team_memberships`, written as the owner; there's no admin page yet.
+
+### Known limitations of the access model
+
+- A document belongs to one team or to the whole org; it can't be shared with two teams.
+- Clearance is a single ordered level with no compartments: a user at level N sees everything at N or below in their org and teams.
+- Firebase's revoked-token check is a network call, so only `/admin/*` makes it. Elsewhere a revoked token keeps working until it expires (at most an hour); setting `users.active=false` is the immediate off switch everywhere.
+- The embedding-model check in the migrate step reads every org's chunks, so the migration role must be able to bypass RLS (true for the Docker Postgres owner, a superuser).
+
 ## Observability
 
 Every query writes one row to Postgres: the (redacted) question, answer, outcome, which route it took (`full_pipeline` or `routed_direct`), which doc_ids retrieval was scoped to, whether PII redaction fired and for which categories, the retrieved chunk IDs with cosine similarity, RRF score, and per-leg (dense/full-text) ranks, both checker verdicts, whether a regeneration happened, and timings for each stage (`retrieval_ms`, `grading_ms`, `generation_ms`, `groundedness_ms`, `total_ms`).
@@ -263,6 +287,6 @@ Note on pins: the eval uses `ragas>=0.4,<0.5`. Older ragas (0.2/0.3) requires th
 - No reranker. See above for the trigger that would add one.
 - Postgres is single-node with no HA. At much larger document volumes the plan would be queue-based ingestion, an embedding cache keyed by chunk hash, and sampled rather than per-query groundedness checks.
 - The groundedness check is itself an LLM judgment (`gemini-3.5-flash-lite` by default), a strong spot-check but not a proof. The offline faithfulness metric exists as an independent audit of it.
-- Single-tenant: one shared API key, one document namespace, no per-user isolation. Documents can be scoped per query, but there is no per-user ownership and no way to delete a document yet short of deleting its rows from the `chunks` table.
+- No way to delete a document yet short of deleting its rows (as the owner). Access limits are listed under "Authentication and access control".
 - **Gemini free tier**: rate limits are per project and per model, set in Google AI Studio, and reset daily at midnight Pacific. `gemini-3.6-flash` allows 20 requests/day (measured from a 429), and failed attempts count against it, which is why it isn't the default generator. Latency varies widely; an identical small checker call has measured anywhere from 0.7s to 47s, and 503 "high demand" responses are common. Backoff makes this survivable, not fast. Paid tiers or `LLM_PROVIDER=anthropic` remove the constraint. Free-tier usage may also be used to improve Google's products, so don't upload sensitive documents on the free tier.
 - Time-to-first-token on document questions is a full pipeline run, which is the price of verifying answers before streaming them. (Small talk returns instantly — it skips the pipeline.)

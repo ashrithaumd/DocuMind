@@ -555,6 +555,150 @@ caller happened to have every permission.
 Not in Phase 2: an admin web page for assigning users (commit 8's script
 does it). Until commit 8 lands, the eval harness can't authenticate.
 
+## Phase 2 results
+
+Status (2026-11-07): Phase 2 complete on `enterprise`, every push CI
+green; commit 11 (these docs) opens the Phase 2 PR.
+
+### Commits
+
+| # | Commit | What |
+|---|---|---|
+| 1 | 96ab3cb, afff9f8, 8a4b655 | Node 24 actions, credential guard (key files by name and content), this plan |
+| 2 | 33abbee | Migration 0003: orgs, teams, users, team_memberships, documents, access columns on chunks |
+| - | c7be876 | Plan: the clearance-default drop moves to commit 6 |
+| 3 | 31427c3 | Firebase token checker, `get_principal`, `GET /me`; replaces the shared API key |
+| 4 | 7dd619e | Revoked-token check on `/admin/*` |
+| - | 222e76a | Fix: 5 s clock-skew tolerance on token times (found by the live check) |
+| - | 5b268ae | `scripts/live_firebase_check.py` |
+| 5 | e22d501 | Migration 0004: `documind_app` role, RLS on chunks and documents |
+| - | 8e077f6 | One-shot migrate step; owner credentials out of the backend; 0005 drops 0004's SECURITY DEFINER function |
+| 6 | 9efc971 | Migration 0006: documents table as the write path, no clearance default |
+| 7 | 60bb864 | Migration 0007: RLS on the log tables; admin-only `/admin/*` and diagnostics; editor/admin-only access changes |
+| 8 | caad3c4 | Eval admin setup script; the eval harness signs in and refreshes its token |
+| 9 | 7853dd1 | Frontend lint fix (`App.tsx` setState in an effect); frontend CI job |
+| 10 | e40d1fe | Frontend login, signed API calls, "not set up yet" screen |
+| - | b5bcecb | Frontend on Node 26 (current LTS; Node 20 is end of life) |
+| - | 379059c | Fix: Firebase key mounted read-only in compose; startup fails fast on missing Firebase config |
+| 11 | (this commit) | README auth section, these results |
+
+### Decisions made during the build
+
+- **Clearance default dropped with the write path (2026-11-06).** Dropping
+  it before commit 6 would have broken uploads for three commits; until
+  then new chunks had no org, so the default couldn't expose anything.
+- **Trailers follow the model running the session (2026-11-06);** pushed
+  commits weren't rewritten.
+- **Permission tests sign in explicitly as the role under test**, never
+  through the client fixture's default admin (from commit 5 on).
+- **Clock skew of 5 s (2026-11-06).** The live check found that this
+  machine's clock ran about 1.5 s behind Google's, and a token used right
+  after sign-in failed as "used too early". Configurable, capped at
+  Firebase's 60 s.
+- **Owner credentials out of the app process (2026-11-07):** a separate
+  migrate step; the backend refuses `MIGRATION_DATABASE_URL`. This moved the
+  embedding-model check out of the store and let migration 0005 drop the
+  SECURITY DEFINER function 0004 had added for it.
+- **`APP_DB_PASSWORD` is required by docker-compose (no default)**, and the
+  default Postgres owner password was rotated in the local volume.
+- **Changing a document's access is editor/admin only**, enforced in the
+  API and in the store, so a script can't skip it (2026-11-07).
+- **The upload form requires a clearance**: who may read a document is
+  always an explicit choice.
+
+### Bugs the tests and live checks found
+
+- A token used within a second of sign-in was rejected (clock skew; live
+  check) — fixed in 222e76a.
+- Firebase's `UserDisabledError` isn't an invalid-token error and would
+  have surfaced as a 500 on admin routes — caught and tested in 7dd619e.
+- Setting the app role's password broke on a `%` in it (SQLAlchemy
+  %-formatting) — found by a test with a deliberately awkward password,
+  fixed in e22d501.
+- The guard's own test file contained the key patterns and failed CI on
+  the first push — the test now builds them at runtime (8a4b655).
+- In the compose stack, `GET /me` returned 500 for every signed-in user
+  (found in the browser walkthrough). Commit 3 assumed a token's signature
+  check needs only the project id and that credentials load lazily; in
+  fact firebase-admin loads credentials when its auth client is created,
+  and the backend container had no `GOOGLE_APPLICATION_CREDENTIALS`. The
+  live check passed only because it ran on the host with the key set, and
+  the unit tests replace `verify_id_token`. Fixed in 379059c: compose
+  mounts the key read-only, and the backend checks Firebase config at
+  startup, before the database, and exits with what to set.
+
+### Test results
+
+- Backend suite, locally against a fresh pgvector container with Postgres
+  tests required: 332 passed, 0 skipped at 379059c, the last backend
+  change. Earlier counts: 235 (commit 3), 242 (4), 245 (clock-skew fix),
+  275 (5), 278 (migrate step), 298 (6), 319 (7), 327 (8).
+- **CI-matching run for the Phase 2 PR** (2026-11-07, at 379059c plus these
+  docs): Linux containers like the CI job: Python 3.12.8 with CPU-only
+  torch, the app, test and eval requirements installed with
+  `constraints.txt` as in the workflow, git for the credential-guard tests,
+  and a pgvector 0.8.7 service with `REQUIRE_POSTGRES_TESTS=1`: 332 passed,
+  0 skipped. Frontend on Node 26.13.0: `npm ci`, lint and build pass.
+- CI green on every push: backend job throughout, plus the frontend job
+  (`npm ci`, lint, build) from commit 9.
+- Live Firebase check (`scripts/live_firebase_check.py`, real Firebase, a
+  throwaway database and backend): passed after commits 4, the clock-skew
+  fix, 5, the migrate step, 6 and 7. It signs in, gets `unknown_user` from
+  `/me`, sets the user up as an admin, reads `/admin/stats`, revokes the
+  user's tokens (old token: 401 on `/admin/stats`, 200 on `/documents` by
+  design), and a fresh sign-in used immediately works.
+- Leakage tests on real Postgres cover another org, another team, higher
+  clearance and no context (zero rows) on both retrieval legs and the API;
+  the app role's attempts to bypass or drop the policies; the access
+  context not surviving on a pooled connection; and the log tables, for a
+  viewer and for another org's admin.
+
+- **One-question eval, signed in as the eval admin** (2026-11-07,
+  `run_eval.py --ingest --clearance 0` on a throwaway stack: migrate step
+  as the owner, backend as documind_app, `setup_eval_admin.py`, the first
+  question of `dataset.json`). Sign-in through the Firebase REST API, the
+  upload of `sample.pdf` into the eval org (5 chunks) and the query all
+  worked, and the report again has per-model request counts and token
+  usage, now from the admin diagnostics. No token or password appears in
+  the report or results files.
+  - First run (code b5bcecb, before 379059c): answered, but not scored. The
+    judge, `gemini-3.1-flash-lite`, returned 503 "high demand" on all 20
+    attempts (free-tier load, not a code problem).
+  - Re-run (code 379059c, with this commit's docs uncommitted), same
+    judge: scored.
+
+    | | |
+    |---|---|
+    | Outcome | answered |
+    | Faithfulness | 1.0 (1/1 scored) |
+    | Context precision | 1.0 (1/1 scored) |
+    | Requests: gemini-embedding-2 (app) | 1, 0 failed |
+    | Requests: gemini-3.5-flash-lite (app) | 3, 0 failed |
+    | Requests: gemini-3.1-flash-lite (judge) | 7, 0 failed |
+    | Tokens: grade | 1,226 prompt, 5 output |
+    | Tokens: generate | 1,251 prompt, 25 output |
+    | Tokens: groundedness | 1,249 prompt, 20 output |
+    | retrieval_ms | 352.2 |
+
+    One question proves the harness end to end; it says nothing about
+    quality. The full eval belongs to Phase 6.
+
+- **Browser walkthrough** (2026-11-07, by the user, on the docker-compose
+  stack at localhost:3001, after 379059c):
+  - Signed in as eval-admin: the header showed
+    "eval-admin@documind.test · admin" and Sign out.
+  - Uploaded `sample.pdf` (whole organization, clearance 0, the only level
+    offered to a clearance-0 admin): "5 pages · 5 chunks indexed", listed
+    under Documents.
+  - Asked "At what altitude does the Aurora-9 station orbit?": answered
+    "410 kilometers [1]", cited to `sample.pdf` p. 1, every pipeline stage
+    shown, 3.2 s.
+  - Signed out: back to the sign-in screen.
+  - Signed in as `not-set-up@documind.test` (in Firebase, no DocuMind row):
+    "Not set up yet", Reason: unknown_user, with Sign out.
+  - Before the fix, the same walkthrough stopped at sign-in with "Can't
+    reach DocuMind. The backend answered 500." (see bugs above).
+
 ## Phase 2 notes
 
 - **LLM diagnostics become admin-only.** Phase 0 gates the raw provider error
@@ -655,8 +799,17 @@ does it). Until commit 8 lands, the eval harness can't authenticate.
   with a test using eval Q7, whose cited sentence is near character 940, so
   today's tooltip doesn't show it.
 
+- **The chat's empty state doesn't notice an upload.** After uploading a
+  document, the chat still says "Upload a document… then ask anything about
+  it." It should switch to a prompt to ask about the uploaded document once
+  one exists (seen in the Phase 2 browser walkthrough).
+
 ## Phase 9 notes
 
+- **Replace the mounted Firebase key with Workload Identity.** Locally,
+  docker-compose bind-mounts the service account key read-only (379059c);
+  on Cloud Run the service account attached to the service should
+  authenticate with no key file at all.
 - **Run the migrate step as a Cloud Run job**, not inside the service: the
   job gets the owner credentials (`MIGRATION_DATABASE_URL`), the service
   only documind_app's (`DATABASE_URL`), each from Secret Manager, and a

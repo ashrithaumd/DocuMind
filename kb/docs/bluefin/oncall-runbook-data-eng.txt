@@ -1,0 +1,25 @@
+Data engineering — on-call runbook
+
+Shifts
+On-call runs from Wednesday 09:00 to Wednesday 09:00 Eastern. The primary
+acknowledges within 10 minutes; unacknowledged pages go to the secondary
+after 15 minutes and to the data-eng manager after 30. The on-call stipend
+is 350 USD per week.
+
+Severity
+- P1: customer dashboards in Tide show data more than 6 hours stale, or any
+  data-loss risk. Status page within 20 minutes.
+- P2: a single customer's nightly load failed.
+- P3: everything else.
+
+Alerts
+1. "loader-backlog": the ingestion queue in Pub/Sub has more than 50,000
+   undelivered messages. Scale the loader workers from 4 to 16. The
+   warehouse quota allows at most 16 concurrent loads.
+2. "dbt-run-failed": rerun the failed model with `dbt build --select
+   model_name+`. If it fails twice on the same model, roll back the last
+   merged pull request to the dbt project.
+3. "snowflake-credit-spike": daily credit use above 1,400 credits. Suspend
+   the ad-hoc warehouse ANALYST_XL first; it is the usual cause.
+
+Every P1 needs a written postmortem within 3 business days.

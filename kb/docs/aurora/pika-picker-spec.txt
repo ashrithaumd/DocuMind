@@ -1,0 +1,17 @@
+Product spec — Pika picker, generation 3
+
+Pika is our shelf-picking robot for small parcels.
+
+Key numbers
+- Maximum payload: 12 kg.
+- Pick rate: up to 600 items per hour in a standard aisle layout.
+- Reach: shelves from 0.2 m to 2.4 m high.
+- Battery: 6 hours of continuous picking, 55 minutes to recharge to 80 percent.
+- Navigation: lidar plus two depth cameras; no floor markers needed.
+
+Generation 3 adds a suction gripper for polybags and raises the pick rate
+from 450 to 600 items per hour. The target list price is 38,000 USD per
+unit, with the fleet software billed separately.
+
+Open questions: whether the 2.4 m reach is enough for European customers,
+whose racking is often 2.7 m.

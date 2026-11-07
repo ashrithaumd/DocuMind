@@ -1,0 +1,13 @@
+Bluefin Analytics — 2027 salary bands (restricted: finance and leadership)
+
+All amounts are base salary in USD for US-based employees. Canada and
+Portugal use local bands at 85 and 60 percent of these figures.
+
+- Data Engineer II: 125,000 to 150,000
+- Senior Data Engineer: 152,000 to 185,000
+- ML Engineer II: 132,000 to 158,000
+- Senior ML Engineer: 160,000 to 196,000
+- Support Specialist: 62,000 to 78,000
+
+The 2027 merit budget is 4.2 percent of payroll. Equity refreshes are
+reviewed once a year, in March.

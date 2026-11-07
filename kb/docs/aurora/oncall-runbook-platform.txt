@@ -1,0 +1,31 @@
+Platform team — On-call runbook (fleet backend)
+Last reviewed: 2 October 2026 by the platform team lead.
+
+Rotation
+On-call shifts are one week long, Monday 10:00 to Monday 10:00 Eastern.
+The primary must acknowledge a page within 5 minutes; if not, it escalates
+to the secondary after 10 minutes, and to the platform engineering manager
+after 20 minutes. On-call engineers are paid a stipend of 400 USD per week.
+
+Severity levels
+- SEV1: more than 10 percent of a customer's fleet is offline, or any
+  safety stop is triggered remotely by our backend. All hands, status page
+  updated within 15 minutes.
+- SEV2: a single site degraded, telemetry delayed by more than 5 minutes.
+- SEV3: anything else that can wait until business hours.
+
+Common alerts
+1. "telemetry-lag-high": the Kafka consumer group fleet-telemetry is behind.
+   Check consumer lag in Grafana (dashboard "Fleet / Ingest"). If lag is
+   above 200,000 messages, scale the consumer deployment from 6 to 12
+   replicas. Do not exceed 12: the partition count is 12.
+2. "mission-api-5xx": restart is not the first step. Check the last deploy;
+   roll back with `fleetctl rollback mission-api` if the error rate started
+   within 30 minutes of a deploy.
+3. "map-sync-stuck": a site's floor map did not sync for 2 hours. Trigger a
+   manual sync from Skyview; if it fails twice, page field-ops.
+
+Handover
+At the end of each shift, write a handover note in #platform-oncall with
+open incidents and anything flaky. Incidents above SEV2 need a postmortem
+within 5 business days.

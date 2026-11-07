@@ -1,0 +1,11 @@
+Bluefin Analytics — security essentials
+
+- Multi-factor authentication everywhere; passkeys are required for
+  Snowflake and AWS.
+- Customer data never leaves Snowflake except through approved exports.
+  Never download customer data to a laptop.
+- Access reviews run every quarter; unused access is removed after 60 days.
+- Report a suspected incident in #security-incidents or to
+  security@bluefin.example within 30 minutes.
+- Laptops lock after 10 minutes idle.
+- We are SOC 2 Type II certified; the next audit window is March 2027.

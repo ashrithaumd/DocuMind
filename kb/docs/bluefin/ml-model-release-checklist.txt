@@ -1,0 +1,12 @@
+ML team — model release checklist
+
+Before a new forecasting model ships to customers:
+[ ] Backtest on the last 52 weeks for every customer in the pilot group.
+[ ] WAPE (weighted absolute percentage error) at least 2 points better than
+    the current model, and no customer more than 1 point worse.
+[ ] Shadow mode for 14 days: the new model runs alongside the old one
+    without customers seeing its output.
+[ ] Model card updated in the registry, including training data dates.
+[ ] Sign-off from the ML lead and one person from support.
+Rollback: switch the model alias "current-prod" back in the registry. It
+takes effect at the next nightly forecast run at 02:00 Eastern.

@@ -1,0 +1,15 @@
+Product spec — Current (demand forecasting), version 4
+
+Current predicts daily unit demand per store and product, 8 weeks ahead.
+
+- Refresh: forecasts recompute nightly at 02:00 Eastern.
+- Granularity: store x product x day. Our largest customer has about 1.2
+  billion such combinations.
+- Accuracy target: WAPE under 28 percent at the store-product-week level.
+- Inputs: point-of-sale history (minimum 2 years), promotions calendar,
+  local weather, and public holidays.
+- Version 4 adds promotion uplift modelling and drops the old ARIMA
+  fallback.
+
+Pricing is per store per month (see the pricing document). Customers can
+export forecasts to their ERP via a daily CSV drop or the REST API.

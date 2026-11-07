@@ -1,0 +1,18 @@
+Welcome to Aurora Robotics
+
+Your first week
+- Day 1: collect your badge from reception at the Pittsburgh office,
+  Building C, before 9:30. IT hands out laptops in room C-114.
+- Day 2: safety induction for the robot test floor. Nobody enters the test
+  floor without it, including office staff.
+- Day 3: meet your onboarding buddy, who is assigned by your manager.
+- By the end of week one, complete the four compliance modules in LearnPath.
+
+Tools you will use: Slack for chat, Linear for tickets, Notion for
+documents, and the internal fleet dashboard "Skyview" for live robot data.
+
+Equipment: every employee gets a laptop and one external monitor. A second
+monitor can be requested after 90 days.
+
+Probation is three months. Your manager holds a check-in at 30, 60 and 90
+days.

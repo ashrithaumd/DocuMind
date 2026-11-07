@@ -1,0 +1,16 @@
+Bluefin Analytics — onboarding
+
+We are remote-first. Your laptop ships to your home address before your
+start date; if it hasn't arrived 2 days before you start, write to
+it-help@bluefin.example.
+
+Week one
+- Monday: welcome call at 11:00 Eastern with the People partner.
+- Tuesday: set up your Snowflake and dbt access through the access request
+  form; approval takes up to one business day.
+- Wednesday: shadow a support shift, whatever your role, so you meet our
+  customers' problems early.
+- Friday: present one thing you learned in the #new-joiners channel.
+
+Every new joiner gets an onboarding buddy and a 30-60-90 day plan from their
+manager. Probation is 90 days.

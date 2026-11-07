@@ -1,0 +1,25 @@
+Postmortem — Atlas fleet stall at Brightmart Columbus, 19 August 2026
+Severity: SEV1. Duration: 2 hours 14 minutes.
+
+Summary
+At 06:12 Eastern, 63 of the 140 Atlas movers at the Brightmart distribution
+center in Columbus stopped and refused new missions. Picking throughput at
+the site fell by about 45 percent until 08:26.
+
+Root cause
+A map update pushed at 06:05 contained a no-go zone drawn with an
+inverted polygon, which covered most of the floor. The map validator only
+checked that polygons were closed, not their orientation.
+
+What went well
+The on-call engineer acknowledged the page in 3 minutes, and the field-ops
+lead on site confirmed the robots were stopped safely.
+
+What went badly
+Rolling back the map took 70 minutes because the previous map version had
+been garbage-collected from the site cache.
+
+Action items
+1. Validate polygon orientation in the map validator. Owner: Mei Tanaka.
+2. Keep the last 5 map versions in every site cache. Owner: Luis Ferreira.
+3. Offer Brightmart a service credit of 15,000 USD. Owner: account team.

@@ -1,0 +1,12 @@
+Platform team weekly — 14 September 2026
+Present: Dana Okafor (lead), Luis Ferreira, Mei Tanaka, Sam Whitfield.
+
+1. Telemetry costs. Our cloud bill for telemetry storage was 41,000 USD in
+   August, up 18 percent. Decision: downsample raw telemetry older than 30
+   days to one-minute averages. Luis owns it, due 15 October.
+2. Mission API latency. p95 is 340 ms against a target of 250 ms. Mei will
+   profile the route planner call.
+3. On-call. Sam joins the rotation from 1 October.
+4. Hiring. One senior backend role open; the hiring manager is Dana.
+
+Next meeting: 21 September.

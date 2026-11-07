@@ -1,0 +1,8 @@
+Tide dashboards — spec notes
+
+Tide is the dashboard product. Each customer gets a dedicated Snowflake
+schema and up to 25 dashboards in the standard plan (unlimited in
+Enterprise). Data refreshes every 4 hours by default, or hourly in
+Enterprise. Dashboards load in under 3 seconds at p90 for datasets up to
+500 million rows. Single sign-on through SAML is available in Enterprise
+only. Exports: PDF, CSV and scheduled email digests.

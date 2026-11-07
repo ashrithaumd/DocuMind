@@ -1,0 +1,12 @@
+Bluefin price list for 2027 (confidential, do not send to customers as is)
+
+Tide dashboards
+- Standard: 1,200 USD per month, up to 25 dashboards.
+- Enterprise: 4,500 USD per month, unlimited dashboards, hourly refresh, SSO.
+
+Current forecasting
+- 18 USD per store per month, minimum 200 stores.
+- Volume discount: 15 percent above 1,000 stores.
+
+Discounts above 20 percent need approval from the CFO. Multi-year deals
+may lock prices for up to 3 years.

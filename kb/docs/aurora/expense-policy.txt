@@ -1,0 +1,26 @@
+Aurora Robotics — Travel and Expense Policy
+Owner: People team. Effective 1 March 2026. Applies to all employees.
+
+1. Booking
+Book flights and hotels through the TripDesk portal. Economy class is the
+default. Business class is allowed only for flights longer than 8 hours,
+and needs written approval from a director.
+
+2. Meals
+The daily meal allowance while travelling is 75 USD per person. Alcohol is
+never reimbursed. Client dinners may exceed the allowance up to 120 USD per
+attendee if the client's name is noted on the claim.
+
+3. Hotels
+The nightly hotel cap is 220 USD in most cities and 310 USD in New York,
+London, Tokyo and Zurich.
+
+4. Mileage
+Personal car use is reimbursed at 0.62 USD per mile.
+
+5. Submitting claims
+Submit receipts in ExpenseHub within 30 days of the trip. Claims older than
+90 days are not reimbursed. Any single expense above 500 USD needs a
+receipt and your manager's approval before you submit.
+
+Questions go to expenses@aurora-robotics.example.

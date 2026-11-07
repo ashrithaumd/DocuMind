@@ -1,0 +1,43 @@
+# Access assignments for the Phase 3 corpus (kb/docs/).
+#
+# One entry per document. The upload script reads this to give each
+# document its org, team and clearance (documents table, Phase 2 commit 6).
+#
+#   file:       path under kb/docs/
+#   org:        org id: aurora | bluefin
+#   team:       a team id of that org, or null for org-wide
+#   clearance:  0 everyone in the org, 1 internal, 2 confidential, 3 restricted
+#
+# Teams (see kb/README.md):
+#   aurora:  platform, firmware, field-ops, people
+#   bluefin: data-eng, ml, support, finance
+
+orgs:
+  aurora:
+    name: Aurora Robotics
+    teams: [platform, firmware, field-ops, people]
+  bluefin:
+    name: Bluefin Analytics
+    teams: [data-eng, ml, support, finance]
+
+documents:
+  # Org-wide, everyone in Aurora.
+  - file: aurora/expense-policy.txt
+    org: aurora
+    team: null
+    clearance: 0
+
+  # One team's internal runbook.
+  - file: aurora/oncall-runbook-platform.txt
+    org: aurora
+    team: platform
+    clearance: 1
+
+  # Restricted, one team only.
+  - file: bluefin/salary-bands-2027.txt
+    org: bluefin
+    team: finance
+    clearance: 3
+
+  # TODO(user): the remaining 27 documents. Every file under kb/docs/ needs
+  # exactly one entry.

@@ -1,0 +1,18 @@
+Postmortem — stale forecasts for 11 customers, 22 July 2026
+Severity: P1. Customer impact: 19 hours of stale forecasts.
+
+What happened
+The nightly forecast run at 02:00 Eastern failed for 11 customers, including
+Northgate Grocers, our largest account. Dashboards kept showing the
+previous day's forecasts until 21:00, and nobody was paged until 07:40,
+when Northgate's team reported it.
+
+Root cause
+A schema change to the promotions table renamed the column promo_type to
+promotion_type. The forecasting job read the old name and failed, and the
+failure alert was routed to a Slack channel that had been archived.
+
+Action items
+1. Schema contracts on every table the forecasting job reads. Owner: data-eng.
+2. Route the forecast-failure alert to PagerDuty, not Slack. Owner: ML lead.
+3. Credit of 8,000 USD to Northgate Grocers. Owner: finance.

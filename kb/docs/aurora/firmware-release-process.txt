@@ -1,0 +1,16 @@
+Firmware release process (Pika and Atlas)
+Owner: firmware team.
+
+Releases ship every four weeks on a Tuesday. A release candidate is cut on
+the Wednesday before, and must pass:
+- the hardware-in-the-loop suite on 3 Pika and 2 Atlas units,
+- a 48-hour soak on the test floor with at least 20 robots,
+- a sign-off from field-ops for any change to motor control.
+
+Rollout is staged: 5 percent of the fleet on day one, 25 percent on day
+three, everyone by day seven. Any safety-stop rate above 0.2 per robot-hour
+pauses the rollout automatically.
+
+Version numbers follow YEAR.RELEASE.PATCH, for example 2026.11.0 for the
+eleventh release of 2026. Hotfixes skip the soak but still need two
+reviewers from the firmware team.

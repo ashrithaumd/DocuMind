@@ -1,0 +1,12 @@
+Atlas mover — battery pack specification (rev. D)
+
+Chemistry: lithium iron phosphate. Nominal 48 V, 105 Ah.
+Runtime: 9 hours at a typical duty cycle of 60 percent.
+Charging: 1.5 hours from 20 to 90 percent on the dock charger.
+Cycle life: rated for 4,000 cycles to 80 percent of original capacity.
+Operating temperature: -5 to 45 degrees Celsius. Below 0 degrees the pack
+heats itself before charging.
+
+Packs are hot-swappable in under 3 minutes by one technician. Replacement
+packs are tracked by serial number in Skyview and must be recycled through
+the CellCore take-back program.

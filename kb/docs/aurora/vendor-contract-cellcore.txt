@@ -1,0 +1,11 @@
+Summary of the CellCore battery supply agreement (confidential)
+
+Supplier: CellCore Energy Ltd. Term: 1 January 2026 to 31 December 2028.
+Price: 2,150 USD per Atlas pack for the first 1,000 packs each year, and
+1,980 USD per pack above that volume.
+Minimum annual order: 600 packs. Shortfall penalty: 12 percent of the
+unmet volume's value.
+Warranty: 3 years or 3,000 cycles, whichever comes first.
+Take-back: CellCore collects and recycles end-of-life packs at no charge.
+Either party may end the agreement with 9 months' notice after 1 January
+2027.

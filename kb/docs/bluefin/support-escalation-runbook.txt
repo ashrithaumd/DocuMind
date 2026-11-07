@@ -1,0 +1,17 @@
+Support — escalation runbook
+
+First response targets
+- Enterprise: 1 hour, around the clock.
+- Business: 4 business hours.
+- Standard: 1 business day.
+
+When to escalate to engineering
+- Wrong numbers in a dashboard that the customer can show us: escalate to
+  data-eng as P2 straight away; do not try to fix data by hand.
+- Forecasts that look badly wrong for a whole category: escalate to the ML
+  on-call.
+- Login or SSO problems: check the status page first, then escalate to
+  platform.
+
+Refunds and credits up to 500 USD can be approved by a support lead; above
+that, finance must approve. Always link the Zendesk ticket in the escalation.

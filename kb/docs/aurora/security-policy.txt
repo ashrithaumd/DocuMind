@@ -1,0 +1,13 @@
+Aurora Robotics — Information Security Policy (summary)
+
+- Passwords: at least 14 characters; the password manager is 1Password.
+- Multi-factor authentication is required for every company system. Hardware
+  keys are required for anyone with production access.
+- Laptops lock after 5 minutes idle and use full-disk encryption.
+- Production access is granted for 12 hours at a time through the access
+  portal and is logged.
+- Report a lost device within 1 hour to security@aurora-robotics.example.
+- Customer floor maps are confidential and must never be shared outside
+  the company without a signed data-sharing agreement.
+- Security training is annual; new hires complete it in their first two
+  weeks.

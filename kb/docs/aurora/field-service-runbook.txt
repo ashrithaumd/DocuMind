@@ -1,0 +1,24 @@
+Field-ops — on-site service runbook
+
+Response times by contract tier
+- Platinum: technician on site within 4 hours, 24/7.
+- Gold: within 8 business hours.
+- Silver: next business day.
+
+Before going on site, check the robot's last 24 hours of logs in Skyview
+and bring a spare battery pack for any Atlas ticket.
+
+Safety
+Lock out the robot with the physical key before opening any panel. Two
+technicians are required for any lift work above 1.5 m. Report every safety
+stop you witness in the incident form within 2 hours.
+
+Common fixes
+- Pika gripper misses: recalibrate the depth cameras with the checkerboard
+  target, which takes about 20 minutes.
+- Atlas drifting off route: clean the lidar window, then rerun floor-map
+  alignment from the service tablet.
+- Robot will not dock: check the dock's charging contacts for debris; the
+  contacts should read 48 to 54 V with a multimeter.
+
+Close every ticket with the parts used and the time on site.

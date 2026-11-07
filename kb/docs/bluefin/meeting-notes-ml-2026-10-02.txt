@@ -1,0 +1,10 @@
+ML team sync — 2 October 2026
+Present: Priya Raman (lead), Tomasz Nowak, Aiko Mori.
+
+- Forecast model v4.2 finished shadow mode: WAPE improved from 27.1 to 24.8
+  percent across the pilot. Decision: release to all customers on
+  20 October.
+- GPU costs for training were 9,300 USD in September; Tomasz will move
+  hyperparameter search to spot instances.
+- Aiko is building the promotion-uplift feature store; first version due
+  6 November.

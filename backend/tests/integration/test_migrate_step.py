@@ -50,3 +50,21 @@ def test_migrate_step_needs_both_urls(app_url):
     result = _run_migrate({"MIGRATION_DATABASE_URL": "", "DATABASE_URL": app_url})
     assert result.returncode == 2
     assert "MIGRATION_DATABASE_URL" in result.stderr
+
+
+def test_backend_checks_firebase_config_at_startup(client, token_checker):
+    assert token_checker.ready_checks == 1
+
+
+def test_backend_refuses_to_start_without_firebase_config(app_env, token_checker, monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from main import app
+
+    def not_ready():
+        raise RuntimeError("Firebase credentials not found: set GOOGLE_APPLICATION_CREDENTIALS")
+
+    monkeypatch.setattr(token_checker, "check_ready", not_ready)
+    with pytest.raises(RuntimeError, match="GOOGLE_APPLICATION_CREDENTIALS"):
+        with TestClient(app):
+            pass

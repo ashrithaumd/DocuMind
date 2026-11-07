@@ -37,6 +37,8 @@ def test_backend_startup_with_gemini_embeddings_does_not_load_torch(pg_url, app_
     code = (
         "from fastapi.testclient import TestClient\n"
         "import deps, main\n"
+        # No Firebase project in this test: a stand-in passes the startup check.
+        "deps.get_token_checker = lambda: type('C', (), {'check_ready': lambda self: None})()\n"
         "with TestClient(main.app):\n"
         "    assert type(deps.get_embeddings()).__name__ == 'GeminiEmbeddings'\n"
     )

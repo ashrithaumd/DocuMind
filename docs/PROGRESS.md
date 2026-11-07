@@ -599,8 +599,9 @@ green; commit 11 (these docs) opens the Phase 2 PR.
   migrate step; the backend refuses `MIGRATION_DATABASE_URL`. This moved the
   embedding-model check out of the store and let migration 0005 drop the
   SECURITY DEFINER function 0004 had added for it.
-- **`APP_DB_PASSWORD` is required by docker-compose (no default)**, and the
-  default Postgres owner password was rotated in the local volume.
+- **`APP_DB_PASSWORD` and `POSTGRES_PASSWORD` are required by docker-compose
+  (no defaults)**, and the default Postgres owner password was rotated in
+  the local volume.
 - **Changing a document's access is editor/admin only**, enforced in the
   API and in the store, so a script can't skip it (2026-11-07).
 - **The upload form requires a clearance**: who may read a document is

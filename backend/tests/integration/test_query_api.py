@@ -30,7 +30,10 @@ def _ingest_two_docs(client):
 
 
 def _last_log():
-    logs = db_session.fetch_logs(1)
+    from db.access import Access
+    from tests.conftest import TEST_ORG
+
+    logs = db_session.fetch_logs(1, access=Access(org_id=TEST_ORG, clearance=0))
     assert logs, "expected a query log row"
     return logs[0]
 
@@ -257,27 +260,34 @@ def _daily_quota_error():
     }})
 
 
-def _expose_llm_diagnostics(monkeypatch):
-    import config
+def _as_viewer(client, pg_url):
+    """Headers for a viewer in the client's org (diagnostics are admin-only)."""
+    import sqlalchemy as sa
 
-    monkeypatch.setenv("EXPOSE_LLM_DIAGNOSTICS", "true")
-    config.get_settings.cache_clear()
+    from tests.conftest import TEST_ORG
+
+    engine = sa.create_engine(pg_url)
+    with engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO users (firebase_uid, org_id, role, clearance) "
+                             "VALUES ('uid-viewer', :org, 'viewer', 0)"), {"org": TEST_ORG})
+    engine.dispose()
+    return {"Authorization": "Bearer token:uid-viewer"}
 
 
-def test_pipeline_failure_returns_stage_and_error_kind(client, app_env):
+def test_pipeline_failure_for_a_viewer_has_only_stage_and_error_kind(client, app_env, pg_url):
     _ingest_two_docs(client)
     app_env.generate_error = _daily_quota_error()
 
-    response = client.post("/query", json={"question": "How do vacation days accrue?"})
+    response = client.post("/query", headers=_as_viewer(client, pg_url),
+                           json={"question": "How do vacation days accrue?"})
 
     assert response.status_code == 503
-    # Diagnostics off by default: provider details stay in the server log.
+    # No diagnostics for non-admins: provider details stay in the server log.
     assert response.json() == {"detail": "Pipeline failed.", "stage": "generate", "error": "daily_quota"}
 
 
-def test_pipeline_failure_with_diagnostics_has_full_error_and_usage(client, app_env, monkeypatch):
-    _ingest_two_docs(client)
-    _expose_llm_diagnostics(monkeypatch)
+def test_pipeline_failure_for_an_admin_has_full_error_and_usage(client, app_env):
+    _ingest_two_docs(client)  # the client signs in as an admin
     app_env.generate_error = _daily_quota_error()
 
     response = client.post("/query", json={"question": "How do vacation days accrue?"})
@@ -291,18 +301,18 @@ def test_pipeline_failure_with_diagnostics_has_full_error_and_usage(client, app_
     assert set(body["llm_usage"]) == {"attempts_per_model", "failures", "calls", "tokens_per_role"}
 
 
-def test_answer_has_no_llm_usage_by_default(client, app_env):
+def test_answer_for_a_viewer_has_no_llm_usage(client, app_env, pg_url):
     _ingest_two_docs(client)
 
-    body = client.post("/query", json={"question": "How do vacation days accrue?"}).json()
+    body = client.post("/query", headers=_as_viewer(client, pg_url),
+                       json={"question": "How do vacation days accrue?"}).json()
 
     assert body["outcome"] == "answered"
     assert "llm_usage" not in body
 
 
-def test_answer_with_diagnostics_has_llm_usage(client, app_env, monkeypatch):
+def test_answer_for_an_admin_has_llm_usage(client, app_env):
     _ingest_two_docs(client)
-    _expose_llm_diagnostics(monkeypatch)
 
     body = client.post("/query", json={"question": "How do vacation days accrue?"}).json()
 

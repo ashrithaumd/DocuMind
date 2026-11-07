@@ -94,7 +94,7 @@ def build_store(settings):
                      {"org": BENCH_ORG})
     owner.dispose()
     store = HybridStore(settings, build_embeddings(settings))
-    return store.scoped(Access(org_id=BENCH_ORG, clearance=0))
+    return store.scoped(Access(org_id=BENCH_ORG, clearance=0, role="editor"))
 
 
 async def ensure_indexed(store, settings, pdf_path: Path) -> str:

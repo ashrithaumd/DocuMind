@@ -53,7 +53,6 @@ services:
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
-      EXPOSE_LLM_DIAGNOSTICS: ${EXPOSE_LLM_DIAGNOSTICS:-false}
       # Only the documind_app role (row-level security applies to it). The
       # backend refuses to start if MIGRATION_DATABASE_URL is set.
       DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}

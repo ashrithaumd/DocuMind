@@ -33,6 +33,11 @@ class QueryLog(Base):
         DateTime(timezone=True), server_default=func.now(), index=True
     )
 
+    # Who asked (migration 0007). The log is under RLS by org_id; rows from
+    # before 0007 have neither, so nobody sees them.
+    user_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    org_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
+
     question: Mapped[str] = mapped_column(Text)
     answer: Mapped[str | None] = mapped_column(Text, nullable=True)
 
@@ -71,6 +76,8 @@ class QueryLog(Base):
         return {
             "id": self.id,
             "created_at": self.created_at.isoformat() if self.created_at else None,
+            "user_id": self.user_id,
+            "org_id": self.org_id,
             "question": self.question,
             "answer": self.answer,
             "outcome": self.outcome,
@@ -108,6 +115,9 @@ class Feedback(Base):
     )
     thumbs_up: Mapped[bool] = mapped_column(Boolean)
     comment: Mapped[str | None] = mapped_column(Text, nullable=True)
+    # Who gave it, in which org (migration 0007; RLS by org_id).
+    user_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    org_id: Mapped[str | None] = mapped_column(Text, nullable=True, index=True)
 
     def as_dict(self) -> dict:
         return {

@@ -69,11 +69,6 @@ class Settings(BaseSettings):
     # even a second rejects a token used right after sign-in as "used too
     # early" (seen live: this machine ran ~1.5 s behind). Firebase allows 0-60.
     firebase_clock_skew_seconds: int = Field(default=5, ge=0, le=60)
-    # Return raw provider error text and per-request LLM usage (attempts per
-    # model, every failed attempt's message) from /query. Off by default:
-    # clients get provider-neutral errors and the details stay in the server
-    # log. The eval harness's backend runs with it on to record quota ids.
-    expose_llm_diagnostics: bool = False
 
     # --- Retrieval ---
     top_k: int = 6            # chunks handed to the LLM after fusion

@@ -14,6 +14,7 @@ Two separate steps, so the app process never holds owner credentials:
 """
 import logging
 import statistics
+from contextlib import contextmanager
 from pathlib import Path
 
 from alembic import command
@@ -22,6 +23,7 @@ from sqlalchemy import create_engine, inspect, make_url, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from config import Settings
+from db.access import set_access
 from db.models import Base, Feedback, QueryLog
 
 logger = logging.getLogger(__name__)
@@ -31,6 +33,9 @@ APP_ROLE = "documind_app"  # created by migration 0004
 # The revision matching the schema create_all built before Alembic.
 BASELINE_REVISION = "0001"
 BASELINE_TABLES = ("query_logs", "feedback")
+# Model columns that later revisions add: adopting a pre-Alembic database
+# must leave them to those revisions.
+POST_BASELINE_COLUMNS = {"user_id", "org_id"}  # 0007
 
 _session_factory: sessionmaker | None = None
 
@@ -144,7 +149,7 @@ def _add_missing_columns(conn) -> None:
             continue
         existing = {c["name"] for c in inspector.get_columns(name)}
         for column in table.columns:
-            if column.name not in existing:
+            if column.name not in existing and column.name not in POST_BASELINE_COLUMNS:
                 conn.execute(text(
                     f"ALTER TABLE {name} ADD COLUMN "
                     f"{column.name} {column.type.compile(conn.dialect)}"
@@ -152,8 +157,17 @@ def _add_missing_columns(conn) -> None:
                 logger.info("Schema migrated: added %s.%s", name, column.name)
 
 
-def log_query(record: dict) -> int | None:
-    """Insert one QueryLog row; swallow (but log) any failure.
+@contextmanager
+def _session(access):
+    """A log session whose transaction runs under `access` (RLS by org)."""
+    with _session_factory() as session:
+        set_access(session, access)
+        yield session
+
+
+def log_query(record: dict, *, access) -> int | None:
+    """Insert one QueryLog row in the caller's org; swallow (but log) any
+    failure.
 
     Returns the new row id — the handle the feedback endpoint links to —
     or None when logging is disabled or the write failed.
@@ -161,7 +175,7 @@ def log_query(record: dict) -> int | None:
     if _session_factory is None:
         return None
     try:
-        with _session_factory() as session:  # type: Session
+        with _session(access) as session:
             row = QueryLog(**record)
             session.add(row)
             session.commit()
@@ -171,13 +185,15 @@ def log_query(record: dict) -> int | None:
         return None
 
 
-def log_feedback(query_log_id: int, thumbs_up: bool, comment: str | None) -> str:
-    """Upsert the user's verdict for one query. Returns a status string the
-    API maps to a response code: ok | unknown_query | disabled | error."""
+def log_feedback(query_log_id: int, thumbs_up: bool, comment: str | None, *,
+                 access, user_id: str | None) -> str:
+    """Upsert the user's verdict for one query of their own org. Returns a
+    status string the API maps to a response code: ok | unknown_query |
+    disabled | error. Another org's query is unknown_query: RLS hides it."""
     if _session_factory is None:
         return "disabled"
     try:
-        with _session_factory() as session:
+        with _session(access) as session:
             if session.get(QueryLog, query_log_id) is None:
                 return "unknown_query"
             existing = session.scalars(
@@ -185,6 +201,7 @@ def log_feedback(query_log_id: int, thumbs_up: bool, comment: str | None) -> str
             ).first()
             if existing:
                 existing.thumbs_up = thumbs_up
+                existing.user_id = user_id
                 if comment is not None:
                     existing.comment = comment
             else:
@@ -193,6 +210,8 @@ def log_feedback(query_log_id: int, thumbs_up: bool, comment: str | None) -> str
                         query_log_id=query_log_id,
                         thumbs_up=thumbs_up,
                         comment=comment,
+                        user_id=user_id,
+                        org_id=access.org_id,
                     )
                 )
             session.commit()
@@ -202,22 +221,24 @@ def log_feedback(query_log_id: int, thumbs_up: bool, comment: str | None) -> str
         return "error"
 
 
-def fetch_logs(limit: int = 20) -> list[dict]:
+def fetch_logs(limit: int = 20, *, access) -> list[dict]:
+    """The caller's org's most recent query logs (RLS by org)."""
     if _session_factory is None:
         return []
-    with _session_factory() as session:
+    with _session(access) as session:
         rows = session.scalars(
             select(QueryLog).order_by(QueryLog.id.desc()).limit(limit)
         ).all()
         return [row.as_dict() for row in rows]
 
 
-def fetch_stats(window: int = 200) -> dict:
-    """Outcome counts + latency distribution over the most recent `window` queries."""
+def fetch_stats(window: int = 200, *, access) -> dict:
+    """Outcome counts + latency distribution over the caller's org's most
+    recent `window` queries (RLS by org)."""
     if _session_factory is None:
         return {"logging_enabled": False}
 
-    with _session_factory() as session:
+    with _session(access) as session:
         rows = session.scalars(
             select(QueryLog).order_by(QueryLog.id.desc()).limit(window)
         ).all()

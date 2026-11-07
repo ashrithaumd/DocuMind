@@ -22,9 +22,10 @@ or answered and fully scored); errored, not-run and partly scored questions
 are run again. The last record per question wins.
 
 Usage:
-    1. Start the stack (docker compose up, or uvicorn locally) with
-       EXPOSE_LLM_DIAGNOSTICS=true, so /query returns llm_usage and full
-       error text for the report. It is off by default for normal clients.
+    1. Start the stack (docker compose up, or uvicorn locally). /query
+       returns llm_usage and full error text for the report only to admins,
+       so the harness must call it as one (signing in arrives with Phase 2
+       commit 8).
     2. Upload the sample document once:  see --ingest below.
     3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR] [--resume]
 
@@ -178,9 +179,9 @@ def run_questions(client: httpx.Client, api: str, pairs: list[dict], score=None,
             else:
                 if "llm_usage" not in result and not warned_no_diagnostics:
                     warned_no_diagnostics = True
-                    print("WARNING: /query returned no llm_usage. Restart the backend with "
-                          "EXPOSE_LLM_DIAGNOSTICS=true, or the report's app call counts "
-                          "and quota limits will be empty.", flush=True)
+                    print("WARNING: /query returned no llm_usage: the harness isn't signed "
+                          "in as an admin, so the report's app call counts and quota "
+                          "limits will be empty.", flush=True)
                 sample.update(
                     outcome=result["outcome"],
                     response=result["answer"],

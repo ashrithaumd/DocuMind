@@ -391,11 +391,12 @@ false-refusal rate.
 
 ## Phase 2 plan
 
-Status (2026-11-07): plan and RLS decision recorded; commits 1-6 done (CI chore + guard,
+Status (2026-11-07): plan and RLS decision recorded; commits 1-7 done (CI chore + guard,
 migration 0003, get_principal and /me, revoked-token check on /admin/*,
 clock-skew fix, live Firebase check script, documind_app role and RLS on
 chunks and documents, separate migrate step, documents table as the
-write path with migration 0006).
+write path with migration 0006, log tables under RLS by org and
+admin-only /admin/* and diagnostics with migration 0007).
 
 ### Auth provider: Firebase Auth (option A)
 

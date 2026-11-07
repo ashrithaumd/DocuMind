@@ -16,6 +16,7 @@ PROTECTED = [
     ("post", "/upload", {"files": {"file": ("a.txt", b"hello", "text/plain")},
                          "data": {"clearance": "0"}}),
     ("post", "/feedback", {"json": {"query_id": 1, "thumbs_up": True}}),
+    ("patch", "/documents/{doc_id}/access", {"json": {"clearance": 0}}),
     ("get", "/admin/logs", {}),
     ("get", "/admin/stats", {}),
 ]
@@ -38,7 +39,7 @@ def _as(uid):
 
 
 def _call(client, method, path, kwargs, headers):
-    return getattr(client, method)(path, headers=headers, **kwargs)
+    return getattr(client, method)(path.format(doc_id="d"), headers=headers, **kwargs)
 
 
 def test_every_route_but_me_and_health_requires_a_principal():

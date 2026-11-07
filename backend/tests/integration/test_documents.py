@@ -18,7 +18,7 @@ import deps
 from ingestion.chunking import Chunk
 from ingestion.store import Access
 
-EDITOR = Access(org_id="A", clearance=1, team_ids=("t1",))
+EDITOR = Access(org_id="A", clearance=1, team_ids=("t1",), role="editor")
 
 
 def _as(uid):
@@ -193,7 +193,7 @@ async def test_access_change_on_a_document_the_caller_cant_see_is_refused(users,
     store = deps.get_store().scoped(EDITOR)
     await store.add_document(_chunks("d", 2), team_id="t1", clearance=1, uploaded_by=None)
 
-    org_b = deps.get_store().scoped(Access(org_id="B", clearance=9))
+    org_b = deps.get_store().scoped(Access(org_id="B", clearance=9, role="admin"))
     with pytest.raises(LookupError):
         org_b.set_document_access("d", team_id=None, clearance=0)
     assert _access(owner, "d") == (("A", "t1", 1), {("A", "t1", 1)})
@@ -218,3 +218,57 @@ async def test_no_chunk_ever_differs_from_its_document(client, users, owner):
     store.set_document_access("d1", team_id=None, clearance=0)
 
     assert _divergent_chunks(owner) == 0
+
+
+# --- who may change access ------------------------------------------------------
+
+VIEWER = Access(org_id="A", clearance=1, team_ids=("t1",), role="viewer")
+
+
+async def _doc(team_id="t1", clearance=1):
+    await deps.get_store().scoped(EDITOR).add_document(_chunks("d", 3), team_id=team_id,
+                                                       clearance=clearance, uploaded_by=None)
+
+
+async def test_editor_changes_access_through_the_api(client, users, owner):
+    await _doc()
+    response = client.patch("/documents/d/access", headers=_as("editor"),
+                            json={"team_id": None, "clearance": 0})
+    assert response.status_code == 200, response.text
+    assert _access(owner, "d") == (("A", None, 0), {("A", None, 0)})
+
+
+async def test_viewer_gets_403_and_nothing_changes(client, users, owner):
+    await _doc()
+    response = client.patch("/documents/d/access", headers=_as("viewer"),
+                            json={"team_id": None, "clearance": 0})
+    assert response.status_code == 403
+    assert _access(owner, "d") == (("A", "t1", 1), {("A", "t1", 1)})
+
+
+async def test_the_store_refuses_a_viewer_too(users, owner):
+    # Below the API: any caller of the store, e.g. a script, gets the same rule.
+    await _doc()
+    with pytest.raises(PermissionError):
+        deps.get_store().scoped(VIEWER).set_document_access("d", team_id=None, clearance=0)
+    with pytest.raises(PermissionError):
+        await deps.get_store().scoped(VIEWER).add_document(_chunks("e", 1), team_id=None,
+                                                           clearance=0, uploaded_by=None)
+    assert _access(owner, "d") == (("A", "t1", 1), {("A", "t1", 1)})
+
+
+@pytest.mark.parametrize("change,status", [
+    ({"team_id": "t2", "clearance": 0}, 403),  # a team the editor isn't in
+    ({"team_id": None, "clearance": 2}, 403),  # above the editor's clearance
+    ({"team_id": None, "clearance": -1}, 422),
+])
+async def test_access_change_cannot_reach_beyond_the_editor(client, users, owner, change, status):
+    await _doc()
+    assert client.patch("/documents/d/access", headers=_as("editor"), json=change).status_code == status
+    assert _access(owner, "d") == (("A", "t1", 1), {("A", "t1", 1)})
+
+
+def test_access_change_on_an_unknown_document_is_404(client, users):
+    response = client.patch("/documents/nope/access", headers=_as("editor"),
+                            json={"team_id": None, "clearance": 0})
+    assert response.status_code == 404

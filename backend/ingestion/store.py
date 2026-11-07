@@ -49,32 +49,12 @@ from dataclasses import dataclass
 import sqlalchemy as sa
 
 from config import Settings
+from db.access import WRITER_ROLES, Access, set_access  # noqa: F401  (Access re-exported)
 from embeddings import EmbeddingProvider
 from ingestion.chunking import Chunk
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass(frozen=True)
-class Access:
-    """Whose rows a transaction may see. auth.Principal has the same fields."""
-    org_id: str
-    clearance: int
-    team_ids: tuple[str, ...] = ()
-
-
-_SET_ACCESS = sa.text("""
-    SELECT set_config('app.org_id', :org_id, true),
-           set_config('app.clearance', CAST(:clearance AS text), true),
-           set_config('app.team_ids', CAST(CAST(:team_ids AS text[]) AS text), true)
-""")
-
-
-def set_access(conn, access) -> None:
-    """Bind this transaction to `access` (anything with org_id, clearance and
-    team_ids). Transaction-local: gone at commit or rollback."""
-    conn.execute(_SET_ACCESS, {"org_id": access.org_id, "clearance": access.clearance,
-                               "team_ids": list(access.team_ids)})
 
 
 @dataclass
@@ -194,6 +174,14 @@ class HybridStore:
         scoped._access = access
         return scoped
 
+    def _require_writer(self) -> None:
+        """Writes (uploads, access changes) are for editors and admins only,
+        whoever calls the store; the API checks first for a clear 403."""
+        if self._access is None:
+            raise RuntimeError("Writes need a scoped store (store.scoped(access)).")
+        if getattr(self._access, "role", None) not in WRITER_ROLES:
+            raise PermissionError("Only editors and admins can write documents.")
+
     @contextmanager
     def _begin(self):
         with self._engine.begin() as conn:
@@ -287,8 +275,7 @@ class HybridStore:
         in or a clearance above theirs (the API checks first, for a clear 403)."""
         if not chunks:
             raise ValueError("add_document needs at least one chunk")
-        if self._access is None:
-            raise RuntimeError("add_document needs a scoped store (store.scoped(access)).")
+        self._require_writer()
         doc_id, filename = chunks[0].doc_id, chunks[0].filename
         if any(c.doc_id != doc_id for c in chunks):
             raise ValueError("add_document takes the chunks of one document")
@@ -329,7 +316,8 @@ class HybridStore:
         with the document. The org stays the same. Runs under RLS as the
         caller: they must see the document now and be able to see it after
         (their own team, at most their clearance). Raises LookupError if the
-        caller can't see the document."""
+        caller can't see the document, PermissionError for a viewer."""
+        self._require_writer()
         with self._begin() as conn:
             changed = conn.execute(sa.text("""
                 WITH d AS (

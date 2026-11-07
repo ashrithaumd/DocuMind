@@ -50,10 +50,15 @@ def test_pre_alembic_database_is_adopted(tmp_path):
     settings = _settings(tmp_path)
     engine = sa.create_engine(settings.database_url)
     # A database from before Alembic: built by create_all, and from a version
-    # that didn't have the `route` column yet, with a row in it.
+    # that didn't have the `route` column yet, with a row in it. It never had
+    # the columns later revisions add (user_id, org_id: 0007) either.
     Base.metadata.create_all(engine)
     with engine.begin() as conn:
         conn.execute(sa.text("ALTER TABLE query_logs DROP COLUMN route"))
+        for table in ("query_logs", "feedback"):
+            conn.execute(sa.text(f"DROP INDEX ix_{table}_org_id"))
+            conn.execute(sa.text(f"ALTER TABLE {table} DROP COLUMN org_id"))
+            conn.execute(sa.text(f"ALTER TABLE {table} DROP COLUMN user_id"))
         conn.execute(sa.text(
             "INSERT INTO query_logs (question, outcome, regenerated) VALUES ('q', 'answered', 0)"
         ))

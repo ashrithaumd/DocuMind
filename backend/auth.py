@@ -128,9 +128,13 @@ async def get_principal(
 async def get_admin_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
-    """get_principal plus Firebase's revoked-token check, for admin routes.
-    (Requiring role=admin comes with the admin-only diagnostics commit.)"""
-    return await _principal(credentials, check_revoked=True)
+    """For /admin/*: get_principal plus Firebase's revoked-token check, and
+    role admin (403 otherwise). What an admin reads is still limited to
+    their own org, by RLS."""
+    principal = await _principal(credentials, check_revoked=True)
+    if principal.role != "admin":
+        raise HTTPException(status_code=403, detail="Admins only.")
+    return principal
 
 
 async def _principal(credentials, check_revoked: bool) -> Principal:

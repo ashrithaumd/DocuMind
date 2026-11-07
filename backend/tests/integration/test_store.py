@@ -11,7 +11,7 @@ from ingestion.chunking import Chunk
 from ingestion.store import Access, HybridStore, set_access
 from tests.helpers import FakeEmbeddings
 
-ORG = Access(org_id="o1", clearance=0)
+ORG = Access(org_id="o1", clearance=0, role="editor")
 
 
 @pytest.fixture

@@ -7,8 +7,10 @@ Endpoints:
     POST /query         — run the full pipeline, return one JSON response
     POST /query/stream  — same pipeline over SSE: stage events, then the
                           verified answer, citations, and outcome
-    GET  /admin/logs    — recent query logs (Postgres)
-    GET  /admin/stats   — outcome counts + per-stage latency percentiles
+    PATCH /documents/{doc_id}/access — change a document's team/clearance
+                          (editors/admins), with every chunk at once
+    GET  /admin/logs    — recent query logs of the admin's org (admins only)
+    GET  /admin/stats   — the same org's outcome counts + latency percentiles
     GET  /me            — who the token belongs to and whether they're set up
     GET  /health        — liveness + index size
 
@@ -28,6 +30,7 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager
+from functools import partial
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
@@ -36,6 +39,7 @@ from pydantic import BaseModel, Field
 
 from auth import Principal, get_admin_principal, get_me, get_principal
 from config import get_settings
+from db.access import WRITER_ROLES
 from db import session as db
 from deps import get_store
 from graph.pipeline import pipeline
@@ -85,6 +89,11 @@ class QueryRequest(BaseModel):
     doc_ids: list[str] | None = None
 
 
+class AccessChange(BaseModel):
+    clearance: int = Field(ge=0)
+    team_id: str | None = None  # None = org-wide
+
+
 class FeedbackRequest(BaseModel):
     query_id: int
     thumbs_up: bool
@@ -108,10 +117,13 @@ def _merge_update(final: dict, delta: dict) -> None:
             final[key] = value
 
 
-def _db_record(request: QueryRequest, state: dict, total_ms: float) -> dict:
+def _db_record(request: QueryRequest, state: dict, total_ms: float,
+               principal: Principal) -> dict:
     timings = state.get("timings", {})
     redaction_categories = state.get("redaction_categories", [])
     return {
+        "user_id": principal.user_id,
+        "org_id": principal.org_id,
         # state["question"] is the REDACTED question (set by input_validation);
         # the raw one must not reach the log. Fall back to the request only for
         # crashes before validation ran.
@@ -179,9 +191,6 @@ def _stage_detail(node: str, delta: dict) -> dict:
 # --- endpoints -----------------------------------------------------------------
 
 
-UPLOAD_ROLES = {"editor", "admin"}
-
-
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...),
                           # Required: who may read it is always an explicit choice.
@@ -192,13 +201,7 @@ async def upload_document(file: UploadFile = File(...),
     # Checked before any work. RLS enforces the team and clearance rules
     # again in the database; these give a clear 403 instead of a 500.
     team_id = team_id or None
-    if principal.role not in UPLOAD_ROLES:
-        raise HTTPException(status_code=403, detail="Only editors and admins can upload.")
-    if team_id is not None and team_id not in principal.team_ids:
-        raise HTTPException(status_code=403, detail=f"You're not in team '{team_id}'.")
-    if clearance > principal.clearance:
-        raise HTTPException(status_code=403,
-                            detail=f"Clearance {clearance} is above your own ({principal.clearance}).")
+    _check_can_grant(principal, team_id, clearance)
     settings = get_settings()
     file_bytes = await file.read()
     filename = file.filename or ""
@@ -237,6 +240,20 @@ async def upload_document(file: UploadFile = File(...),
     }
 
 
+def _check_can_grant(principal: Principal, team_id: str | None, clearance: int) -> None:
+    """Uploads and access changes: editors and admins only, never into a team
+    they're not in or above their own clearance. RLS enforces the team and
+    clearance rules again in the database, and the store the role; these
+    give a clear 403 first."""
+    if principal.role not in WRITER_ROLES:
+        raise HTTPException(status_code=403, detail="Only editors and admins can do that.")
+    if team_id is not None and team_id not in principal.team_ids:
+        raise HTTPException(status_code=403, detail=f"You're not in team '{team_id}'.")
+    if clearance > principal.clearance:
+        raise HTTPException(status_code=403,
+                            detail=f"Clearance {clearance} is above your own ({principal.clearance}).")
+
+
 @app.get("/documents")
 async def list_documents(principal: Principal = Depends(get_principal)):
     """Documents the caller can see, newest first. The first entry is the
@@ -244,13 +261,28 @@ async def list_documents(principal: Principal = Depends(get_principal)):
     return {"documents": get_store().scoped(principal).list_documents()}
 
 
-def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
+@app.patch("/documents/{doc_id}/access")
+async def change_document_access(doc_id: str, change: AccessChange,
+                                 principal: Principal = Depends(get_principal)):
+    """Move a document to another team (or org-wide) and/or clearance; its
+    chunks follow in the same statement. 404 if the caller can't see it."""
+    team_id = change.team_id or None
+    _check_can_grant(principal, team_id, change.clearance)
+    try:
+        await asyncio.to_thread(get_store().scoped(principal).set_document_access,
+                                doc_id, team_id=team_id, clearance=change.clearance)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=f"No document {doc_id}.") from exc
+    return {"doc_id": doc_id, "team_id": team_id, "clearance": change.clearance}
+
+
+def _pipeline_error(exc: Exception, llm_usage: dict, diagnostics: bool) -> JSONResponse:
     """Structured failure for /query: which pipeline node failed and a
     provider-neutral error kind (raw provider messages stay in the server
-    log). With EXPOSE_LLM_DIAGNOSTICS on, it also carries the full error text
-    and every LLM attempt the request made, so the eval report can record
-    quota ids and limits. LLM capacity errors are 503 (retry later); anything
-    else is 500."""
+    log). For admins (`diagnostics`) it also carries the full error text and
+    every LLM attempt the request made, so the eval report can record quota
+    ids and limits. LLM capacity errors are 503 (retry later); anything else
+    is 500."""
     # LangGraph notes the failing node on the exception:
     # "During task with name 'generate' and id '...'".
     notes = " ".join(getattr(exc, "__notes__", []))
@@ -259,7 +291,7 @@ def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
     kind = classify_error(exc)
     logger.exception("Pipeline failed at %s (%s)", stage, kind or "internal")
     content = {"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal"}
-    if get_settings().expose_llm_diagnostics:
+    if diagnostics:
         content |= {"message": f"{type(exc).__name__}: {exc}", "llm_usage": llm_usage}
     return JSONResponse(status_code=503 if kind else 500, content=content)
 
@@ -272,11 +304,11 @@ async def query(request: QueryRequest, principal: Principal = Depends(get_princi
         try:
             state = await pipeline.ainvoke(_initial_state(request, principal))
         except Exception as exc:
-            return _pipeline_error(exc, llm_usage)
+            return _pipeline_error(exc, llm_usage, diagnostics=principal.role == "admin")
     total_ms = round((time.perf_counter() - start) * 1000, 1)
 
     query_id = await asyncio.to_thread(
-        db.log_query, _db_record(request, state, total_ms)
+        partial(db.log_query, _db_record(request, state, total_ms, principal), access=principal)
     )
 
     if state.get("outcome") == "rejected_input":
@@ -303,7 +335,7 @@ async def query(request: QueryRequest, principal: Principal = Depends(get_princi
         ],
         "timings": {**state.get("timings", {}), "total_ms": total_ms},
     }
-    if get_settings().expose_llm_diagnostics:
+    if principal.role == "admin":
         # Attempts per model and the full text of every failed attempt
         # (retried ones included), for the eval report.
         response["llm_usage"] = llm_usage
@@ -344,7 +376,8 @@ async def query_stream(request: QueryRequest, principal: Principal = Depends(get
             # Log BEFORE the done event so it can carry the query_id the
             # feedback buttons need to reference this exchange.
             query_id = await asyncio.to_thread(
-                db.log_query, _db_record(request, final, total_ms)
+                partial(db.log_query, _db_record(request, final, total_ms, principal),
+                        access=principal)
             )
             yield _sse(
                 {
@@ -363,15 +396,16 @@ async def query_stream(request: QueryRequest, principal: Principal = Depends(get
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.post("/feedback", dependencies=[Depends(get_principal)])
-async def submit_feedback(request: FeedbackRequest):
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest, principal: Principal = Depends(get_principal)):
     """Thumbs up/down (plus optional comment) for a logged query.
 
     Upserts: one feedback row per query, so re-clicking or adding a comment
     updates the verdict instead of double-counting it in /admin/stats.
     """
     status = await asyncio.to_thread(
-        db.log_feedback, request.query_id, request.thumbs_up, request.comment
+        partial(db.log_feedback, request.query_id, request.thumbs_up, request.comment,
+                access=principal, user_id=principal.user_id)
     )
     if status == "unknown_query":
         raise HTTPException(status_code=404, detail=f"No query with id {request.query_id}.")
@@ -384,14 +418,16 @@ async def submit_feedback(request: FeedbackRequest):
     return {"status": "ok"}
 
 
-@app.get("/admin/logs", dependencies=[Depends(get_admin_principal)])
-async def admin_logs(limit: int = 20):
-    return {"logs": await asyncio.to_thread(db.fetch_logs, min(limit, 100))}
+@app.get("/admin/logs")
+async def admin_logs(limit: int = 20, principal: Principal = Depends(get_admin_principal)):
+    """The admin's own org's logs: RLS hides every other org's rows."""
+    return {"logs": await asyncio.to_thread(partial(db.fetch_logs, min(limit, 100),
+                                                    access=principal))}
 
 
-@app.get("/admin/stats", dependencies=[Depends(get_admin_principal)])
-async def admin_stats():
-    return await asyncio.to_thread(db.fetch_stats)
+@app.get("/admin/stats")
+async def admin_stats(principal: Principal = Depends(get_admin_principal)):
+    return await asyncio.to_thread(partial(db.fetch_stats, access=principal))
 
 
 @app.get("/me")

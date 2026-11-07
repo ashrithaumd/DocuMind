@@ -511,6 +511,16 @@ The user's four changes on top:
    transaction (used by commit 8's script). Tests: an access change updates
    every chunk at once, and no chunk's access ever differs from its
    document's. `/documents` reads the `documents` table under RLS.
+   **Also in this commit: drop the clearance default (migration 0004).**
+   0003 gave `chunks.clearance` and `documents.clearance` `NOT NULL DEFAULT
+   0`. The commit that makes chunk writes copy org, team and clearance from
+   the `documents` row also drops both defaults, so a write that forgets
+   clearance fails instead of defaulting to the lowest level. Tests: a chunk
+   insert with no `documents` row fails, and a chunk or document insert
+   without clearance fails. Deferred from before commit 3 (decided
+   2026-11-06): until this commit the write path has no `documents` row to
+   copy from, and the default can't leak anything in the meantime, because
+   new chunks have no org and are invisible under RLS.
 7. **Admin-only diagnostics, and RLS on the log tables.** Query and
    feedback logs record `user_id` and `org_id`, under RLS by org with
    `FORCE ROW LEVEL SECURITY`. `/admin/*` is admin-only. LLM diagnostics go

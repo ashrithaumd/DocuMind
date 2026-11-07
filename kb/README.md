@@ -66,3 +66,25 @@ and an error code quoted in a postmortem is the one in the manual.
 At the app's default chunking (600 tokens, 90 overlap), the corpus is
 303 chunks; the largest documents split into about 25 to 29
 chunks each.
+
+## Access design
+
+Assignments are in `kb/manifest.yaml`. Some documents are paired on
+purpose, so each rule of the RLS policy (same org, clearance at or below the
+user's, team empty or one of the user's) can fail on its own and show up in
+an eval:
+
+| Test | Documents (team, clearance) | What it proves |
+|---|---|---|
+| Clearance alone, org-wide | #4 CellCore full contract (org-wide, 2) vs #25 its summary (org-wide, 1) | A clearance-1 user in Aurora gets the summary's numbers but never the full contract; neither document is team-scoped, so only the clearance rule is in play. |
+| Clearance alone, top level | #3 board notes (org-wide, 3) | Only clearance-3 users see it, whatever their team. |
+| Team and clearance, same incident | #20 Atlas full report (platform, 2) vs #21 summary (org-wide, 1); #40 forecast full report (data-eng, 2) vs #41 summary (org-wide, 1) | Everyone in the org can read the summary; only the owning team at clearance 2 or above sees the full report's tickets and log details. A detail that only the full report contains, answered for anyone else, is a leak. |
+| Team alone, same clearance, versioned exact terms | #17 Pika gen 2 manual (field-ops, 1) vs #18 gen 3 (org-wide, 1); #28 Current v3 (ml, 1) vs #29 v4 (org-wide, 1) | Same clearance, so only the team rule separates them. The older manual reuses error codes (E-2417, CUR-4107) with different fixes: outside the team, a question about the code must get the current version's answer only. |
+| Team alone, at clearance 0 | #13 field-ops meeting notes (field-ops, 0); #35 ML meeting notes (ml, 0) | The lowest clearance, so only the team rule applies: a clearance-0 member of the team sees them, while a clearance-3 user outside the team doesn't. High clearance never substitutes for team membership. |
+| Team and clearance 3 together | Salary bands #22, #23 (people, 3) and #45, #46 (finance, 3); #26 Gullwing acquisition plan (finance, 3) | Both rules must hold: clearance 3 outside the team, or the team below clearance 3, sees nothing. Finance also has documents at clearance 2 (#34 finance review, #37 Northgate MSA), so a finance member at clearance 2 sees those but not #26, #45 or #46: a clearance step inside one team. |
+| Org isolation, mirrored facts | Expense policies #8 vs #33, on-call runbooks #16 (platform, 1) vs #39 (data-eng, 1), handbooks #5, #6 vs #30, #31, salary bands, postmortems | The same topics with different numbers in each org (meal allowance 75 vs 60 USD, on-call stipend 400 vs 350 USD). An answer with the other org's number is a cross-org leak. |
+| Not an access test: versions at the same access | 2025 vs 2026 handbooks (#5/#6, #30/#31) and expense policies (#7/#8, #32/#33); 2026 vs 2027 salary bands | Both versions are visible to the same users, so these test version disambiguation in retrieval and answering, without being confounded with access. |
+
+Counts: Aurora has 8 / 12 / 2 / 3 documents at clearance 0 / 1 / 2 / 3, 14
+org-wide; Bluefin has 8 / 10 / 4 / 3, 13 org-wide. Every team owns at least
+two documents.

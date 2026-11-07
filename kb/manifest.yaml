@@ -8,9 +8,8 @@
 #   team:       a team id of that org, or null for org-wide
 #   clearance:  0 everyone in the org, 1 internal, 2 confidential, 3 restricted
 #
-# Teams (see kb/README.md):
-#   aurora:  platform, firmware, field-ops, people
-#   bluefin: data-eng, ml, support, finance
+# The deliberate test pairs are described under "Access design" in
+# kb/README.md.
 
 orgs:
   aurora:
@@ -21,23 +20,207 @@ orgs:
     teams: [data-eng, ml, support, finance]
 
 documents:
-  # Org-wide, everyone in Aurora.
+
+  # --- aurora ---
+  - file: aurora/atlas-battery-spec.txt
+    org: aurora
+    team: null
+    clearance: 1
+  - file: aurora/atlas-service-manual.txt
+    org: aurora
+    team: field-ops
+    clearance: 1
+  - file: aurora/board-notes-2026-q3.txt
+    org: aurora
+    team: null
+    clearance: 3
+  - file: aurora/cellcore-supply-agreement.txt
+    org: aurora
+    team: null
+    clearance: 2
+  - file: aurora/employee-handbook-2025.txt
+    org: aurora
+    team: null
+    clearance: 0
+  - file: aurora/employee-handbook-2026.txt
+    org: aurora
+    team: null
+    clearance: 0
+  - file: aurora/expense-policy-2025.txt
+    org: aurora
+    team: null
+    clearance: 0
   - file: aurora/expense-policy.txt
     org: aurora
     team: null
     clearance: 0
-
-  # One team's internal runbook.
+  - file: aurora/field-service-runbook.txt
+    org: aurora
+    team: field-ops
+    clearance: 1
+  - file: aurora/firmware-release-notes-2026.txt
+    org: aurora
+    team: firmware
+    clearance: 1
+  - file: aurora/firmware-release-process.txt
+    org: aurora
+    team: firmware
+    clearance: 1
+  - file: aurora/holiday-calendar-2027.txt
+    org: aurora
+    team: null
+    clearance: 0
+  - file: aurora/meeting-notes-field-ops-2026-10-08.txt
+    org: aurora
+    team: field-ops
+    clearance: 0
+  - file: aurora/meeting-notes-platform-2026-09-14.txt
+    org: aurora
+    team: platform
+    clearance: 1
+  - file: aurora/onboarding-guide.txt
+    org: aurora
+    team: null
+    clearance: 0
   - file: aurora/oncall-runbook-platform.txt
     org: aurora
     team: platform
     clearance: 1
+  - file: aurora/pika-gen2-service-manual.txt
+    org: aurora
+    team: field-ops
+    clearance: 1
+  - file: aurora/pika-gen3-service-manual.txt
+    org: aurora
+    team: null
+    clearance: 1
+  - file: aurora/pika-picker-spec.txt
+    org: aurora
+    team: null
+    clearance: 1
+  - file: aurora/postmortem-2026-08-atlas-fleet-stall-full-report.txt
+    org: aurora
+    team: platform
+    clearance: 2
+  - file: aurora/postmortem-2026-08-atlas-fleet-stall.txt
+    org: aurora
+    team: null
+    clearance: 1
+  - file: aurora/salary-bands-2026.txt
+    org: aurora
+    team: people
+    clearance: 3
+  - file: aurora/salary-bands-2027.txt
+    org: aurora
+    team: people
+    clearance: 3
+  - file: aurora/security-policy.txt
+    org: aurora
+    team: null
+    clearance: 0
+  - file: aurora/vendor-contract-cellcore.txt
+    org: aurora
+    team: null
+    clearance: 1
 
-  # Restricted, one team only.
+  # --- bluefin ---
+  - file: bluefin/acquisition-plan-gullwing.txt
+    org: bluefin
+    team: finance
+    clearance: 3
+  - file: bluefin/current-forecasting-spec.txt
+    org: bluefin
+    team: null
+    clearance: 1
+  - file: bluefin/current-v3-operations-manual.txt
+    org: bluefin
+    team: ml
+    clearance: 1
+  - file: bluefin/current-v4-operations-manual.txt
+    org: bluefin
+    team: null
+    clearance: 1
+  - file: bluefin/employee-handbook-2025.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/employee-handbook-2026.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/expense-policy-2025.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/expense-policy.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/meeting-notes-finance-2026-09-30.txt
+    org: bluefin
+    team: finance
+    clearance: 2
+  - file: bluefin/meeting-notes-ml-2026-10-02.txt
+    org: bluefin
+    team: ml
+    clearance: 0
+  - file: bluefin/ml-model-release-checklist.txt
+    org: bluefin
+    team: ml
+    clearance: 1
+  - file: bluefin/northgate-master-services-agreement.txt
+    org: bluefin
+    team: finance
+    clearance: 2
+  - file: bluefin/onboarding-guide.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/oncall-runbook-data-eng.txt
+    org: bluefin
+    team: data-eng
+    clearance: 1
+  - file: bluefin/postmortem-2026-07-forecast-outage-full-report.txt
+    org: bluefin
+    team: data-eng
+    clearance: 2
+  - file: bluefin/postmortem-2026-07-forecast-outage.txt
+    org: bluefin
+    team: null
+    clearance: 1
+  - file: bluefin/pricing-2027.txt
+    org: bluefin
+    team: null
+    clearance: 2
+  - file: bluefin/release-notes-2026.txt
+    org: bluefin
+    team: null
+    clearance: 1
+  - file: bluefin/remote-work-policy.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/salary-bands-2026.txt
+    org: bluefin
+    team: finance
+    clearance: 3
   - file: bluefin/salary-bands-2027.txt
     org: bluefin
     team: finance
     clearance: 3
-
-  # TODO(user): the remaining 47 documents. Every file under kb/docs/ needs
-  # exactly one entry.
+  - file: bluefin/security-policy.txt
+    org: bluefin
+    team: null
+    clearance: 0
+  - file: bluefin/support-escalation-runbook.txt
+    org: bluefin
+    team: support
+    clearance: 1
+  - file: bluefin/tide-admin-guide.txt
+    org: bluefin
+    team: support
+    clearance: 1
+  - file: bluefin/tide-dashboards-spec.txt
+    org: bluefin
+    team: null
+    clearance: 1

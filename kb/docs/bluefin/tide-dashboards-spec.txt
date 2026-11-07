@@ -1,4 +1,5 @@
 Tide dashboards — spec notes
+Version 1.0, 2026.
 
 Tide is the dashboard product. Each customer gets a dedicated Snowflake
 schema and up to 25 dashboards in the standard plan (unlimited in

@@ -1,0 +1,367 @@
+Incident report BLU-INC-2026-0722 — stale forecasts for 11 customers
+
+Version 2.0 (final), 2026. Severity P1. Customer impact: 19 hours of stale forecasts (02:00 to 21:00 Eastern, 22 July 2026). Author: Priya Raman, ML team. Reviewed by the data-eng lead.
+
+This is the full report; the short summary is postmortem-2026-07-forecast-outage.
+
+1. Summary
+
+The nightly forecast run at 02:00 Eastern on 22 July 2026 failed for 11 customers, including
+Northgate Grocers, our largest account. Their Tide dashboards kept showing the previous day's
+forecasts until fresh ones were published at 21:00. Nobody at Bluefin was paged: the failure
+alert went to a Slack channel that had been archived in June, and the first we heard was from
+Northgate's planning team at 07:40. The trigger was a schema change to the promotions table,
+which renamed the column promo_type to promotion_type; the forecasting job still read the old
+name and failed with CUR-2215 PROMO_CALENDAR_INVALID.
+
+2. Impact
+
+- 11 customers received stale forecasts for one day; 4 of them reordered from stale numbers.
+- Northgate Grocers estimated 214 stores ordered from the previous day's forecast.
+- We credited Northgate 8,000 US dollars (ticket SUP-55102) under clause 7 of the master
+  services agreement, which treats forecasts more than 12 hours late as unavailable.
+
+3. Timeline (Eastern time, 22 July 2026)
+
+01:12 — Pull request #2291 to the dbt project, renaming promo_type to promotion_type, is merged.
+
+01:40 — Nightly dbt build applies the rename to the promotions table for all tenants.
+
+02:00 — Nightly forecast run starts.
+
+02:06 — Run fails for 11 tenants with CUR-2215 PROMO_CALENDAR_INVALID; alert posted to #ml-alerts-old (archived).
+
+07:40 — Northgate's planning team reports stale forecasts through the Enterprise support line.
+
+07:52 — Support on duty opens SUP-55102 and escalates to the ML on-call as P1.
+
+08:15 — ML on-call identifies the column rename in the failing query.
+
+08:40 — Decision: patch the forecasting job to read the new name rather than revert the rename.
+
+11:05 — Patched job released after review.
+
+11:20 — Re-run started for the 11 tenants with run date 22 July.
+
+20:10 — Re-run completes; quality checks pass.
+
+21:00 — Forecasts published to Tide and exports for all 11 tenants. Incident resolved.
+
+21:30 — Customer success sends incident notices to the 11 customers.
+
+4. Affected tenants and runs
+
+Northgate Grocers: run 760190 failed at 02:05 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 898029 succeeded at 20:16; stores affected 433.
+
+tenant-965: run 704175 failed at 02:08 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 871106 succeeded at 20:22; stores affected 528.
+
+tenant-693: run 747225 failed at 02:05 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 822668 succeeded at 20:45; stores affected 663.
+
+tenant-978: run 752748 failed at 02:03 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 893530 succeeded at 20:46; stores affected 561.
+
+tenant-141: run 790068 failed at 02:01 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 800578 succeeded at 20:45; stores affected 717.
+
+tenant-846: run 746009 failed at 02:06 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 853347 succeeded at 20:20; stores affected 68.
+
+tenant-645: run 792461 failed at 02:02 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 822251 succeeded at 20:20; stores affected 687.
+
+tenant-837: run 711181 failed at 02:03 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 896259 succeeded at 20:48; stores affected 87.
+
+tenant-671: run 720721 failed at 02:06 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 842853 succeeded at 20:32; stores affected 589.
+
+tenant-360: run 741157 failed at 02:07 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 847815 succeeded at 20:42; stores affected 465.
+
+tenant-152: run 764797 failed at 02:09 with CUR-2215 PROMO_CALENDAR_INVALID; re-run 861177 succeeded at 20:10; stores affected 76.
+
+5. Root cause
+
+The promotions table had no schema contract. The data-eng team renamed a column to match a new
+naming standard and checked every dbt model that used it, but the forecasting job reads the
+table directly, outside dbt, so nothing flagged it. Separately, the forecast-failure alert was
+configured to post to a Slack channel that was archived during a channel clean-up in June; the
+alert succeeded technically, so nothing reported that it had nowhere to go.
+
+6. Action items
+
+- Schema contracts on every table the forecasting job reads. Owner: data-eng. Ticket DE-1873. Due 30 September 2026.
+
+- Route the forecast-failure alert to PagerDuty, not Slack. Owner: ML lead. Ticket ML-0942. Due 29 July 2026.
+
+- Credit 8,000 USD to Northgate Grocers. Owner: finance. Ticket SUP-55102. Due 5 August 2026.
+
+- Alert when an alert's destination channel is archived. Owner: platform. Ticket PLT-0311. Due 31 August 2026.
+
+7. Detection
+
+Time from the first failure to a human knowing about it: 5 hours 40 minutes. We measure detection from the
+first failed operation, not from the first alert, because an alert that nobody sees does not
+count. Our target for this class of incident is 10 minutes. The gap is discussed in the root
+cause and the action items.
+
+8. Response
+
+The incident commander role was taken by the first engineer who acknowledged the incident and
+handed to the team lead once they joined. Two channels were used: one for the technical
+response and one for customer communication, which kept the technical channel readable. The
+first status-page update was posted 2 hours 25 minutes after detection. Engineers rotated every two hours
+to avoid tired decisions, and every decision with customer impact was written down in the
+incident document with its time and who made it.
+
+9. Five whys
+
+Why did customers see an outage? Because the change reached production unchecked.
+Why was it unchecked? Because the validation step did not cover this kind of change.
+Why did it not cover it? Because nobody had written down which changes it was meant to catch.
+Why was that not written down? Because the step was added in a hurry after an earlier incident
+and never revisited.
+Why was it never revisited? Because we had no regular review of our safety checks. The new
+quarterly review of safety checks closes that gap.
+
+10. Customer communication
+
+Customers affected (Northgate Grocers and 10 other tenants) received a first notice during the incident, an update when service
+was restored, and this report's summary within five business days. Every notice said what
+happened, what it meant for them, and what we were doing, in plain language and without blaming
+anyone. Account managers followed up by phone with every affected customer.
+
+11. Appendix: scheduler log excerpt
+
+2026-07-22T02:01:41-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:05:50-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:09:32-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:05:35-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:01:37-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:03:30-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:06:29-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:01:46-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:03:19-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:01:13-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:05:49-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:05:27-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:09:28-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:09:29-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:01:32-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:09:11-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:06:27-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:01:19-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:02:14-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:07:21-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:04:34-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:04:45-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:01:06-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:00:56-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:04:03-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:00:22-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:01:56-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:09:52-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:09:07-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:06:14-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:01:39-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:07:28-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:08:37-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:02:02-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:08:22-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:07:05-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:01:35-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:08:47-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:05:23-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:02:09-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:07:18-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:07:52-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:05:32-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:04:24-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:07:14-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:05:42-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:02:24-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:09:43-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:07:01-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:08:48-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:04:21-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:06:44-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:02:50-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:01:38-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:04:20-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:09:47-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:04:30-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:02:51-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:05:38-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:04:13-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:07:12-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:07:18-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:04:41-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:02:43-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:04:29-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:06:10-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:07:45-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:05:55-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:02:43-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:00:39-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:04:50-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:04:22-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:06:08-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:08:28-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:06:56-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:01:33-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:06:45-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:09:34-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:08:32-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:07:39-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:02:17-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:09:05-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:08:16-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:05:48-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:07:13-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:06:10-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:09:53-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:04:47-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:05:07-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:04:47-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:08:46-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:01:31-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:00:10-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:06:07-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:04:01-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:01:33-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-837 column=promo_type not found in promotions
+
+2026-07-22T02:01:59-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:06:56-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:06:18-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:02:13-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:03:24-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions
+
+2026-07-22T02:09:47-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:02:02-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:07:11-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:06:09-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-141 column=promo_type not found in promotions
+
+2026-07-22T02:06:51-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-152 column=promo_type not found in promotions
+
+2026-07-22T02:06:57-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:08:27-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:07:31-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:05:59-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:09:33-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-965 column=promo_type not found in promotions
+
+2026-07-22T02:06:03-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:08:56-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:07:07-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-360 column=promo_type not found in promotions
+
+2026-07-22T02:00:31-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-671 column=promo_type not found in promotions
+
+2026-07-22T02:01:00-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:08:54-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-978 column=promo_type not found in promotions
+
+2026-07-22T02:07:07-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-693 column=promo_type not found in promotions
+
+2026-07-22T02:01:35-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-645 column=promo_type not found in promotions
+
+2026-07-22T02:01:12-04:00 scheduler ERROR CUR-2215 PROMO_CALENDAR_INVALID tenant=tenant-846 column=promo_type not found in promotions

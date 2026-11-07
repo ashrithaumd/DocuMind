@@ -1,4 +1,5 @@
 Field-ops — on-site service runbook
+Version 1.0, 2026.
 
 Response times by contract tier
 - Platinum: technician on site within 4 hours, 24/7.

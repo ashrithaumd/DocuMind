@@ -1,4 +1,5 @@
 Bluefin price list for 2027 (confidential, do not send to customers as is)
+Version 1.0, 2027.
 
 Tide dashboards
 - Standard: 1,200 USD per month, up to 25 dashboards.

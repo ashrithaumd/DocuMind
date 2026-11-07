@@ -1,0 +1,648 @@
+Current forecasting, version 3 (legacy) — operations guide
+
+Version 3.8, 2025. Published by Bluefin Analytics. This edition replaces all earlier versions of the Current v3 operations guide.
+
+1. How to use this document
+
+This document is for the people who keep Current v3 running: support engineers, data engineers and customer administrators. Section 2 lists the
+key specifications. Section 3 covers safety and access. Section 4 is the reference of
+every error code, with what it means, the usual causes and what to do. Section 5 lists
+the configuration keys with their identifiers and service intervals. Section 6 has step-by-step
+procedures, and section 7 the maintenance schedule. When you open a ticket about
+Current v3, always quote the error code and the identifier from these tables exactly as
+written: our tooling searches on them.
+
+2. Key specifications
+
+- Forecast horizon: 6 weeks, daily
+- Refresh: nightly at 03:00 Eastern
+- Accuracy target: WAPE under 32 percent at store-product-week
+- History needed: at least 3 years of point-of-sale data
+- Fallback: ARIMA model when the main model fails
+- Export formats: daily CSV drop only
+- API rate limit: 300 requests per minute
+- Data retention: forecast history kept for 180 days
+
+3. Safety and access
+
+Production changes need a second engineer to review them. Customer data stays in the customer's own schema: never copy it to a laptop or a ticket. Use the read-only role for investigation and the admin role only to apply a fix.
+Every intervention is recorded against a ticket in the SUP queue. A ticket id looks like
+SUP-52582. Never close a ticket without recording what was changed, and never
+change two things at once: if the problem comes back, you need to know which change mattered.
+
+4. Error code reference
+
+4.1 Ingestion errors
+
+CUR-1300 SOURCE_AUTH_FAILED. Raised by the ingestion subsystem. Usual cause: a component damaged in transport or by impact. First check: measure the supply voltage at the connector. Severity: critical. Needs a manual reset from the service menu.
+
+CUR-1901 SCHEMA_MISMATCH. Raised by the ingestion subsystem. Usual cause: a configuration change made outside the change process. First check: run the built-in self-test from the service menu. Severity: error. Needs a manual reset from the service menu.
+
+CUR-1202 FILE_NOT_FOUND. Raised by the ingestion subsystem. Usual cause: a firmware or software version mismatch. First check: check the event log for the five minutes before the error. Severity: critical. Clears itself once the cause is fixed.
+
+CUR-1203 ROW_COUNT_DROP. Raised by the ingestion subsystem. Usual cause: intermittent network loss. First check: compare the configuration with the last known-good snapshot. Severity: warning. Stops the unit until acknowledged.
+
+CUR-1604 DUPLICATE_KEYS. Raised by the ingestion subsystem. Usual cause: intermittent network loss. First check: check the event log for the five minutes before the error. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-1805 LATE_ARRIVAL. Raised by the ingestion subsystem. Usual cause: a component damaged in transport or by impact. First check: compare the configuration with the last known-good snapshot. Severity: error. Needs a manual reset from the service menu.
+
+CUR-1206 ENCODING_INVALID. Raised by the ingestion subsystem. Usual cause: a worn component past its service interval. First check: check the event log for the five minutes before the error. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-1807 PARTITION_MISSING. Raised by the ingestion subsystem. Usual cause: intermittent network loss. First check: run the built-in self-test from the service menu. Severity: warning. Clears itself once the cause is fixed.
+
+CUR-1108 QUOTA_EXCEEDED. Raised by the ingestion subsystem. Usual cause: ambient temperature outside the rated range. First check: inspect the connector and reseat it. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-1809 CHECKSUM_FAILED. Raised by the ingestion subsystem. Usual cause: a worn component past its service interval. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Clears itself once the cause is fixed.
+
+4.2 Feature store errors
+
+CUR-2300 FEATURE_NULL_RATE_HIGH. Raised by the feature store subsystem. Usual cause: a worn component past its service interval. First check: check the site network dashboard for drops. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-2401 FEATURE_DRIFT. Raised by the feature store subsystem. Usual cause: a configuration change made outside the change process. First check: check the event log for the five minutes before the error. Severity: critical. Clears itself once the cause is fixed.
+
+CUR-2102 BACKFILL_INCOMPLETE. Raised by the feature store subsystem. Usual cause: a configuration change made outside the change process. First check: check the event log for the five minutes before the error. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-2603 JOIN_EXPLOSION. Raised by the feature store subsystem. Usual cause: ambient temperature outside the rated range. First check: inspect the connector and reseat it. Severity: critical. Clears itself once the cause is fixed.
+
+CUR-2104 FEATURE_VERSION_MISSING. Raised by the feature store subsystem. Usual cause: an expired credential. First check: run the built-in self-test from the service menu. Severity: error. Stops the unit until acknowledged.
+
+CUR-2405 HOLIDAY_CALENDAR_STALE. Raised by the feature store subsystem. Usual cause: a configuration change made outside the change process. First check: confirm the unit is on the current release. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-2606 WEATHER_FEED_LATE. Raised by the feature store subsystem. Usual cause: a configuration change made outside the change process. First check: check the event log for the five minutes before the error. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-2215 PROMO_CALENDAR_INVALID. Raised by the feature store subsystem. Usual cause: a configuration change made outside the change process. First check: run the built-in self-test from the service menu. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-2008 STORE_MAPPING_GAP. Raised by the feature store subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-2209 TIMEZONE_MISMATCH. Raised by the feature store subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: compare the configuration with the last known-good snapshot. Severity: warning. Clears itself once the cause is fixed.
+
+4.3 Training errors
+
+CUR-3500 TRAINING_DIVERGED. Raised by the training subsystem. Usual cause: ambient temperature outside the rated range. First check: check the site network dashboard for drops. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-3101 GPU_OUT_OF_MEMORY. Raised by the training subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-3302 CHECKPOINT_CORRUPT. Raised by the training subsystem. Usual cause: a loose or corroded connector. First check: compare the configuration with the last known-good snapshot. Severity: warning. Clears itself once the cause is fixed.
+
+CUR-3103 BACKTEST_REGRESSION. Raised by the training subsystem. Usual cause: a worn component past its service interval. First check: inspect the connector and reseat it. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-3404 TRAINING_TIMEOUT. Raised by the training subsystem. Usual cause: a component damaged in transport or by impact. First check: run the built-in self-test from the service menu. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-3305 SPOT_INSTANCE_LOST. Raised by the training subsystem. Usual cause: a firmware or software version mismatch. First check: compare the configuration with the last known-good snapshot. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-3006 SEED_NOT_SET. Raised by the training subsystem. Usual cause: intermittent network loss. First check: inspect the connector and reseat it. Severity: warning. Clears itself once the cause is fixed.
+
+CUR-3907 DATA_LEAKAGE_DETECTED. Raised by the training subsystem. Usual cause: an expired credential. First check: compare the configuration with the last known-good snapshot. Severity: critical. Stops the unit until acknowledged.
+
+CUR-3508 HYPERPARAM_INVALID. Raised by the training subsystem. Usual cause: intermittent network loss. First check: measure the supply voltage at the connector. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-3109 MODEL_CARD_MISSING. Raised by the training subsystem. Usual cause: a loose or corroded connector. First check: confirm the unit is on the current release. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+4.4 Scoring errors
+
+CUR-4107 SCORING_FEATURES_STALE. Raised when the newest feature row is older than 48 hours. Usual cause: wear or damage to the feature freshness limit. Fix: replace or reset the feature freshness limit (CUR3-CFG-scoring.max_feature_age_hours) and run the self-test. If it returns within 24 hours, escalate to the Current v3 engineering team.
+
+CUR-4401 MODEL_ALIAS_MISSING. Raised by the scoring subsystem. Usual cause: a configuration change made outside the change process. First check: run the built-in self-test from the service menu. Severity: critical. Clears itself once the cause is fixed.
+
+CUR-4502 PREDICTION_NEGATIVE. Raised by the scoring subsystem. Usual cause: a configuration change made outside the change process. First check: confirm the unit is on the current release. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-4203 SCORING_TIMEOUT. Raised by the scoring subsystem. Usual cause: a component damaged in transport or by impact. First check: run the built-in self-test from the service menu. Severity: critical. Needs a manual reset from the service menu.
+
+CUR-4104 OUTPUT_ROW_MISMATCH. Raised by the scoring subsystem. Usual cause: a worn component past its service interval. First check: check the site network dashboard for drops. Severity: error. Stops the unit until acknowledged.
+
+CUR-4405 MODEL_VERSION_UNKNOWN. Raised by the scoring subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the event log for the five minutes before the error. Severity: error. Stops the unit until acknowledged.
+
+CUR-4206 SCORING_OOM. Raised by the scoring subsystem. Usual cause: a configuration change made outside the change process. First check: check the site network dashboard for drops. Severity: warning. Clears itself once the cause is fixed.
+
+CUR-4207 CONFIDENCE_INTERVAL_INVALID. Raised by the scoring subsystem. Usual cause: a component damaged in transport or by impact. First check: confirm the unit is on the current release. Severity: critical. Stops the unit until acknowledged.
+
+CUR-4908 STORE_NOT_SCORED. Raised by the scoring subsystem. Usual cause: a worn component past its service interval. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-4909 SCORING_SKIPPED. Raised by the scoring subsystem. Usual cause: a worn component past its service interval. First check: check the site network dashboard for drops. Severity: warning. Stops the unit until acknowledged.
+
+4.5 Export errors
+
+CUR-5300 SFTP_AUTH_FAILED. Raised by the export subsystem. Usual cause: ambient temperature outside the rated range. First check: check the event log for the five minutes before the error. Severity: warning. Stops the unit until acknowledged.
+
+CUR-5901 EXPORT_FILE_TOO_LARGE. Raised by the export subsystem. Usual cause: a loose or corroded connector. First check: confirm the unit is on the current release. Severity: critical. Needs a manual reset from the service menu.
+
+CUR-5802 API_RATE_LIMITED. Raised by the export subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: inspect the connector and reseat it. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-5203 CSV_DELIMITER_CONFLICT. Raised by the export subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: confirm the unit is on the current release. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-5204 EXPORT_LATE. Raised by the export subsystem. Usual cause: a loose or corroded connector. First check: inspect the connector and reseat it. Severity: error. Clears itself once the cause is fixed.
+
+CUR-5405 WEBHOOK_REJECTED. Raised by the export subsystem. Usual cause: a configuration change made outside the change process. First check: check the site network dashboard for drops. Severity: critical. Needs a manual reset from the service menu.
+
+CUR-5006 ERP_MAPPING_MISSING. Raised by the export subsystem. Usual cause: intermittent network loss. First check: run the built-in self-test from the service menu. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-5407 EXPORT_TRUNCATED. Raised by the export subsystem. Usual cause: a worn component past its service interval. First check: measure the supply voltage at the connector. Severity: error. Clears itself once the cause is fixed.
+
+CUR-5308 TOKEN_EXPIRED. Raised by the export subsystem. Usual cause: debris or dust on the sensor surface. First check: check the site network dashboard for drops. Severity: error. Stops the unit until acknowledged.
+
+CUR-5309 EXPORT_DUPLICATED. Raised by the export subsystem. Usual cause: a worn component past its service interval. First check: confirm the unit is on the current release. Severity: warning. Needs a manual reset from the service menu.
+
+4.6 Scheduler errors
+
+CUR-6000 JOB_MISSED. Raised by the scheduler subsystem. Usual cause: an expired credential. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Clears itself once the cause is fixed.
+
+CUR-6601 JOB_OVERLAP. Raised by the scheduler subsystem. Usual cause: a firmware or software version mismatch. First check: compare the configuration with the last known-good snapshot. Severity: critical. Needs a manual reset from the service menu.
+
+CUR-6302 DEPENDENCY_FAILED. Raised by the scheduler subsystem. Usual cause: debris or dust on the sensor surface. First check: check the site network dashboard for drops. Severity: error. Clears itself once the cause is fixed.
+
+CUR-6403 CRON_INVALID. Raised by the scheduler subsystem. Usual cause: ambient temperature outside the rated range. First check: confirm the unit is on the current release. Severity: critical. Stops the unit until acknowledged.
+
+CUR-6704 QUEUE_BACKLOG. Raised by the scheduler subsystem. Usual cause: a firmware or software version mismatch. First check: measure the supply voltage at the connector. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+CUR-6405 WORKER_LOST. Raised by the scheduler subsystem. Usual cause: a component damaged in transport or by impact. First check: inspect the connector and reseat it. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-6206 RETRY_EXHAUSTED. Raised by the scheduler subsystem. Usual cause: a configuration change made outside the change process. First check: inspect the connector and reseat it. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-6107 LOCK_HELD. Raised by the scheduler subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: compare the configuration with the last known-good snapshot. Severity: warning. Needs a manual reset from the service menu.
+
+CUR-6608 CALENDAR_CONFLICT. Raised by the scheduler subsystem. Usual cause: ambient temperature outside the rated range. First check: check the site network dashboard for drops. Severity: warning. Clears itself once the cause is fixed.
+
+CUR-6909 PAUSED_BY_ADMIN. Raised by the scheduler subsystem. Usual cause: a component damaged in transport or by impact. First check: check the event log for the five minutes before the error. Severity: error. Clears itself once the cause is fixed.
+
+4.7 Troubleshooting by symptom
+
+Symptom (ingestion): Nightly jobs finish later every week.
+What to do: Review the ingestion timings and queue depth; a growing backlog points to too few workers.
+
+Symptom (ingestion): A dashboard that used to be quick has become slow over a few weeks.
+What to do: Look at the ingestion for growth in data volume or a filter that stopped using its cache.
+
+Symptom (ingestion): A customer can sign in but sees an empty workspace.
+What to do: Check their group mappings and permissions in the ingestion settings.
+
+Symptom (ingestion): Customers say their numbers look a day behind.
+What to do: Check the ingestion run history for the last two nights; a silent failure usually shows as a missing run, not an error.
+
+Symptom (feature store): Nightly jobs finish later every week.
+What to do: Review the feature store timings and queue depth; a growing backlog points to too few workers.
+
+Symptom (feature store): A dashboard that used to be quick has become slow over a few weeks.
+What to do: Look at the feature store for growth in data volume or a filter that stopped using its cache.
+
+Symptom (feature store): A customer can sign in but sees an empty workspace.
+What to do: Check their group mappings and permissions in the feature store settings.
+
+Symptom (feature store): One store's figures jump wildly from day to day.
+What to do: Check the feature store input for that store for duplicated or missing days before suspecting the model.
+
+Symptom (training): Exports arrive, but some rows are missing at the end of the file.
+What to do: Compare row counts between the training output and the export; a size limit may be cutting the file.
+
+Symptom (training): One store's figures jump wildly from day to day.
+What to do: Check the training input for that store for duplicated or missing days before suspecting the model.
+
+Symptom (training): A customer can sign in but sees an empty workspace.
+What to do: Check their group mappings and permissions in the training settings.
+
+Symptom (training): Nightly jobs finish later every week.
+What to do: Review the training timings and queue depth; a growing backlog points to too few workers.
+
+Symptom (scoring): Exports arrive, but some rows are missing at the end of the file.
+What to do: Compare row counts between the scoring output and the export; a size limit may be cutting the file.
+
+Symptom (scoring): A customer can sign in but sees an empty workspace.
+What to do: Check their group mappings and permissions in the scoring settings.
+
+Symptom (scoring): One store's figures jump wildly from day to day.
+What to do: Check the scoring input for that store for duplicated or missing days before suspecting the model.
+
+Symptom (scoring): Nightly jobs finish later every week.
+What to do: Review the scoring timings and queue depth; a growing backlog points to too few workers.
+
+Symptom (export): One store's figures jump wildly from day to day.
+What to do: Check the export input for that store for duplicated or missing days before suspecting the model.
+
+Symptom (export): A customer can sign in but sees an empty workspace.
+What to do: Check their group mappings and permissions in the export settings.
+
+Symptom (export): Exports arrive, but some rows are missing at the end of the file.
+What to do: Compare row counts between the export output and the export; a size limit may be cutting the file.
+
+Symptom (export): Customers say their numbers look a day behind.
+What to do: Check the export run history for the last two nights; a silent failure usually shows as a missing run, not an error.
+
+Symptom (scheduler): One store's figures jump wildly from day to day.
+What to do: Check the scheduler input for that store for duplicated or missing days before suspecting the model.
+
+Symptom (scheduler): A customer can sign in but sees an empty workspace.
+What to do: Check their group mappings and permissions in the scheduler settings.
+
+Symptom (scheduler): Customers say their numbers look a day behind.
+What to do: Check the scheduler run history for the last two nights; a silent failure usually shows as a missing run, not an error.
+
+Symptom (scheduler): Nightly jobs finish later every week.
+What to do: Review the scheduler timings and queue depth; a growing backlog points to too few workers.
+
+5. Configuration keys
+
+CUR3-CFG-ingestion.timeout_percent: controls the ingestion timeout. Default 60. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-ingestion.timeout_batch_size: controls the ingestion batch size. Default 2000. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-ingestion.timeout_percent: controls the ingestion retry budget. Default 2000. Changing it needs an admin role. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.retry_percent: controls the ingestion threshold. Default 60. Changing it needs a support engineer. Takes effect within 15 minutes.
+
+CUR3-CFG-ingestion.retry_rows: controls the ingestion timeout. Default 30. Changing it needs a change ticket. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.retry_percent: controls the ingestion batch size. Default 500. Changing it needs a change ticket. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.default_batch_size: controls the ingestion timeout. Default 3. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-ingestion.max_seconds: controls the ingestion timeout. Default 500. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.retry_age_hours: controls the ingestion timeout. Default 10. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.min_workers: controls the ingestion limit. Default 3. Changing it needs a support engineer. Takes effect within 15 minutes.
+
+CUR3-CFG-ingestion.timeout_seconds: controls the ingestion retry budget. Default 5. Changing it needs an admin role. Takes effect within 15 minutes.
+
+CUR3-CFG-ingestion.retry_workers: controls the ingestion timeout. Default 5. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-ingestion.retry_seconds: controls the ingestion batch size. Default 120. Changing it needs an admin role. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.retry_percent: controls the ingestion limit. Default 10. Changing it needs a support engineer. Takes effect immediately.
+
+CUR3-CFG-ingestion.min_age_hours: controls the ingestion threshold. Default 60. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-ingestion.default_batch_size: controls the ingestion retry budget. Default 3. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-ingestion.max_age_hours: controls the ingestion retry budget. Default 30. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-ingestion.min_seconds: controls the ingestion threshold. Default 3. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.default_workers: controls the feature store batch size. Default 2000. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.max_batch_size: controls the feature store batch size. Default 120. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.timeout_batch_size: controls the feature store limit. Default 500. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.default_rows: controls the feature store retry budget. Default 30. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-feature_store.timeout_rows: controls the feature store threshold. Default 2000. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.default_age_hours: controls the feature store timeout. Default 5. Changing it needs a change ticket. Takes effect at the next nightly run.
+
+CUR3-CFG-feature_store.max_age_hours: controls the feature store limit. Default 500. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.min_seconds: controls the feature store threshold. Default 500. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-feature_store.default_rows: controls the feature store batch size. Default 2000. Changing it needs an admin role. Takes effect immediately.
+
+CUR3-CFG-feature_store.min_age_hours: controls the feature store retry budget. Default 500. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.timeout_percent: controls the feature store batch size. Default 5. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-feature_store.max_percent: controls the feature store timeout. Default 10. Changing it needs customer approval. Takes effect within 15 minutes.
+
+CUR3-CFG-feature_store.timeout_percent: controls the feature store limit. Default 5. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-feature_store.max_attempts: controls the feature store batch size. Default 10. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-feature_store.timeout_rows: controls the feature store limit. Default 30. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-feature_store.default_attempts: controls the feature store retry budget. Default 2000. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-feature_store.max_workers: controls the feature store batch size. Default 120. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-feature_store.timeout_seconds: controls the feature store limit. Default 2000. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-training.default_seconds: controls the training retry budget. Default 500. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-training.max_workers: controls the training batch size. Default 60. Changing it needs an admin role. Takes effect within 15 minutes.
+
+CUR3-CFG-training.max_batch_size: controls the training batch size. Default 5. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-training.default_rows: controls the training limit. Default 120. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-training.default_attempts: controls the training retry budget. Default 3. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-training.timeout_attempts: controls the training retry budget. Default 3. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-training.min_batch_size: controls the training retry budget. Default 10. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-training.retry_batch_size: controls the training limit. Default 30. Changing it needs a support engineer. Takes effect immediately.
+
+CUR3-CFG-training.timeout_attempts: controls the training retry budget. Default 120. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-training.default_percent: controls the training batch size. Default 10. Changing it needs an admin role. Takes effect within 15 minutes.
+
+CUR3-CFG-training.min_seconds: controls the training timeout. Default 60. Changing it needs customer approval. Takes effect within 15 minutes.
+
+CUR3-CFG-training.retry_seconds: controls the training limit. Default 120. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-training.timeout_workers: controls the training batch size. Default 120. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-training.min_workers: controls the training timeout. Default 500. Changing it needs customer approval. Takes effect within 15 minutes.
+
+CUR3-CFG-training.retry_attempts: controls the training threshold. Default 30. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-training.timeout_seconds: controls the training timeout. Default 60. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-training.max_rows: controls the training timeout. Default 3. Changing it needs an admin role. Takes effect at the next nightly run.
+
+CUR3-CFG-training.timeout_percent: controls the training threshold. Default 3. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.max_feature_age_hours: controls the scoring limit. Default 5. Changing it needs a change ticket. Takes effect at the next nightly run.
+
+CUR3-CFG-scoring.retry_percent: controls the scoring limit. Default 3. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-scoring.min_age_hours: controls the scoring threshold. Default 30. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.retry_age_hours: controls the scoring timeout. Default 3. Changing it needs customer approval. Takes effect within 15 minutes.
+
+CUR3-CFG-scoring.default_batch_size: controls the scoring threshold. Default 5. Changing it needs a support engineer. Takes effect immediately.
+
+CUR3-CFG-scoring.max_age_hours: controls the scoring batch size. Default 120. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.timeout_age_hours: controls the scoring retry budget. Default 5. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.retry_percent: controls the scoring batch size. Default 3. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.min_age_hours: controls the scoring retry budget. Default 3. Changing it needs a support engineer. Takes effect within 15 minutes.
+
+CUR3-CFG-scoring.min_percent: controls the scoring threshold. Default 60. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-scoring.default_batch_size: controls the scoring timeout. Default 500. Changing it needs a change ticket. Takes effect at the next nightly run.
+
+CUR3-CFG-scoring.min_age_hours: controls the scoring batch size. Default 10. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.timeout_age_hours: controls the scoring batch size. Default 500. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.default_workers: controls the scoring timeout. Default 3. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-scoring.default_age_hours: controls the scoring timeout. Default 3. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-scoring.min_attempts: controls the scoring batch size. Default 3. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-scoring.min_attempts: controls the scoring timeout. Default 5. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-scoring.default_seconds: controls the scoring timeout. Default 30. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-export.min_workers: controls the export threshold. Default 30. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-export.min_age_hours: controls the export retry budget. Default 30. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-export.retry_batch_size: controls the export timeout. Default 30. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-export.default_rows: controls the export batch size. Default 10. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-export.default_age_hours: controls the export timeout. Default 10. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-export.max_seconds: controls the export batch size. Default 500. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-export.max_seconds: controls the export timeout. Default 500. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-export.max_workers: controls the export batch size. Default 30. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-export.max_age_hours: controls the export limit. Default 30. Changing it needs an admin role. Takes effect within 15 minutes.
+
+CUR3-CFG-export.retry_attempts: controls the export threshold. Default 3. Changing it needs a support engineer. Takes effect immediately.
+
+CUR3-CFG-export.max_rows: controls the export limit. Default 10. Changing it needs a support engineer. Takes effect within 15 minutes.
+
+CUR3-CFG-export.min_percent: controls the export timeout. Default 10. Changing it needs an admin role. Takes effect at the next nightly run.
+
+CUR3-CFG-export.max_percent: controls the export timeout. Default 3. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-export.timeout_age_hours: controls the export timeout. Default 5. Changing it needs an admin role. Takes effect at the next nightly run.
+
+CUR3-CFG-export.max_percent: controls the export threshold. Default 10. Changing it needs a support engineer. Takes effect within 15 minutes.
+
+CUR3-CFG-export.retry_age_hours: controls the export limit. Default 3. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-export.timeout_rows: controls the export limit. Default 30. Changing it needs a support engineer. Takes effect immediately.
+
+CUR3-CFG-export.default_attempts: controls the export threshold. Default 3. Changing it needs a change ticket. Takes effect after a restart of the service.
+
+CUR3-CFG-scheduler.max_age_hours: controls the scheduler threshold. Default 2000. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-scheduler.min_batch_size: controls the scheduler retry budget. Default 3. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-scheduler.default_seconds: controls the scheduler threshold. Default 30. Changing it needs a change ticket. Takes effect at the next nightly run.
+
+CUR3-CFG-scheduler.min_attempts: controls the scheduler timeout. Default 500. Changing it needs an admin role. Takes effect at the next nightly run.
+
+CUR3-CFG-scheduler.max_attempts: controls the scheduler batch size. Default 500. Changing it needs a support engineer. Takes effect after a restart of the service.
+
+CUR3-CFG-scheduler.default_rows: controls the scheduler threshold. Default 500. Changing it needs a change ticket. Takes effect within 15 minutes.
+
+CUR3-CFG-scheduler.timeout_age_hours: controls the scheduler timeout. Default 3. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-scheduler.min_seconds: controls the scheduler timeout. Default 500. Changing it needs customer approval. Takes effect at the next nightly run.
+
+CUR3-CFG-scheduler.max_attempts: controls the scheduler batch size. Default 120. Changing it needs a support engineer. Takes effect within 15 minutes.
+
+CUR3-CFG-scheduler.max_workers: controls the scheduler limit. Default 2000. Changing it needs customer approval. Takes effect after a restart of the service.
+
+CUR3-CFG-scheduler.timeout_rows: controls the scheduler timeout. Default 5. Changing it needs a change ticket. Takes effect immediately.
+
+CUR3-CFG-scheduler.retry_percent: controls the scheduler limit. Default 120. Changing it needs an admin role. Takes effect within 15 minutes.
+
+CUR3-CFG-scheduler.timeout_batch_size: controls the scheduler retry budget. Default 2000. Changing it needs an admin role. Takes effect after a restart of the service.
+
+CUR3-CFG-scheduler.max_attempts: controls the scheduler limit. Default 30. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-scheduler.max_attempts: controls the scheduler limit. Default 5. Changing it needs a support engineer. Takes effect immediately.
+
+CUR3-CFG-scheduler.min_workers: controls the scheduler retry budget. Default 3. Changing it needs a support engineer. Takes effect at the next nightly run.
+
+CUR3-CFG-scheduler.timeout_rows: controls the scheduler threshold. Default 2000. Changing it needs customer approval. Takes effect immediately.
+
+CUR3-CFG-scheduler.max_batch_size: controls the scheduler timeout. Default 60. Changing it needs customer approval. Takes effect immediately.
+
+6. Procedures
+
+6.1 Re-running a failed nightly job
+  1. Find the failed run in the scheduler view and note its run id.
+  2. Read the first error in the log, not the last; later errors are usually consequences.
+  3. Fix the cause (credentials, schema, quota) before re-running.
+  4. Re-run with the same run date so outputs land in the right partition.
+  5. Tell the customer if their data was more than 6 hours late.
+
+6.2 Rotating a customer's warehouse credentials
+  1. Ask the customer administrator to create the new key pair in their warehouse.
+  2. Paste the public key into the connector settings; never ask for the private key by email.
+  3. Run the connection test.
+  4. Remove the old key only after a successful nightly run with the new one.
+
+6.3 Rolling back a configuration change
+  1. Open the configuration history and find the last known-good version.
+  2. Compare it with the current version and confirm the change you want to undo.
+  3. Restore it and record the ticket id in the change note.
+  4. Watch the next scheduled run end to end.
+
+6.4 Onboarding a new customer tenant
+  1. Create the tenant schema from the template; never copy another customer's schema.
+  2. Set the time zone, currency and fiscal calendar before loading any data.
+  3. Load two years of history and run the data-quality report.
+  4. Agree the first go-live date with the customer only after the report is clean.
+
+6.5 Investigating repeated ingestion errors
+  1. List every ingestion error from the last 7 days and group them by code.
+  2. Run the built-in self-test from the service menu.
+  3. Check whether the errors started after a release or a network change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.6 Investigating repeated feature store errors
+  1. List every feature store error from the last 7 days and group them by code.
+  2. Inspect the connector and reseat it.
+  3. Check whether the errors started after a release or a schema change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.7 Investigating repeated training errors
+  1. List every training error from the last 7 days and group them by code.
+  2. Clean the sensor surface with a dry microfibre cloth.
+  3. Check whether the errors started after a release or a configuration change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.8 Investigating repeated scoring errors
+  1. List every scoring error from the last 7 days and group them by code.
+  2. Confirm the unit is on the current release.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.9 Investigating repeated export errors
+  1. List every export error from the last 7 days and group them by code.
+  2. Clean the sensor surface with a dry microfibre cloth.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.10 Investigating repeated scheduler errors
+  1. List every scheduler error from the last 7 days and group them by code.
+  2. Check the site network dashboard for drops.
+  3. Check whether the errors started after a release or a network change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+7. Maintenance schedule
+
+Every run: check the scheduler; inspect the scoring; review the ingestion event log for repeated warnings.
+
+Daily: check the scoring; inspect the ingestion; review the training event log for repeated warnings.
+
+Weekly: check the scheduler; inspect the ingestion; review the export event log for repeated warnings.
+
+Monthly: check the training; inspect the scoring; review the ingestion event log for repeated warnings.
+
+Quarterly: check the scheduler; inspect the scoring; review the export event log for repeated warnings.
+
+8. Appendix: recent service history
+
+Resolved SUP tickets for Current v3, quoted as examples of how common errors were fixed.
+
+SUP-52613 (Kettle & Co. Leeds): backtest regression on the training. Cause found: a loose or corroded connector. Resolved in 6 hours on site.
+
+SUP-32148 (Sundial Pharmacy): confidence interval invalid on the scoring. Cause found: a loose or corroded connector. Resolved in 8 hours by a remote fix.
+
+SUP-77526 (Kettle & Co. Leeds): late arrival on the ingestion. Cause found: a firmware or software version mismatch. Resolved in 1 hours by a remote fix.
+
+SUP-85902 (Ostrander Foods Dayton): export file too large on the export. Cause found: a worn component past its service interval. Resolved in 3 hours by a remote fix.
+
+SUP-98155 (Pine & Petal): join explosion on the feature store. Cause found: a firmware or software version mismatch. Resolved in 2 hours on site.
+
+SUP-17461 (Brightmart Columbus): scoring oom on the scoring. Cause found: ambient temperature outside the rated range. Resolved in 6 hours after a release.
+
+SUP-31582 (Northgate Grocers): dependency failed on the scheduler. Cause found: a worn component past its service interval. Resolved in 8 hours on site.
+
+SUP-52276 (Tidewater Parcel Norfolk): token expired on the export. Cause found: debris or dust on the sensor surface. Resolved in 9 hours after a configuration rollback.
+
+SUP-39880 (Tidewater Parcel Norfolk): job overlap on the scheduler. Cause found: ambient temperature outside the rated range. Resolved in 8 hours after a configuration rollback.
+
+SUP-79612 (Fernway Logistics Reno): model card missing on the training. Cause found: a loose or corroded connector. Resolved in 9 hours by replacing the affected part.
+
+SUP-86517 (Pine & Petal): webhook rejected on the export. Cause found: a firmware or software version mismatch. Resolved in 4 hours by replacing the affected part.
+
+SUP-63033 (Fernway Logistics Reno): duplicate keys on the ingestion. Cause found: a loose or corroded connector. Resolved in 3 hours after a configuration rollback.
+
+SUP-94167 (Halcyon Retail): weather feed late on the feature store. Cause found: a recent site change that was not reflected in the configuration. Resolved in 1 hours after a release.
+
+SUP-48439 (Ostrander Foods Dayton): api rate limited on the export. Cause found: an expired credential. Resolved in 3 hours after a configuration rollback.
+
+SUP-99405 (Fernway Logistics Reno): queue backlog on the scheduler. Cause found: a component damaged in transport or by impact. Resolved in 5 hours by a remote fix.
+
+SUP-86254 (Tidewater Parcel Norfolk): model alias missing on the scoring. Cause found: a loose or corroded connector. Resolved in 4 hours on site.
+
+SUP-97562 (Tidewater Parcel Norfolk): confidence interval invalid on the scoring. Cause found: an expired credential. Resolved in 2 hours on site.
+
+SUP-59333 (Tidewater Parcel Norfolk): job overlap on the scheduler. Cause found: a configuration change made outside the change process. Resolved in 5 hours by replacing the affected part.
+
+SUP-80478 (Kettle & Co. Leeds): worker lost on the scheduler. Cause found: a worn component past its service interval. Resolved in 2 hours on site.
+
+SUP-27619 (Ostrander Foods Dayton): checkpoint corrupt on the training. Cause found: intermittent network loss. Resolved in 1 hours on site.
+
+SUP-96183 (Fernway Logistics Reno): store mapping gap on the feature store. Cause found: debris or dust on the sensor surface. Resolved in 4 hours after a configuration rollback.
+
+SUP-55978 (Northgate Grocers): model version unknown on the scoring. Cause found: debris or dust on the sensor surface. Resolved in 5 hours by a remote fix.
+
+SUP-26450 (Pine & Petal): holiday calendar stale on the feature store. Cause found: a configuration change made outside the change process. Resolved in 9 hours on site.
+
+SUP-95323 (Sundial Pharmacy): worker lost on the scheduler. Cause found: a firmware or software version mismatch. Resolved in 8 hours by replacing the affected part.
+
+SUP-33110 (Ostrander Foods Dayton): store not scored on the scoring. Cause found: a loose or corroded connector. Resolved in 8 hours by replacing the affected part.
+
+SUP-25219 (Sundial Pharmacy): export late on the export. Cause found: a worn component past its service interval. Resolved in 5 hours on site.
+
+SUP-50970 (Sundial Pharmacy): erp mapping missing on the export. Cause found: a configuration change made outside the change process. Resolved in 7 hours by replacing the affected part.
+
+SUP-50870 (Northgate Grocers): training diverged on the training. Cause found: debris or dust on the sensor surface. Resolved in 9 hours after a configuration rollback.
+
+SUP-73786 (Northgate Grocers): job missed on the scheduler. Cause found: ambient temperature outside the rated range. Resolved in 1 hours by a remote fix.
+
+SUP-71352 (Sundial Pharmacy): encoding invalid on the ingestion. Cause found: ambient temperature outside the rated range. Resolved in 7 hours on site.
+
+SUP-50298 (Halcyon Retail): feature null rate high on the feature store. Cause found: an expired credential. Resolved in 7 hours on site.
+
+SUP-54953 (Northgate Grocers): worker lost on the scheduler. Cause found: debris or dust on the sensor surface. Resolved in 7 hours on site.
+
+SUP-23898 (Fernway Logistics Reno): weather feed late on the feature store. Cause found: intermittent network loss. Resolved in 2 hours on site.
+
+SUP-67980 (Ostrander Foods Dayton): checksum failed on the ingestion. Cause found: intermittent network loss. Resolved in 2 hours by replacing the affected part.
+
+SUP-74648 (Sundial Pharmacy): export file too large on the export. Cause found: a configuration change made outside the change process. Resolved in 2 hours after a release.
+
+SUP-58476 (Brightmart Columbus): export file too large on the export. Cause found: a firmware or software version mismatch. Resolved in 9 hours after a configuration rollback.
+
+SUP-58515 (Brightmart Columbus): paused by admin on the scheduler. Cause found: debris or dust on the sensor surface. Resolved in 5 hours by a remote fix.
+
+SUP-30018 (Fernway Logistics Reno): file not found on the ingestion. Cause found: a loose or corroded connector. Resolved in 4 hours after a configuration rollback.
+
+SUP-92405 (Brightmart Columbus): encoding invalid on the ingestion. Cause found: intermittent network loss. Resolved in 6 hours after a configuration rollback.
+
+SUP-40795 (Northgate Grocers): cron invalid on the scheduler. Cause found: a recent site change that was not reflected in the configuration. Resolved in 2 hours after a configuration rollback.
+
+SUP-94076 (Brightmart Columbus): join explosion on the feature store. Cause found: intermittent network loss. Resolved in 5 hours by replacing the affected part.
+
+SUP-72763 (Sundial Pharmacy): lock held on the scheduler. Cause found: a worn component past its service interval. Resolved in 1 hours by replacing the affected part.
+
+SUP-17447 (Fernway Logistics Reno): store not scored on the scoring. Cause found: a configuration change made outside the change process. Resolved in 6 hours after a release.
+
+SUP-17129 (Ostrander Foods Dayton): export duplicated on the export. Cause found: a loose or corroded connector. Resolved in 3 hours by a remote fix.
+
+SUP-59526 (Ostrander Foods Dayton): store mapping gap on the feature store. Cause found: a worn component past its service interval. Resolved in 8 hours on site.
+
+SUP-70804 (Halcyon Retail): data leakage detected on the training. Cause found: a worn component past its service interval. Resolved in 3 hours by a remote fix.
+
+SUP-84123 (Northgate Grocers): scoring oom on the scoring. Cause found: a configuration change made outside the change process. Resolved in 1 hours by a remote fix.
+
+SUP-21846 (Halcyon Retail): seed not set on the training. Cause found: debris or dust on the sensor surface. Resolved in 2 hours on site.
+
+SUP-86881 (Fernway Logistics Reno): retry exhausted on the scheduler. Cause found: debris or dust on the sensor surface. Resolved in 9 hours after a release.
+
+SUP-44232 (Tidewater Parcel Norfolk): scoring features stale on the scoring. Cause found: a configuration change made outside the change process. Resolved in 7 hours after a release.
+
+SUP-36116 (Tidewater Parcel Norfolk): weather feed late on the feature store. Cause found: a recent site change that was not reflected in the configuration. Resolved in 5 hours by replacing the affected part.
+
+SUP-75474 (Pine & Petal): dependency failed on the scheduler. Cause found: a worn component past its service interval. Resolved in 8 hours after a release.
+
+SUP-58353 (Fernway Logistics Reno): store not scored on the scoring. Cause found: intermittent network loss. Resolved in 6 hours by replacing the affected part.
+
+SUP-75597 (Kettle & Co. Leeds): retry exhausted on the scheduler. Cause found: a recent site change that was not reflected in the configuration. Resolved in 9 hours by replacing the affected part.
+
+SUP-82312 (Pine & Petal): quota exceeded on the ingestion. Cause found: intermittent network loss. Resolved in 5 hours after a release.
+
+SUP-42317 (Fernway Logistics Reno): holiday calendar stale on the feature store. Cause found: a loose or corroded connector. Resolved in 3 hours by a remote fix.

@@ -1,4 +1,5 @@
 Firmware release process (Pika and Atlas)
+Version 1.0, 2026.
 Owner: firmware team.
 
 Releases ship every four weeks on a Tuesday. A release candidate is cut on

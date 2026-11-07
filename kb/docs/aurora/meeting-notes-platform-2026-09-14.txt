@@ -1,4 +1,5 @@
 Platform team weekly — 14 September 2026
+Version 1.0, 2026.
 Present: Dana Okafor (lead), Luis Ferreira, Mei Tanaka, Sam Whitfield.
 
 1. Telemetry costs. Our cloud bill for telemetry storage was 41,000 USD in

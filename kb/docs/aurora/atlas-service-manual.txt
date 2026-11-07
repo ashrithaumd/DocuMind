@@ -1,0 +1,652 @@
+Atlas mover, generation 2 — service manual
+
+Version 2.4, 2026. Published by Aurora Robotics. This edition replaces all earlier versions of the Atlas service manual.
+
+1. How to use this document
+
+This document is for the people who keep Atlas running: field technicians and trained site staff. Section 2 lists the
+key specifications. Section 3 covers safety and access. Section 4 is the reference of
+every error code, with what it means, the usual causes and what to do. Section 5 lists
+the replaceable parts with their identifiers and service intervals. Section 6 has step-by-step
+procedures, and section 7 the maintenance schedule. When you open a ticket about
+Atlas, always quote the error code and the identifier from these tables exactly as
+written: our tooling searches on them.
+
+2. Key specifications
+
+- Maximum payload: 1,200 kg
+- Deck lift: 60 mm in 2.5 seconds
+- Battery: 48 V, 105 Ah, 9 hours at 60 percent duty
+- Weight: 410 kg
+- Top speed: 2.0 m/s unloaded, 1.2 m/s loaded
+- Turning: on the spot
+- Ingress rating: IP54
+- Operating temperature: -5 to 45 degrees Celsius
+
+3. Safety and access
+
+Lock out the unit with the physical key before opening any panel. Two people are needed for any work above 1.5 m or any lift of more than 25 kg. Wear safety shoes on the robot floor at all times.
+Every intervention is recorded against a ticket in the FOPS queue. A ticket id looks like
+FOPS-33395. Never close a ticket without recording what was changed, and never
+change two things at once: if the problem comes back, you need to know which change mattered.
+
+4. Error code reference
+
+4.1 Drive errors
+
+A-1400 WHEEL_SLIP. Raised by the drive subsystem. Usual cause: a loose or corroded connector. First check: measure the supply voltage at the connector. Severity: warning. Needs a manual reset from the service menu.
+
+A-1201 MOTOR_OVERCURRENT. Raised by the drive subsystem. Usual cause: intermittent network loss. First check: measure the supply voltage at the connector. Severity: warning. Needs a manual reset from the service menu.
+
+A-1702 ENCODER_MISMATCH. Raised by the drive subsystem. Usual cause: a component damaged in transport or by impact. First check: check the event log for the five minutes before the error. Severity: warning. Clears itself once the cause is fixed.
+
+A-1303 BRAKE_RELEASE_FAIL. Raised by the drive subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: measure the supply voltage at the connector. Severity: error. Stops the unit until acknowledged.
+
+A-1604 MOTOR_OVERTEMP. Raised by the drive subsystem. Usual cause: a loose or corroded connector. First check: check the event log for the five minutes before the error. Severity: warning. Clears itself once the cause is fixed.
+
+A-1005 ODOMETRY_DRIFT. Raised by the drive subsystem. Usual cause: an expired credential. First check: run the built-in self-test from the service menu. Severity: warning. Needs a manual reset from the service menu.
+
+A-1206 CASTER_JAM. Raised by the drive subsystem. Usual cause: intermittent network loss. First check: measure the supply voltage at the connector. Severity: critical. Clears itself once the cause is fixed.
+
+A-1807 DRIVE_CAN_TIMEOUT. Raised by the drive subsystem. Usual cause: an expired credential. First check: run the built-in self-test from the service menu. Severity: warning. Stops the unit until acknowledged.
+
+A-1708 WHEEL_WEAR_LIMIT. Raised by the drive subsystem. Usual cause: a firmware or software version mismatch. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Clears itself once the cause is fixed.
+
+A-1009 STALL_DETECTED. Raised by the drive subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: compare the configuration with the last known-good snapshot. Severity: warning. Clears itself once the cause is fixed.
+
+4.2 Lift deck errors
+
+A-2000 DECK_NOT_LEVEL. Raised by the lift deck subsystem. Usual cause: a firmware or software version mismatch. First check: compare the configuration with the last known-good snapshot. Severity: critical. Needs a manual reset from the service menu.
+
+A-2901 LIFT_OVERLOAD. Raised by the lift deck subsystem. Usual cause: a configuration change made outside the change process. First check: run the built-in self-test from the service menu. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-2002 LIFT_TIMEOUT. Raised by the lift deck subsystem. Usual cause: intermittent network loss. First check: confirm the unit is on the current release. Severity: warning. Clears itself once the cause is fixed.
+
+A-2603 DECK_POSITION_UNKNOWN. Raised by the lift deck subsystem. Usual cause: a loose or corroded connector. First check: check the site network dashboard for drops. Severity: critical. Stops the unit until acknowledged.
+
+A-2904 HYDRAULIC_PRESSURE_LOW. Raised by the lift deck subsystem. Usual cause: debris or dust on the sensor surface. First check: check the event log for the five minutes before the error. Severity: critical. Needs a manual reset from the service menu.
+
+A-2805 LATCH_NOT_ENGAGED. Raised by the lift deck subsystem. Usual cause: a worn component past its service interval. First check: inspect the connector and reseat it. Severity: error. Clears itself once the cause is fixed.
+
+A-2806 DECK_SENSOR_FAULT. Raised by the lift deck subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the event log for the five minutes before the error. Severity: warning. Needs a manual reset from the service menu.
+
+A-2907 LOAD_SHIFTED. Raised by the lift deck subsystem. Usual cause: a loose or corroded connector. First check: run the built-in self-test from the service menu. Severity: warning. Needs a manual reset from the service menu.
+
+A-2308 LIFT_MOTOR_OVERTEMP. Raised by the lift deck subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: warning. Stops the unit until acknowledged.
+
+A-2309 DECK_LIMIT_SWITCH. Raised by the lift deck subsystem. Usual cause: intermittent network loss. First check: confirm the unit is on the current release. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+4.3 Vision errors
+
+A-3100 CAMERA_NOT_DETECTED. Raised by the vision subsystem. Usual cause: a worn component past its service interval. First check: inspect the connector and reseat it. Severity: error. Clears itself once the cause is fixed.
+
+A-3101 DEPTH_CALIBRATION_LOST. Raised by the vision subsystem. Usual cause: a firmware or software version mismatch. First check: compare the configuration with the last known-good snapshot. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-3502 LIDAR_WINDOW_DIRTY. Raised by the vision subsystem. Usual cause: intermittent network loss. First check: compare the configuration with the last known-good snapshot. Severity: warning. Clears itself once the cause is fixed.
+
+A-3403 LOCALIZATION_LOST. Raised by the vision subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the site network dashboard for drops. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-3704 MARKER_NOT_FOUND. Raised by the vision subsystem. Usual cause: a component damaged in transport or by impact. First check: measure the supply voltage at the connector. Severity: critical. Needs a manual reset from the service menu.
+
+A-3305 IMAGE_TOO_DARK. Raised by the vision subsystem. Usual cause: a component damaged in transport or by impact. First check: check the site network dashboard for drops. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-3806 LIDAR_SPIN_FAULT. Raised by the vision subsystem. Usual cause: intermittent network loss. First check: check the site network dashboard for drops. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-3807 POINT_CLOUD_SPARSE. Raised by the vision subsystem. Usual cause: a worn component past its service interval. First check: check the event log for the five minutes before the error. Severity: warning. Clears itself once the cause is fixed.
+
+A-3308 CAMERA_OVERTEMP. Raised by the vision subsystem. Usual cause: a component damaged in transport or by impact. First check: run the built-in self-test from the service menu. Severity: warning. Needs a manual reset from the service menu.
+
+A-3009 TIME_SYNC_LOST. Raised by the vision subsystem. Usual cause: a worn component past its service interval. First check: compare the configuration with the last known-good snapshot. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+4.4 Battery errors
+
+A-4400 BATTERY_LOW. Raised by the battery subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-4301 CELL_IMBALANCE. Raised by the battery subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: inspect the connector and reseat it. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-4702 CHARGE_CONTACT_FAULT. Raised by the battery subsystem. Usual cause: intermittent network loss. First check: measure the supply voltage at the connector. Severity: warning. Needs a manual reset from the service menu.
+
+A-4503 PACK_OVERTEMP. Raised by the battery subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: warning. Clears itself once the cause is fixed.
+
+A-4104 BMS_TIMEOUT. Raised by the battery subsystem. Usual cause: a firmware or software version mismatch. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Clears itself once the cause is fixed.
+
+A-4205 CHARGE_RATE_LOW. Raised by the battery subsystem. Usual cause: a component damaged in transport or by impact. First check: measure the supply voltage at the connector. Severity: critical. Stops the unit until acknowledged.
+
+A-4606 PACK_NOT_LATCHED. Raised by the battery subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the event log for the five minutes before the error. Severity: warning. Clears itself once the cause is fixed.
+
+A-4007 CELL_UNDERVOLTAGE. Raised by the battery subsystem. Usual cause: a configuration change made outside the change process. First check: confirm the unit is on the current release. Severity: error. Needs a manual reset from the service menu.
+
+A-4608 HEATER_FAULT. Raised by the battery subsystem. Usual cause: a component damaged in transport or by impact. First check: inspect the connector and reseat it. Severity: warning. Needs a manual reset from the service menu.
+
+A-4909 PACK_ID_MISMATCH. Raised by the battery subsystem. Usual cause: a firmware or software version mismatch. First check: compare the configuration with the last known-good snapshot. Severity: warning. Stops the unit until acknowledged.
+
+4.5 Safety scanner errors
+
+A-5032 SAFETY_FIELD_OBSTRUCTED. Raised when the protective field reports an obstacle for more than 30 seconds. Usual cause: wear or damage to the safety scanner window. Fix: replace or reset the safety scanner window (AUR-AT2-7718-C) and run the self-test. If it returns within 24 hours, escalate to the Atlas engineering team.
+
+A-5501 SCANNER_CONTAMINATED. Raised by the safety scanner subsystem. Usual cause: a firmware or software version mismatch. First check: inspect the connector and reseat it. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-5702 SCANNER_CONFIG_MISMATCH. Raised by the safety scanner subsystem. Usual cause: intermittent network loss. First check: check the event log for the five minutes before the error. Severity: error. Stops the unit until acknowledged.
+
+A-5003 ESTOP_PRESSED. Raised by the safety scanner subsystem. Usual cause: intermittent network loss. First check: clean the sensor surface with a dry microfibre cloth. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-5204 SAFETY_RELAY_FAULT. Raised by the safety scanner subsystem. Usual cause: debris or dust on the sensor surface. First check: compare the configuration with the last known-good snapshot. Severity: error. Clears itself once the cause is fixed.
+
+A-5005 BUMPER_TRIGGERED. Raised by the safety scanner subsystem. Usual cause: a worn component past its service interval. First check: confirm the unit is on the current release. Severity: critical. Clears itself once the cause is fixed.
+
+A-5006 SPEED_MONITOR_FAULT. Raised by the safety scanner subsystem. Usual cause: a firmware or software version mismatch. First check: check the event log for the five minutes before the error. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-5607 SCANNER_TIMEOUT. Raised by the safety scanner subsystem. Usual cause: a loose or corroded connector. First check: check the site network dashboard for drops. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-5808 FIELD_SET_INVALID. Raised by the safety scanner subsystem. Usual cause: ambient temperature outside the rated range. First check: inspect the connector and reseat it. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-5309 MUTING_TIMEOUT. Raised by the safety scanner subsystem. Usual cause: a loose or corroded connector. First check: measure the supply voltage at the connector. Severity: warning. Clears itself once the cause is fixed.
+
+4.6 Network errors
+
+A-6400 WIFI_ROAM_FAIL. Raised by the network subsystem. Usual cause: intermittent network loss. First check: check the site network dashboard for drops. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-6601 FLEET_SERVER_UNREACHABLE. Raised by the network subsystem. Usual cause: an expired credential. First check: compare the configuration with the last known-good snapshot. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-6502 CERTIFICATE_EXPIRED. Raised by the network subsystem. Usual cause: ambient temperature outside the rated range. First check: measure the supply voltage at the connector. Severity: error. Clears itself once the cause is fixed.
+
+A-6803 CLOCK_SKEW_HIGH. Raised by the network subsystem. Usual cause: debris or dust on the sensor surface. First check: check the site network dashboard for drops. Severity: critical. Needs a manual reset from the service menu.
+
+A-6604 MAP_SYNC_FAIL. Raised by the network subsystem. Usual cause: a component damaged in transport or by impact. First check: check the event log for the five minutes before the error. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-6805 PACKET_LOSS_HIGH. Raised by the network subsystem. Usual cause: ambient temperature outside the rated range. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Clears itself once the cause is fixed.
+
+A-6806 DNS_FAILURE. Raised by the network subsystem. Usual cause: a configuration change made outside the change process. First check: confirm the unit is on the current release. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+A-6507 FIRMWARE_MISMATCH. Raised by the network subsystem. Usual cause: a configuration change made outside the change process. First check: inspect the connector and reseat it. Severity: warning. Needs a manual reset from the service menu.
+
+A-6008 TELEMETRY_BACKLOG. Raised by the network subsystem. Usual cause: debris or dust on the sensor surface. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Needs a manual reset from the service menu.
+
+A-6009 VPN_TUNNEL_DOWN. Raised by the network subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: critical. Needs a manual reset from the service menu.
+
+4.7 Troubleshooting by symptom
+
+Symptom (drive): It takes much longer than usual to be ready after charging.
+What to do: Check the drive temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (drive): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the drive for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (drive): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the drive first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (drive): The status light blinks amber but the tablet shows no error.
+What to do: Open the service menu and read the drive warnings, which do not always raise a visible error.
+
+Symptom (lift deck): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the lift deck for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (lift deck): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the lift deck.
+
+Symptom (lift deck): It takes much longer than usual to be ready after charging.
+What to do: Check the lift deck temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (lift deck): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the lift deck first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (vision): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the vision for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (vision): The status light blinks amber but the tablet shows no error.
+What to do: Open the service menu and read the vision warnings, which do not always raise a visible error.
+
+Symptom (vision): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the vision first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (vision): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the vision.
+
+Symptom (battery): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the battery for debris and worn bearings.
+
+Symptom (battery): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the battery for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (battery): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the battery.
+
+Symptom (battery): The status light blinks amber but the tablet shows no error.
+What to do: Open the service menu and read the battery warnings, which do not always raise a visible error.
+
+Symptom (safety scanner): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the safety scanner for debris and worn bearings.
+
+Symptom (safety scanner): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the safety scanner for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (safety scanner): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the safety scanner first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (safety scanner): The status light blinks amber but the tablet shows no error.
+What to do: Open the service menu and read the safety scanner warnings, which do not always raise a visible error.
+
+Symptom (network): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the network.
+
+Symptom (network): It takes much longer than usual to be ready after charging.
+What to do: Check the network temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (network): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the network for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (network): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the network for debris and worn bearings.
+
+5. Replaceable parts
+
+AUR-AT2-9939-A: drive bracket. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-3515-C: drive assembly. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-6979-B: drive seal kit. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-4720-C: drive bracket. Replace every 4000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5753-A: drive kit. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-7575-C: drive assembly. Replace every 1000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-9202-A: drive kit. Replace every 1000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-9113-B: drive cable set. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-3479-A: drive kit. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-3933-B: drive kit. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-9482-C: drive sensor. Replace every 4000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-8098-A: drive assembly. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-9241-C: drive assembly. Replace every 1000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-1779-C: drive cable set. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-7468-B: drive sensor. Replace every 2000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-9308-B: drive module. Replace every 4000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-9760-D: drive sensor. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-5967-C: drive assembly. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-9934-D: lift deck bracket. Replace every 2000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-4972-C: lift deck kit. Replace every 2000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-4072-D: lift deck seal kit. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-1948-C: lift deck cable set. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5867-C: lift deck module. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-4110-D: lift deck kit. Replace every 1000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-6186-A: lift deck bracket. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-1925-B: lift deck module. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-8062-B: lift deck module. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-5189-B: lift deck module. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-5610-C: lift deck assembly. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-5396-C: lift deck sensor. Replace every 8000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-1523-C: lift deck kit. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-1342-A: lift deck sensor. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-3791-C: lift deck cable set. Replace every 4000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-8235-A: lift deck module. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-6663-D: lift deck cable set. Replace every 8000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-1836-B: lift deck module. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-8574-C: vision seal kit. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-1563-D: vision cable set. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-8184-A: vision assembly. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-2410-C: vision sensor. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-4385-B: vision bracket. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-9498-A: vision seal kit. Replace every 2000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-6026-D: vision seal kit. Replace every 1000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-6948-B: vision module. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-2739-D: vision sensor. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5041-B: vision kit. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-8425-A: vision seal kit. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-7083-A: vision cable set. Replace every 4000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-8828-A: vision assembly. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5812-D: vision seal kit. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-7006-B: vision seal kit. Replace every 2000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-2786-A: vision assembly. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-8496-A: vision sensor. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-2694-A: vision seal kit. Replace every 4000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-1132-D: battery kit. Replace every 2000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5808-B: battery seal kit. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-6323-A: battery module. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-5226-D: battery bracket. Replace every 8000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5176-B: battery bracket. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-4746-C: battery module. Replace every 2000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-6488-A: battery kit. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-8762-A: battery assembly. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-2867-D: battery assembly. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-3457-C: battery bracket. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-6299-C: battery assembly. Replace every 4000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-9433-D: battery seal kit. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5285-A: battery seal kit. Replace every 1000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-4625-D: battery seal kit. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-9378-B: battery seal kit. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-6713-B: battery cable set. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-1702-B: battery kit. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-2265-A: battery cable set. Replace every 4000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-7718-C: safety scanner assembly. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-2641-C: safety scanner assembly. Replace every 1000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-5612-B: safety scanner sensor. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-3157-D: safety scanner module. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-8349-D: safety scanner seal kit. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-3407-D: safety scanner assembly. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-9946-B: safety scanner bracket. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-9228-B: safety scanner module. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-9103-C: safety scanner bracket. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-5596-B: safety scanner module. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-6585-C: safety scanner sensor. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-4112-C: safety scanner bracket. Replace every 8000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-9155-D: safety scanner cable set. Replace every 2000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-4957-C: safety scanner cable set. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-5549-D: safety scanner sensor. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-9295-B: safety scanner assembly. Replace every 500 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-6753-D: safety scanner bracket. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-6583-B: safety scanner assembly. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-1311-D: network cable set. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-6309-D: network cable set. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-6615-C: network assembly. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-3104-C: network sensor. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-3004-D: network bracket. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-9347-C: network seal kit. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-1107-B: network kit. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-7321-C: network bracket. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-1823-D: network module. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-2482-A: network cable set. Replace every 4000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-7516-A: network sensor. Replace every 8000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-AT2-8301-C: network kit. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-AT2-1919-B: network sensor. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-3007-B: network seal kit. Replace every 1000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 9 Nm.
+
+AUR-AT2-1071-A: network assembly. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-5556-D: network cable set. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-AT2-2215-B: network assembly. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-AT2-1411-A: network sensor. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+6. Procedures
+
+6.1 Replacing the battery pack
+  1. Drive Atlas to the service bay and stop it with the service tablet.
+  2. Turn the key to LOCK and wait for the status light to turn solid blue.
+  3. Release the two pack latches on the left side.
+  4. Slide the pack out on the rails; it weighs about 24 kg, so use the lift trolley.
+  5. Slide the new pack in until both latches click.
+  6. Turn the key to RUN and check the pack serial number in Skyview.
+  7. Return the old pack to the take-back crate and log its serial on the ticket.
+
+6.2 Calibrating the depth cameras
+  1. Place the checkerboard target 1.0 m in front of the robot, centred.
+  2. Open Service > Vision > Calibrate on the tablet.
+  3. Hold the target still while the progress bar fills, about 90 seconds.
+  4. Move the target to 1.5 m and repeat.
+  5. Accept the result only if the reprojection error shown is under 0.4 pixels.
+
+6.3 Recovering from a lost localization
+  1. Stop the robot and check that the lidar window is clean.
+  2. Drive it by hand to the nearest charging dock, which is a known position.
+  3. Choose Service > Navigation > Relocalize.
+  4. If relocalization fails twice, re-run floor-map alignment and raise a ticket.
+
+6.4 Updating firmware on site
+  1. Check the release notes for the target version and any special steps.
+  2. Dock the robot and keep it charging during the update.
+  3. Start the update from Skyview, never from a USB stick.
+  4. Do not interrupt power for the 12 minutes the update takes.
+  5. Run the self-test and send one test mission before returning the robot to service.
+
+6.5 Investigating repeated drive errors
+  1. List every drive error from the last 7 days and group them by code.
+  2. Inspect the connector and reseat it.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.6 Investigating repeated lift deck errors
+  1. List every lift deck error from the last 7 days and group them by code.
+  2. Measure the supply voltage at the connector.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.7 Investigating repeated vision errors
+  1. List every vision error from the last 7 days and group them by code.
+  2. Compare the configuration with the last known-good snapshot.
+  3. Check whether the errors started after a release or a network change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.8 Investigating repeated battery errors
+  1. List every battery error from the last 7 days and group them by code.
+  2. Confirm the unit is on the current release.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.9 Investigating repeated safety scanner errors
+  1. List every safety scanner error from the last 7 days and group them by code.
+  2. Inspect the connector and reseat it.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.10 Investigating repeated network errors
+  1. List every network error from the last 7 days and group them by code.
+  2. Confirm the unit is on the current release.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+7. Maintenance schedule
+
+Daily: check the lift deck; inspect the drive; review the safety scanner event log for repeated warnings.
+
+Weekly: check the vision; inspect the battery; review the safety scanner event log for repeated warnings.
+
+Every 500 operating hours: check the vision; inspect the lift deck; review the battery event log for repeated warnings.
+
+Every 2,000 operating hours: check the lift deck; inspect the vision; review the drive event log for repeated warnings.
+
+Yearly: check the battery; inspect the vision; review the drive event log for repeated warnings.
+
+8. Appendix: recent service history
+
+Resolved FOPS tickets for Atlas, quoted as examples of how common errors were fixed.
+
+FOPS-99178 (Sundial Pharmacy): fleet server unreachable on the network. Cause found: a component damaged in transport or by impact. Resolved in 6 hours on site.
+
+FOPS-46796 (Pine & Petal): scanner contaminated on the safety scanner. Cause found: a recent site change that was not reflected in the configuration. Resolved in 6 hours after a configuration rollback.
+
+FOPS-52601 (Marlow Outfitters): speed monitor fault on the safety scanner. Cause found: a loose or corroded connector. Resolved in 2 hours on site.
+
+FOPS-67923 (Halcyon Retail): safety relay fault on the safety scanner. Cause found: a loose or corroded connector. Resolved in 7 hours on site.
+
+FOPS-71786 (Brightmart Columbus): scanner timeout on the safety scanner. Cause found: ambient temperature outside the rated range. Resolved in 4 hours after a configuration rollback.
+
+FOPS-73652 (Fernway Logistics Reno): brake release fail on the drive. Cause found: intermittent network loss. Resolved in 4 hours after a configuration rollback.
+
+FOPS-85512 (Brightmart Columbus): pack overtemp on the battery. Cause found: debris or dust on the sensor surface. Resolved in 9 hours after a configuration rollback.
+
+FOPS-87289 (Pine & Petal): dns failure on the network. Cause found: an expired credential. Resolved in 6 hours by a remote fix.
+
+FOPS-57111 (Ostrander Foods Dayton): caster jam on the drive. Cause found: an expired credential. Resolved in 1 hours after a release.
+
+FOPS-23558 (Pine & Petal): motor overtemp on the drive. Cause found: a loose or corroded connector. Resolved in 6 hours by a remote fix.
+
+FOPS-63171 (Kettle & Co. Leeds): speed monitor fault on the safety scanner. Cause found: intermittent network loss. Resolved in 6 hours after a release.
+
+FOPS-55148 (Kettle & Co. Leeds): estop pressed on the safety scanner. Cause found: a firmware or software version mismatch. Resolved in 8 hours by replacing the affected part.
+
+FOPS-46876 (Brightmart Columbus): firmware mismatch on the network. Cause found: a component damaged in transport or by impact. Resolved in 9 hours by a remote fix.
+
+FOPS-37887 (Marlow Outfitters): odometry drift on the drive. Cause found: a worn component past its service interval. Resolved in 3 hours on site.
+
+FOPS-11475 (Marlow Outfitters): image too dark on the vision. Cause found: a configuration change made outside the change process. Resolved in 5 hours after a configuration rollback.
+
+FOPS-46781 (Kettle & Co. Leeds): safety relay fault on the safety scanner. Cause found: a loose or corroded connector. Resolved in 6 hours after a release.
+
+FOPS-72562 (Ostrander Foods Dayton): localization lost on the vision. Cause found: debris or dust on the sensor surface. Resolved in 2 hours after a release.
+
+FOPS-75227 (Northgate Grocers): cell imbalance on the battery. Cause found: ambient temperature outside the rated range. Resolved in 3 hours after a release.
+
+FOPS-63734 (Ostrander Foods Dayton): safety relay fault on the safety scanner. Cause found: a component damaged in transport or by impact. Resolved in 7 hours by a remote fix.
+
+FOPS-55345 (Ostrander Foods Dayton): drive can timeout on the drive. Cause found: a component damaged in transport or by impact. Resolved in 3 hours after a configuration rollback.
+
+FOPS-46627 (Marlow Outfitters): charge contact fault on the battery. Cause found: a worn component past its service interval. Resolved in 9 hours on site.
+
+FOPS-96596 (Northgate Grocers): deck limit switch on the lift deck. Cause found: a worn component past its service interval. Resolved in 2 hours on site.
+
+FOPS-97471 (Sundial Pharmacy): scanner config mismatch on the safety scanner. Cause found: a component damaged in transport or by impact. Resolved in 7 hours after a configuration rollback.
+
+FOPS-34114 (Northgate Grocers): wheel wear limit on the drive. Cause found: a recent site change that was not reflected in the configuration. Resolved in 3 hours by replacing the affected part.
+
+FOPS-56152 (Ostrander Foods Dayton): safety field obstructed on the safety scanner. Cause found: a component damaged in transport or by impact. Resolved in 7 hours by replacing the affected part.
+
+FOPS-41819 (Northgate Grocers): bms timeout on the battery. Cause found: a component damaged in transport or by impact. Resolved in 9 hours after a release.
+
+FOPS-79567 (Tidewater Parcel Norfolk): vpn tunnel down on the network. Cause found: a component damaged in transport or by impact. Resolved in 1 hours after a release.
+
+FOPS-52180 (Kettle & Co. Leeds): firmware mismatch on the network. Cause found: ambient temperature outside the rated range. Resolved in 9 hours after a release.
+
+FOPS-54580 (Ostrander Foods Dayton): cell undervoltage on the battery. Cause found: a worn component past its service interval. Resolved in 1 hours after a configuration rollback.
+
+FOPS-28217 (Brightmart Columbus): safety relay fault on the safety scanner. Cause found: a firmware or software version mismatch. Resolved in 7 hours after a release.
+
+FOPS-55204 (Kettle & Co. Leeds): deck not level on the lift deck. Cause found: a loose or corroded connector. Resolved in 5 hours by a remote fix.
+
+FOPS-19900 (Kettle & Co. Leeds): clock skew high on the network. Cause found: a firmware or software version mismatch. Resolved in 4 hours by a remote fix.
+
+FOPS-97271 (Brightmart Columbus): point cloud sparse on the vision. Cause found: a component damaged in transport or by impact. Resolved in 8 hours by a remote fix.
+
+FOPS-86563 (Fernway Logistics Reno): load shifted on the lift deck. Cause found: intermittent network loss. Resolved in 3 hours after a release.
+
+FOPS-28763 (Ostrander Foods Dayton): image too dark on the vision. Cause found: a firmware or software version mismatch. Resolved in 7 hours by replacing the affected part.
+
+FOPS-71193 (Halcyon Retail): dns failure on the network. Cause found: ambient temperature outside the rated range. Resolved in 8 hours after a configuration rollback.
+
+FOPS-50741 (Ostrander Foods Dayton): vpn tunnel down on the network. Cause found: ambient temperature outside the rated range. Resolved in 5 hours after a release.
+
+FOPS-47112 (Sundial Pharmacy): deck position unknown on the lift deck. Cause found: intermittent network loss. Resolved in 1 hours on site.
+
+FOPS-77496 (Marlow Outfitters): lift timeout on the lift deck. Cause found: ambient temperature outside the rated range. Resolved in 3 hours on site.
+
+FOPS-21775 (Pine & Petal): drive can timeout on the drive. Cause found: a worn component past its service interval. Resolved in 8 hours by a remote fix.
+
+FOPS-53094 (Tidewater Parcel Norfolk): scanner timeout on the safety scanner. Cause found: an expired credential. Resolved in 3 hours on site.
+
+FOPS-86101 (Northgate Grocers): time sync lost on the vision. Cause found: debris or dust on the sensor surface. Resolved in 1 hours on site.
+
+FOPS-32428 (Sundial Pharmacy): lift motor overtemp on the lift deck. Cause found: debris or dust on the sensor surface. Resolved in 2 hours by a remote fix.
+
+FOPS-49522 (Sundial Pharmacy): deck position unknown on the lift deck. Cause found: a recent site change that was not reflected in the configuration. Resolved in 9 hours on site.
+
+FOPS-98170 (Marlow Outfitters): lidar window dirty on the vision. Cause found: a worn component past its service interval. Resolved in 3 hours by a remote fix.
+
+FOPS-43806 (Tidewater Parcel Norfolk): cell undervoltage on the battery. Cause found: a loose or corroded connector. Resolved in 6 hours after a configuration rollback.
+
+FOPS-66292 (Kettle & Co. Leeds): wheel slip on the drive. Cause found: a worn component past its service interval. Resolved in 1 hours by replacing the affected part.
+
+FOPS-99495 (Northgate Grocers): drive can timeout on the drive. Cause found: a worn component past its service interval. Resolved in 8 hours by a remote fix.
+
+FOPS-34081 (Fernway Logistics Reno): deck position unknown on the lift deck. Cause found: a recent site change that was not reflected in the configuration. Resolved in 2 hours after a release.
+
+FOPS-71530 (Pine & Petal): lidar spin fault on the vision. Cause found: a worn component past its service interval. Resolved in 6 hours after a release.
+
+FOPS-80108 (Tidewater Parcel Norfolk): bumper triggered on the safety scanner. Cause found: a component damaged in transport or by impact. Resolved in 5 hours after a configuration rollback.
+
+FOPS-29082 (Brightmart Columbus): marker not found on the vision. Cause found: an expired credential. Resolved in 9 hours by a remote fix.
+
+FOPS-56003 (Sundial Pharmacy): pack not latched on the battery. Cause found: a component damaged in transport or by impact. Resolved in 2 hours by a remote fix.
+
+FOPS-75316 (Tidewater Parcel Norfolk): deck position unknown on the lift deck. Cause found: ambient temperature outside the rated range. Resolved in 2 hours on site.
+
+FOPS-22511 (Halcyon Retail): motor overtemp on the drive. Cause found: debris or dust on the sensor surface. Resolved in 2 hours by replacing the affected part.
+
+FOPS-23692 (Halcyon Retail): lift timeout on the lift deck. Cause found: a component damaged in transport or by impact. Resolved in 9 hours on site.

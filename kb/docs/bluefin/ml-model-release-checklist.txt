@@ -1,4 +1,5 @@
 ML team — model release checklist
+Version 1.0, 2026.
 
 Before a new forecasting model ships to customers:
 [ ] Backtest on the last 52 weeks for every customer in the pilot group.

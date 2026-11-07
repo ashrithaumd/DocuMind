@@ -1,4 +1,5 @@
 Board meeting notes — Q3 2026 (restricted)
+Version 1.0, 2026.
 
 - Q3 revenue: 21.4 million USD, against a plan of 20 million.
 - Robots deployed: 2,860 at the end of the quarter, across 47 customer sites.

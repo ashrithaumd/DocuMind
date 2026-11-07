@@ -1,0 +1,187 @@
+Battery Supply Agreement — contract number AUR-LGL-2025-114
+
+Version: as amended, consolidated text for 2026. Between Aurora Robotics, Inc. (the Buyer) and CellCore Energy Ltd. (the Supplier).
+
+Recitals
+
+The parties wish to set out the terms on which Atlas battery packs (rev. D) will be supplied, including
+prices, commitments, service levels and the allocation of risk. This consolidated text
+includes every amendment signed up to the date shown above.
+
+Clause 1. Definitions
+
+1.1 In this agreement, "Agreement" means this document and its schedules; "Effective Date" means 1 January 2026; "Contract Year" means each twelve-month period starting on the Effective Date or an anniversary of it; "Confidential Information" means any information disclosed by one party to the other that is marked confidential or that a reasonable person would understand to be confidential; and "Business Day" means a day other than a Saturday, Sunday or public holiday in the place of the party receiving a notice.
+
+Clause 2. Scope
+
+2.1 The Supplier shall provide, and the Buyer shall buy, Atlas battery packs (rev.
+2.2 D) on the terms of this Agreement.
+2.3 Each order or statement of work forms part of this Agreement once both parties have signed it.
+2.4 If an order conflicts with this Agreement, this Agreement prevails unless the order expressly says which clause it changes.
+
+Clause 3. Term
+
+3.1 This Agreement starts on 1 January 2026 and ends on 31 December 2028, unless ended earlier under the termination clause.
+3.2 Either party may end this Agreement for convenience by giving 9 months' written notice, given no earlier than 1 January 2027.
+
+Clause 4. Prices
+
+4.1 The prices are 2,150 US dollars per pack for the first 1,000 packs in each contract year, and 1,980 US dollars per pack above that volume.
+4.2 Prices are exclusive of sales tax and similar duties, which are added at the applicable rate.
+4.3 Prices may not be increased during a Contract Year.
+4.4 Any increase for a following Contract Year must be notified at least 60 days before that Contract Year starts and may not exceed 6 percent.
+
+Clause 5. Minimum commitment
+
+5.1 The minimum commitment is 600 packs per contract year.
+5.2 If the commitment is not met in a Contract Year, the shortfall is charged at 12 percent of the value of the unmet volume, invoiced within 30 days after the end of that Contract Year.
+
+Clause 6. Invoicing and payment
+
+6.1 Invoices are issued monthly in arrears and are payable within 45 days of receipt.
+6.2 Undisputed amounts that are paid late bear interest at 1 percent per month.
+6.3 A party that disputes an invoice in good faith must say so in writing within 15 days, and the undisputed part remains payable on time.
+
+Clause 7. Service levels and credits
+
+7.1 The service level is 98 percent of orders delivered on time.
+7.2 If it is not met in a month, the affected party is entitled to a credit of 2 percent of the order value for each full week of delay, up to 10 percent.
+7.3 Credits are the sole financial remedy for a missed service level, but do not limit the right to terminate for repeated failure under the termination clause.
+7.4 Credits must be claimed within 60 days after the end of the month concerned.
+
+Clause 8. Warranty
+
+8.1 The Supplier warrants 3 years or 3,000 charge cycles, whichever comes first.
+8.2 If a warranty claim is upheld, the Supplier shall at its option repair, replace or re-perform, or refund the price paid for the affected items.
+8.3 The warranty does not cover misuse, accidents, or modification by anyone other than the Supplier.
+
+Clause 9. Confidentiality
+
+9.1 Each party shall keep the other's Confidential Information confidential, use it only to perform this Agreement, and share it only with employees and advisers who need to know it and are bound by similar duties.
+9.2 These duties last during this Agreement and for five years after it ends, and for trade secrets for as long as they remain trade secrets.
+
+Clause 10. Data protection
+
+10.1 Where a party processes personal data on behalf of the other, it shall do so only on documented instructions, keep it secure, notify the other party of any personal data breach without undue delay and in any case within 48 hours of becoming aware of it, and delete or return it at the end of this Agreement.
+
+Clause 11. Intellectual property
+
+11.1 Each party keeps the intellectual property it owned before this Agreement.
+11.2 Nothing in this Agreement transfers ownership of either party's intellectual property, except as expressly stated in an order.
+11.3 Feedback may be used freely by the party receiving it.
+
+Clause 12. Liability
+
+12.1 Neither party excludes liability for death or personal injury caused by negligence, for fraud, or for anything that cannot be excluded by law.
+12.2 Otherwise, each party's total liability under this Agreement in any Contract Year is limited to the fees paid in the 12 months before the claim.
+12.3 Neither party is liable for loss of profit, loss of data, or indirect or consequential loss.
+
+Clause 13. Insurance
+
+13.1 Each party shall maintain, with reputable insurers, general liability insurance of at least 5 million US dollars per claim, and product or professional liability insurance appropriate to its obligations, and shall provide certificates on request.
+
+Clause 14. Termination
+
+14.1 Either party may terminate this Agreement with immediate effect by written notice if the other party commits a material breach that is not remedied within 30 days of a notice describing it, or if the other party becomes insolvent.
+14.2 A failure to meet the service level in three consecutive months is a material breach.
+
+Clause 15. Consequences of termination
+
+15.1 On termination, all unpaid invoices become payable, each party returns or destroys the other's Confidential Information, and the clauses on confidentiality, liability, and governing law continue to apply.
+
+Clause 16. Force majeure
+
+16.1 Neither party is liable for a delay or failure caused by events beyond its reasonable control, such as natural disasters, war, or the failure of public utilities, provided it notifies the other party promptly and uses reasonable efforts to limit the effect.
+16.2 If such an event lasts more than 60 days, either party may terminate the affected order.
+
+Clause 17. Assignment and subcontracting
+
+17.1 Neither party may assign this Agreement without the other's written consent, which may not be unreasonably withheld, except to a successor of all or substantially all of its business.
+17.2 A party remains responsible for the acts of its subcontractors.
+
+Clause 18. Notices
+
+18.1 Notices must be in writing and sent by email to the contacts named in the schedule, with a copy by courier for notices of breach or termination.
+18.2 A notice sent by email is received on the next Business Day after it is sent.
+
+Clause 19. Governing law and disputes
+
+19.1 This Agreement is governed by the laws of the Commonwealth of Pennsylvania.
+19.2 The parties shall first try to resolve any dispute through their executive sponsors within 30 days; failing that, the courts of the Commonwealth of Pennsylvania have exclusive jurisdiction.
+
+Clause 20. Orders and forecasts
+
+20.1 The Buyer shall give a rolling forecast of its expected needs for the next six months, updated by the fifth Business Day of each month.
+20.2 Forecasts are for planning only and are not orders, except that the first month of each forecast is binding.
+20.3 Orders must be confirmed or rejected within three Business Days; an order not rejected in that time is accepted.
+
+Clause 21. Delivery and acceptance
+
+21.1 Delivery is made to the address in the order.
+21.2 The Buyer shall inspect deliveries within ten Business Days and notify any visible defect or shortfall in writing in that time; after that, the delivery is treated as accepted, except for defects that a reasonable inspection would not have revealed.
+21.3 Rejected items are collected and replaced at the Supplier's cost.
+
+Clause 22. Quality and audits
+
+22.1 The Supplier shall maintain a quality management system certified to a recognised standard and shall keep records of production, testing and incidents for at least six years.
+22.2 The Buyer may audit those records once a year, on twenty Business Days' notice, during normal working hours, and at its own cost unless the audit finds a material non-compliance.
+
+Clause 23. Change control
+
+23.1 Either party may propose a change to the scope, the specification or the service levels by a written change request.
+23.2 The other party shall respond within fifteen Business Days with its assessment of the effect on price, timing and risk.
+23.3 No change is binding until a change note is signed by both parties' authorised representatives.
+
+Clause 24. Security
+
+24.1 The Supplier shall keep the systems it uses to perform this Agreement secure, in line with good industry practice, including access control, encryption of data in transit and at rest, vulnerability management and staff training, and shall notify the Buyer of any security incident affecting it within 48 hours.
+
+Clause 25. Business continuity
+
+25.1 The Supplier shall maintain and test, at least once a year, a business continuity plan that allows it to resume the services or deliveries within five Business Days of a serious disruption, and shall share a summary of each test with the Buyer.
+
+Clause 26. Personnel
+
+26.1 Each party is responsible for its own staff, including their pay, taxes and benefits.
+26.2 Staff working at the other party's premises shall follow its site rules and safety instructions.
+26.3 Neither party shall, during this Agreement and for twelve months after it, actively solicit for employment any employee of the other party who worked on this Agreement.
+
+Clause 27. Compliance with laws
+
+27.1 Each party shall comply with all laws that apply to it in performing this Agreement, including laws on anti-bribery, sanctions, export controls and modern slavery.
+27.2 Each party shall tell the other promptly if it becomes aware of a breach of this clause connected with this Agreement.
+
+Clause 28. Publicity
+
+28.1 Neither party shall issue a press release or make any public statement about this Agreement without the other party's prior written approval, except that each may name the other as a customer or supplier in a list of customers or suppliers.
+
+Clause 29. Transition at the end of the Agreement
+
+29.1 For up to ninety days after this Agreement ends, the Supplier shall provide reasonable help to move the services or supply to the Buyer or to a new provider, at the rates in force at the end of this Agreement, and shall return all data and materials belonging to the Buyer.
+
+Clause 30. Escalation
+
+30.1 Operational issues are raised first between the account managers named in the schedule.
+30.2 An issue not resolved within ten Business Days is escalated to each party's head of operations, and then, after a further ten Business Days, to the executive sponsors.
+
+Clause 31. Entire agreement
+
+31.1 This Agreement is the entire agreement between the parties about its subject and replaces any earlier agreement or understanding.
+31.2 Changes are valid only if made in writing and signed by both parties.
+31.3 If any clause is found invalid, the rest of this Agreement continues in effect.
+
+Schedule 1. Contacts for notices
+
+Aurora Robotics, Inc.: legal@aurora-robotics.example. CellCore Energy Ltd.: contracts desk, as named in the latest signed order.
+
+Schedule 2. Service-level reporting
+
+The Supplier shall send a monthly report by the tenth Business Day of each month showing,
+for the month before: performance against the service level (98 percent of orders delivered on time), every incident
+with its start, end and cause, credits due (2 percent of the order value for each full week of delay, up to 10 percent), open change requests, and planned
+changes for the next month. Reports are reviewed in a monthly service meeting; the minutes are
+kept by the Buyer.
+
+Schedule 3. Amendments
+
+Amendment 1 (signed 1 January 2026): original terms. Amendment 2: updated the service-level credits to 2 percent of the order value for each full week of delay, up to 10 percent.

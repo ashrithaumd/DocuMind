@@ -1,4 +1,5 @@
 Project Gullwing — acquisition plan (restricted)
+Version 1.0, 2026.
 
 Target: Gullwing Labs, a 14-person startup making in-store footfall
 sensors. Rationale: footfall data would improve Current's forecasts for

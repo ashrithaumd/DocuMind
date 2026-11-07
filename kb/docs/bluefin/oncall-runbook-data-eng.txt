@@ -1,4 +1,5 @@
 Data engineering — on-call runbook
+Version 1.0, 2026.
 
 Shifts
 On-call runs from Wednesday 09:00 to Wednesday 09:00 Eastern. The primary

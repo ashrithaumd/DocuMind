@@ -1,4 +1,5 @@
 Bluefin Analytics — Expenses
+Version 1.0, 2026.
 
 We keep this short.
 

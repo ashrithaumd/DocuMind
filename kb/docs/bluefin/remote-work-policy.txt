@@ -1,4 +1,5 @@
 Remote work at Bluefin
+Version 1.0, 2026.
 
 Everyone works remotely, from any country where we have a legal entity:
 the United States, Canada and Portugal. Working from another country is

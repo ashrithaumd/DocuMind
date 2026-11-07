@@ -1,0 +1,652 @@
+Pika picker, generation 2 — service manual
+
+Version 2.9, 2024. Published by Aurora Robotics. This edition replaces all earlier versions of the Pika gen 2 service manual.
+
+1. How to use this document
+
+This document is for the people who keep Pika gen 2 running: field technicians and trained site staff. Section 2 lists the
+key specifications. Section 3 covers safety and access. Section 4 is the reference of
+every error code, with what it means, the usual causes and what to do. Section 5 lists
+the replaceable parts with their identifiers and service intervals. Section 6 has step-by-step
+procedures, and section 7 the maintenance schedule. When you open a ticket about
+Pika gen 2, always quote the error code and the identifier from these tables exactly as
+written: our tooling searches on them.
+
+2. Key specifications
+
+- Maximum payload: 8 kg
+- Pick rate: up to 450 items per hour
+- Shelf reach: 0.3 m to 2.1 m
+- Battery: 5 hours picking, 70 minutes to 80 percent
+- Weight: 139 kg
+- Top speed: 1.5 m/s
+- Ingress rating: IP42
+- Operating temperature: 5 to 35 degrees Celsius
+
+3. Safety and access
+
+Lock out the unit with the physical key before opening any panel. Two people are needed for any work above 1.5 m or any lift of more than 25 kg. Wear safety shoes on the robot floor at all times.
+Every intervention is recorded against a ticket in the FOPS queue. A ticket id looks like
+FOPS-86155. Never close a ticket without recording what was changed, and never
+change two things at once: if the problem comes back, you need to know which change mattered.
+
+4. Error code reference
+
+4.1 Drive errors
+
+E-1900 WHEEL_SLIP. Raised by the drive subsystem. Usual cause: a worn component past its service interval. First check: confirm the unit is on the current release. Severity: warning. Needs a manual reset from the service menu.
+
+E-1901 MOTOR_OVERCURRENT. Raised by the drive subsystem. Usual cause: intermittent network loss. First check: confirm the unit is on the current release. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-1202 ENCODER_MISMATCH. Raised by the drive subsystem. Usual cause: a worn component past its service interval. First check: compare the configuration with the last known-good snapshot. Severity: critical. Stops the unit until acknowledged.
+
+E-1203 BRAKE_RELEASE_FAIL. Raised by the drive subsystem. Usual cause: a firmware or software version mismatch. First check: confirm the unit is on the current release. Severity: critical. Stops the unit until acknowledged.
+
+E-1504 MOTOR_OVERTEMP. Raised by the drive subsystem. Usual cause: debris or dust on the sensor surface. First check: run the built-in self-test from the service menu. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-1205 ODOMETRY_DRIFT. Raised by the drive subsystem. Usual cause: a component damaged in transport or by impact. First check: check the event log for the five minutes before the error. Severity: warning. Stops the unit until acknowledged.
+
+E-1506 CASTER_JAM. Raised by the drive subsystem. Usual cause: a loose or corroded connector. First check: check the site network dashboard for drops. Severity: error. Needs a manual reset from the service menu.
+
+E-1507 DRIVE_CAN_TIMEOUT. Raised by the drive subsystem. Usual cause: a configuration change made outside the change process. First check: measure the supply voltage at the connector. Severity: critical. Stops the unit until acknowledged.
+
+E-1008 WHEEL_WEAR_LIMIT. Raised by the drive subsystem. Usual cause: ambient temperature outside the rated range. First check: clean the sensor surface with a dry microfibre cloth. Severity: error. Clears itself once the cause is fixed.
+
+E-1309 STALL_DETECTED. Raised by the drive subsystem. Usual cause: intermittent network loss. First check: run the built-in self-test from the service menu. Severity: warning. Needs a manual reset from the service menu.
+
+4.2 Gripper errors
+
+E-2417 GRIPPER_VACUUM_LOW. Raised when vacuum below 40 kPa for more than 5 seconds. Usual cause: wear or damage to the vacuum pump diaphragm. Fix: replace or reset the vacuum pump diaphragm (AUR-PK2-3307-A) and run the self-test. If it returns within 24 hours, escalate to the Pika gen 2 engineering team.
+
+E-2301 FINGER_POSITION_ERROR. Raised by the gripper subsystem. Usual cause: a component damaged in transport or by impact. First check: check the event log for the five minutes before the error. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-2102 PAYLOAD_OVERWEIGHT. Raised by the gripper subsystem. Usual cause: a worn component past its service interval. First check: measure the supply voltage at the connector. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-2803 CUP_LEAK_DETECTED. Raised by the gripper subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the event log for the five minutes before the error. Severity: warning. Clears itself once the cause is fixed.
+
+E-2804 WRIST_LIMIT_REACHED. Raised by the gripper subsystem. Usual cause: debris or dust on the sensor surface. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Stops the unit until acknowledged.
+
+E-2305 GRIP_FORCE_LOW. Raised by the gripper subsystem. Usual cause: debris or dust on the sensor surface. First check: compare the configuration with the last known-good snapshot. Severity: error. Stops the unit until acknowledged.
+
+E-2906 PUMP_OVERTEMP. Raised by the gripper subsystem. Usual cause: a component damaged in transport or by impact. First check: inspect the connector and reseat it. Severity: critical. Stops the unit until acknowledged.
+
+E-2707 VALVE_STUCK_OPEN. Raised by the gripper subsystem. Usual cause: a configuration change made outside the change process. First check: clean the sensor surface with a dry microfibre cloth. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-2908 ITEM_DROPPED. Raised by the gripper subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: critical. Stops the unit until acknowledged.
+
+E-2509 TOOL_CHANGE_FAIL. Raised by the gripper subsystem. Usual cause: intermittent network loss. First check: run the built-in self-test from the service menu. Severity: error. Clears itself once the cause is fixed.
+
+4.3 Vision errors
+
+E-3100 CAMERA_NOT_DETECTED. Raised by the vision subsystem. Usual cause: a component damaged in transport or by impact. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Stops the unit until acknowledged.
+
+E-3901 DEPTH_CALIBRATION_LOST. Raised by the vision subsystem. Usual cause: a loose or corroded connector. First check: check the site network dashboard for drops. Severity: warning. Needs a manual reset from the service menu.
+
+E-3102 LIDAR_WINDOW_DIRTY. Raised by the vision subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the event log for the five minutes before the error. Severity: warning. Clears itself once the cause is fixed.
+
+E-3603 LOCALIZATION_LOST. Raised by the vision subsystem. Usual cause: a component damaged in transport or by impact. First check: check the site network dashboard for drops. Severity: error. Stops the unit until acknowledged.
+
+E-3404 MARKER_NOT_FOUND. Raised by the vision subsystem. Usual cause: a configuration change made outside the change process. First check: check the event log for the five minutes before the error. Severity: warning. Stops the unit until acknowledged.
+
+E-3605 IMAGE_TOO_DARK. Raised by the vision subsystem. Usual cause: a firmware or software version mismatch. First check: check the event log for the five minutes before the error. Severity: warning. Needs a manual reset from the service menu.
+
+E-3306 LIDAR_SPIN_FAULT. Raised by the vision subsystem. Usual cause: intermittent network loss. First check: clean the sensor surface with a dry microfibre cloth. Severity: warning. Clears itself once the cause is fixed.
+
+E-3007 POINT_CLOUD_SPARSE. Raised by the vision subsystem. Usual cause: a loose or corroded connector. First check: check the event log for the five minutes before the error. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-3608 CAMERA_OVERTEMP. Raised by the vision subsystem. Usual cause: an expired credential. First check: check the site network dashboard for drops. Severity: error. Needs a manual reset from the service menu.
+
+E-3609 TIME_SYNC_LOST. Raised by the vision subsystem. Usual cause: an expired credential. First check: compare the configuration with the last known-good snapshot. Severity: warning. Needs a manual reset from the service menu.
+
+4.4 Battery errors
+
+E-4000 BATTERY_LOW. Raised by the battery subsystem. Usual cause: a loose or corroded connector. First check: run the built-in self-test from the service menu. Severity: critical. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-4301 CELL_IMBALANCE. Raised by the battery subsystem. Usual cause: a loose or corroded connector. First check: measure the supply voltage at the connector. Severity: warning. Needs a manual reset from the service menu.
+
+E-4302 CHARGE_CONTACT_FAULT. Raised by the battery subsystem. Usual cause: debris or dust on the sensor surface. First check: compare the configuration with the last known-good snapshot. Severity: error. Stops the unit until acknowledged.
+
+E-4503 PACK_OVERTEMP. Raised by the battery subsystem. Usual cause: a component damaged in transport or by impact. First check: run the built-in self-test from the service menu. Severity: error. Stops the unit until acknowledged.
+
+E-4704 BMS_TIMEOUT. Raised by the battery subsystem. Usual cause: a loose or corroded connector. First check: run the built-in self-test from the service menu. Severity: warning. Clears itself once the cause is fixed.
+
+E-4405 CHARGE_RATE_LOW. Raised by the battery subsystem. Usual cause: an expired credential. First check: confirm the unit is on the current release. Severity: error. Stops the unit until acknowledged.
+
+E-4306 PACK_NOT_LATCHED. Raised by the battery subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: measure the supply voltage at the connector. Severity: warning. Stops the unit until acknowledged.
+
+E-4207 CELL_UNDERVOLTAGE. Raised by the battery subsystem. Usual cause: a configuration change made outside the change process. First check: run the built-in self-test from the service menu. Severity: warning. Stops the unit until acknowledged.
+
+E-4808 HEATER_FAULT. Raised by the battery subsystem. Usual cause: a firmware or software version mismatch. First check: run the built-in self-test from the service menu. Severity: warning. Needs a manual reset from the service menu.
+
+E-4909 PACK_ID_MISMATCH. Raised by the battery subsystem. Usual cause: debris or dust on the sensor surface. First check: check the site network dashboard for drops. Severity: warning. Needs a manual reset from the service menu.
+
+4.5 Lift mast errors
+
+E-5800 MAST_POSITION_ERROR. Raised by the lift mast subsystem. Usual cause: a worn component past its service interval. First check: confirm the unit is on the current release. Severity: warning. Clears itself once the cause is fixed.
+
+E-5501 MAST_OVERLOAD. Raised by the lift mast subsystem. Usual cause: ambient temperature outside the rated range. First check: check the site network dashboard for drops. Severity: warning. Needs a manual reset from the service menu.
+
+E-5102 BELT_TENSION_LOW. Raised by the lift mast subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: run the built-in self-test from the service menu. Severity: warning. Clears itself once the cause is fixed.
+
+E-5203 MAST_LIMIT_REACHED. Raised by the lift mast subsystem. Usual cause: an expired credential. First check: clean the sensor surface with a dry microfibre cloth. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-5304 MAST_HOMING_FAIL. Raised by the lift mast subsystem. Usual cause: a worn component past its service interval. First check: run the built-in self-test from the service menu. Severity: critical. Needs a manual reset from the service menu.
+
+E-5305 CARRIAGE_JAM. Raised by the lift mast subsystem. Usual cause: a firmware or software version mismatch. First check: measure the supply voltage at the connector. Severity: warning. Clears itself once the cause is fixed.
+
+E-5706 MAST_MOTOR_OVERTEMP. Raised by the lift mast subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: compare the configuration with the last known-good snapshot. Severity: warning. Stops the unit until acknowledged.
+
+E-5907 MAST_SENSOR_FAULT. Raised by the lift mast subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: inspect the connector and reseat it. Severity: warning. Stops the unit until acknowledged.
+
+E-5308 MAST_VIBRATION_HIGH. Raised by the lift mast subsystem. Usual cause: a firmware or software version mismatch. First check: clean the sensor surface with a dry microfibre cloth. Severity: critical. Clears itself once the cause is fixed.
+
+E-5509 MAST_BRAKE_FAULT. Raised by the lift mast subsystem. Usual cause: a component damaged in transport or by impact. First check: check the site network dashboard for drops. Severity: error. Clears itself once the cause is fixed.
+
+4.6 Network errors
+
+E-6700 WIFI_ROAM_FAIL. Raised by the network subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: measure the supply voltage at the connector. Severity: warning. Stops the unit until acknowledged.
+
+E-6701 FLEET_SERVER_UNREACHABLE. Raised by the network subsystem. Usual cause: a firmware or software version mismatch. First check: clean the sensor surface with a dry microfibre cloth. Severity: critical. Stops the unit until acknowledged.
+
+E-6902 CERTIFICATE_EXPIRED. Raised by the network subsystem. Usual cause: a recent site change that was not reflected in the configuration. First check: check the site network dashboard for drops. Severity: critical. Needs a manual reset from the service menu.
+
+E-6703 CLOCK_SKEW_HIGH. Raised by the network subsystem. Usual cause: an expired credential. First check: check the site network dashboard for drops. Severity: error. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-6804 MAP_SYNC_FAIL. Raised by the network subsystem. Usual cause: a component damaged in transport or by impact. First check: check the site network dashboard for drops. Severity: warning. Needs a manual reset from the service menu.
+
+E-6805 PACKET_LOSS_HIGH. Raised by the network subsystem. Usual cause: a firmware or software version mismatch. First check: inspect the connector and reseat it. Severity: error. Stops the unit until acknowledged.
+
+E-6506 DNS_FAILURE. Raised by the network subsystem. Usual cause: debris or dust on the sensor surface. First check: confirm the unit is on the current release. Severity: error. Stops the unit until acknowledged.
+
+E-6707 FIRMWARE_MISMATCH. Raised by the network subsystem. Usual cause: debris or dust on the sensor surface. First check: check the event log for the five minutes before the error. Severity: warning. Needs a manual reset from the service menu.
+
+E-6608 TELEMETRY_BACKLOG. Raised by the network subsystem. Usual cause: an expired credential. First check: check the site network dashboard for drops. Severity: warning. Logged only; no action unless it repeats more than 3 times an hour.
+
+E-6709 VPN_TUNNEL_DOWN. Raised by the network subsystem. Usual cause: ambient temperature outside the rated range. First check: check the event log for the five minutes before the error. Severity: warning. Stops the unit until acknowledged.
+
+4.7 Troubleshooting by symptom
+
+Symptom (drive): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the drive first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (drive): It takes much longer than usual to be ready after charging.
+What to do: Check the drive temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (drive): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the drive for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (drive): The status light blinks amber but the tablet shows no error.
+What to do: Open the service menu and read the drive warnings, which do not always raise a visible error.
+
+Symptom (gripper): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the gripper for debris and worn bearings.
+
+Symptom (gripper): It takes much longer than usual to be ready after charging.
+What to do: Check the gripper temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (gripper): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the gripper first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (gripper): The status light blinks amber but the tablet shows no error.
+What to do: Open the service menu and read the gripper warnings, which do not always raise a visible error.
+
+Symptom (vision): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the vision.
+
+Symptom (vision): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the vision first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (vision): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the vision for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (vision): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the vision for debris and worn bearings.
+
+Symptom (battery): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the battery.
+
+Symptom (battery): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the battery for debris and worn bearings.
+
+Symptom (battery): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the battery for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (battery): It takes much longer than usual to be ready after charging.
+What to do: Check the battery temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (lift mast): The robot keeps letting go of soft plastic bags just after lifting them.
+What to do: Check the lift mast for leaks around the cups and for a pump that sounds weaker than usual; see the error reference for the matching code.
+
+Symptom (lift mast): It takes much longer than usual to be ready after charging.
+What to do: Check the lift mast temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (lift mast): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the lift mast for debris and worn bearings.
+
+Symptom (lift mast): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the lift mast first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (network): It takes much longer than usual to be ready after charging.
+What to do: Check the network temperature readings; a pack that is too cold or too hot charges slowly by design.
+
+Symptom (network): The robot moves in a slightly curved line when it should go straight.
+What to do: Look at the network first: uneven wear or a dirty sensor is the usual reason. Recalibrate after cleaning.
+
+Symptom (network): It stops for no obvious reason in the same aisle every day.
+What to do: Compare the stop positions in the event log with the floor map; something on the floor or a reflective surface may be confusing the network.
+
+Symptom (network): Staff report a grinding or clicking sound during moves.
+What to do: Stop the robot, lock it out and inspect the network for debris and worn bearings.
+
+5. Replaceable parts
+
+AUR-PK2-7183-C: drive sensor. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-3946-C: drive seal kit. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-1172-B: drive module. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-6349-A: drive seal kit. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-8530-D: drive kit. Replace every 4000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-1284-C: drive bracket. Replace every 4000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-7358-A: drive kit. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-1696-B: drive assembly. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-6334-A: drive cable set. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-6202-C: drive cable set. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-4233-A: drive sensor. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-6713-D: drive assembly. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-1535-A: drive assembly. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-2591-C: drive cable set. Replace every 1000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-6420-A: drive sensor. Replace every 500 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-2387-D: drive seal kit. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-3246-D: drive sensor. Replace every 4000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-8189-C: drive seal kit. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-3307-A: gripper kit. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-1279-C: gripper sensor. Replace every 500 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-9474-C: gripper seal kit. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-7715-B: gripper sensor. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-1715-D: gripper assembly. Replace every 2000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-5331-C: gripper kit. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-6252-A: gripper kit. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-1234-A: gripper sensor. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-9482-A: gripper kit. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-7034-C: gripper bracket. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-6251-C: gripper bracket. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-7208-B: gripper module. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-6964-B: gripper sensor. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-3264-C: gripper kit. Replace every 4000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-4870-B: gripper module. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-5605-C: gripper seal kit. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-1519-B: gripper cable set. Replace every 1000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-8780-A: gripper kit. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-8156-D: vision seal kit. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-1808-C: vision module. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-4663-C: vision bracket. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-4090-A: vision sensor. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-3275-A: vision kit. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-2834-C: vision cable set. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-9474-D: vision cable set. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-9285-C: vision kit. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-3217-A: vision assembly. Replace every 4000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-5632-A: vision bracket. Replace every 500 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-3677-A: vision module. Replace every 2000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-8327-A: vision cable set. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-1516-B: vision module. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-3565-B: vision seal kit. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-1639-B: vision module. Replace every 4000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-9875-A: vision module. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-2980-D: vision module. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-1647-D: vision sensor. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-2159-B: battery bracket. Replace every 4000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-8829-B: battery bracket. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-1857-A: battery assembly. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-3070-B: battery bracket. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-6845-D: battery seal kit. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-5595-A: battery assembly. Replace every 2000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-2172-B: battery kit. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-6165-C: battery seal kit. Replace every 2000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-7431-A: battery module. Replace every 4000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-2726-D: battery sensor. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-8823-D: battery cable set. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-7029-C: battery seal kit. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-6361-D: battery sensor. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-2126-D: battery module. Replace every 500 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-6996-C: battery bracket. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-1728-C: battery cable set. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-3914-C: battery sensor. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-6445-D: battery module. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-6652-D: lift mast assembly. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-4203-A: lift mast assembly. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-3312-A: lift mast kit. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-5918-C: lift mast cable set. Replace every 500 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-4713-C: lift mast assembly. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-6680-A: lift mast cable set. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-1327-D: lift mast cable set. Replace every 1000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-7738-A: lift mast seal kit. Replace every 1000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-6857-B: lift mast sensor. Replace every 8000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-3402-A: lift mast seal kit. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-4366-D: lift mast assembly. Replace every 8000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-8213-A: lift mast cable set. Replace every 8000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-9077-C: lift mast module. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-2265-A: lift mast kit. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-8881-C: lift mast seal kit. Replace every 2000 operating hours or when worn. Fitting time about 10 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-2556-D: lift mast kit. Replace every 8000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-2424-A: lift mast assembly. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-2143-A: lift mast sensor. Replace every 2000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-5686-C: network assembly. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-4958-A: network cable set. Replace every 8000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-7731-D: network cable set. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-4621-D: network module. Replace every 2000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-8764-C: network kit. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-7955-A: network kit. Replace every 4000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-2394-D: network cable set. Replace every 8000 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-9019-C: network seal kit. Replace every 1000 operating hours or when worn. Fitting time about 15 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-7982-B: network seal kit. Replace every 1000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-5773-B: network seal kit. Replace every 2000 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-8597-D: network kit. Replace every 1000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-3041-C: network seal kit. Replace every 8000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 9 Nm.
+
+AUR-PK2-8234-A: network bracket. Replace every 500 operating hours or when worn. Fitting time about 45 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-8659-D: network module. Replace every 1000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 2.5 Nm.
+
+AUR-PK2-1304-A: network cable set. Replace every 500 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 12 Nm.
+
+AUR-PK2-1969-C: network module. Replace every 4000 operating hours or when worn. Fitting time about 20 minutes. Torque for fixings: 4 Nm.
+
+AUR-PK2-7105-C: network cable set. Replace every 500 operating hours or when worn. Fitting time about 30 minutes. Torque for fixings: 6 Nm.
+
+AUR-PK2-8287-D: network assembly. Replace every 4000 operating hours or when worn. Fitting time about 60 minutes. Torque for fixings: 6 Nm.
+
+6. Procedures
+
+6.1 Replacing the battery pack
+  1. Drive Pika gen 2 to the service bay and stop it with the service tablet.
+  2. Turn the key to LOCK and wait for the status light to turn solid blue.
+  3. Release the two pack latches on the left side.
+  4. Slide the pack out on the rails; it weighs about 24 kg, so use the lift trolley.
+  5. Slide the new pack in until both latches click.
+  6. Turn the key to RUN and check the pack serial number in Skyview.
+  7. Return the old pack to the take-back crate and log its serial on the ticket.
+
+6.2 Calibrating the depth cameras
+  1. Place the checkerboard target 1.0 m in front of the robot, centred.
+  2. Open Service > Vision > Calibrate on the tablet.
+  3. Hold the target still while the progress bar fills, about 90 seconds.
+  4. Move the target to 1.5 m and repeat.
+  5. Accept the result only if the reprojection error shown is under 0.4 pixels.
+
+6.3 Recovering from a lost localization
+  1. Stop the robot and check that the lidar window is clean.
+  2. Drive it by hand to the nearest charging dock, which is a known position.
+  3. Choose Service > Navigation > Relocalize.
+  4. If relocalization fails twice, re-run floor-map alignment and raise a ticket.
+
+6.4 Updating firmware on site
+  1. Check the release notes for the target version and any special steps.
+  2. Dock the robot and keep it charging during the update.
+  3. Start the update from Skyview, never from a USB stick.
+  4. Do not interrupt power for the 12 minutes the update takes.
+  5. Run the self-test and send one test mission before returning the robot to service.
+
+6.5 Investigating repeated drive errors
+  1. List every drive error from the last 7 days and group them by code.
+  2. Run the built-in self-test from the service menu.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.6 Investigating repeated gripper errors
+  1. List every gripper error from the last 7 days and group them by code.
+  2. Clean the sensor surface with a dry microfibre cloth.
+  3. Check whether the errors started after a release or a network change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.7 Investigating repeated vision errors
+  1. List every vision error from the last 7 days and group them by code.
+  2. Compare the configuration with the last known-good snapshot.
+  3. Check whether the errors started after a release or a schema change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.8 Investigating repeated battery errors
+  1. List every battery error from the last 7 days and group them by code.
+  2. Check the event log for the five minutes before the error.
+  3. Check whether the errors started after a release or a site change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.9 Investigating repeated lift mast errors
+  1. List every lift mast error from the last 7 days and group them by code.
+  2. Confirm the unit is on the current release.
+  3. Check whether the errors started after a release or a configuration change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+6.10 Investigating repeated network errors
+  1. List every network error from the last 7 days and group them by code.
+  2. Check the site network dashboard for drops.
+  3. Check whether the errors started after a release or a network change.
+  4. Fix one cause at a time and watch for 24 hours before closing the ticket.
+
+7. Maintenance schedule
+
+Daily: check the vision; inspect the drive; review the network event log for repeated warnings.
+
+Weekly: check the lift mast; inspect the vision; review the battery event log for repeated warnings.
+
+Every 500 operating hours: check the drive; inspect the vision; review the gripper event log for repeated warnings.
+
+Every 2,000 operating hours: check the network; inspect the drive; review the battery event log for repeated warnings.
+
+Yearly: check the lift mast; inspect the network; review the gripper event log for repeated warnings.
+
+8. Appendix: recent service history
+
+Resolved FOPS tickets for Pika gen 2, quoted as examples of how common errors were fixed.
+
+FOPS-14670 (Sundial Pharmacy): stall detected on the drive. Cause found: a component damaged in transport or by impact. Resolved in 8 hours after a release.
+
+FOPS-47993 (Brightmart Columbus): lidar window dirty on the vision. Cause found: a component damaged in transport or by impact. Resolved in 1 hours by a remote fix.
+
+FOPS-29170 (Kettle & Co. Leeds): lidar spin fault on the vision. Cause found: a worn component past its service interval. Resolved in 1 hours after a configuration rollback.
+
+FOPS-84598 (Pine & Petal): finger position error on the gripper. Cause found: a loose or corroded connector. Resolved in 2 hours after a configuration rollback.
+
+FOPS-94774 (Ostrander Foods Dayton): payload overweight on the gripper. Cause found: intermittent network loss. Resolved in 4 hours after a release.
+
+FOPS-71694 (Pine & Petal): lidar spin fault on the vision. Cause found: ambient temperature outside the rated range. Resolved in 1 hours by a remote fix.
+
+FOPS-75388 (Kettle & Co. Leeds): vpn tunnel down on the network. Cause found: a configuration change made outside the change process. Resolved in 5 hours on site.
+
+FOPS-86910 (Northgate Grocers): odometry drift on the drive. Cause found: a recent site change that was not reflected in the configuration. Resolved in 1 hours by replacing the affected part.
+
+FOPS-24149 (Sundial Pharmacy): image too dark on the vision. Cause found: ambient temperature outside the rated range. Resolved in 5 hours after a configuration rollback.
+
+FOPS-36234 (Pine & Petal): cell undervoltage on the battery. Cause found: a component damaged in transport or by impact. Resolved in 6 hours after a configuration rollback.
+
+FOPS-33957 (Northgate Grocers): lidar spin fault on the vision. Cause found: debris or dust on the sensor surface. Resolved in 6 hours after a configuration rollback.
+
+FOPS-87181 (Halcyon Retail): mast position error on the lift mast. Cause found: an expired credential. Resolved in 1 hours by replacing the affected part.
+
+FOPS-76888 (Pine & Petal): mast overload on the lift mast. Cause found: intermittent network loss. Resolved in 7 hours by replacing the affected part.
+
+FOPS-29975 (Sundial Pharmacy): charge contact fault on the battery. Cause found: a component damaged in transport or by impact. Resolved in 1 hours by replacing the affected part.
+
+FOPS-18816 (Pine & Petal): marker not found on the vision. Cause found: an expired credential. Resolved in 2 hours by replacing the affected part.
+
+FOPS-33034 (Sundial Pharmacy): mast position error on the lift mast. Cause found: debris or dust on the sensor surface. Resolved in 7 hours by a remote fix.
+
+FOPS-53864 (Northgate Grocers): firmware mismatch on the network. Cause found: a component damaged in transport or by impact. Resolved in 3 hours by a remote fix.
+
+FOPS-68560 (Sundial Pharmacy): odometry drift on the drive. Cause found: a worn component past its service interval. Resolved in 4 hours by a remote fix.
+
+FOPS-65764 (Tidewater Parcel Norfolk): lidar window dirty on the vision. Cause found: an expired credential. Resolved in 9 hours on site.
+
+FOPS-73056 (Kettle & Co. Leeds): time sync lost on the vision. Cause found: a configuration change made outside the change process. Resolved in 6 hours after a configuration rollback.
+
+FOPS-73451 (Tidewater Parcel Norfolk): pack id mismatch on the battery. Cause found: a component damaged in transport or by impact. Resolved in 3 hours by replacing the affected part.
+
+FOPS-35194 (Fernway Logistics Reno): wrist limit reached on the gripper. Cause found: an expired credential. Resolved in 4 hours after a configuration rollback.
+
+FOPS-33263 (Marlow Outfitters): valve stuck open on the gripper. Cause found: a loose or corroded connector. Resolved in 8 hours by a remote fix.
+
+FOPS-56556 (Halcyon Retail): mast overload on the lift mast. Cause found: an expired credential. Resolved in 7 hours on site.
+
+FOPS-90226 (Tidewater Parcel Norfolk): localization lost on the vision. Cause found: a worn component past its service interval. Resolved in 6 hours by replacing the affected part.
+
+FOPS-67685 (Northgate Grocers): certificate expired on the network. Cause found: a loose or corroded connector. Resolved in 5 hours after a release.
+
+FOPS-40954 (Marlow Outfitters): carriage jam on the lift mast. Cause found: an expired credential. Resolved in 8 hours by a remote fix.
+
+FOPS-62323 (Ostrander Foods Dayton): pack not latched on the battery. Cause found: a firmware or software version mismatch. Resolved in 9 hours on site.
+
+FOPS-59458 (Halcyon Retail): grip force low on the gripper. Cause found: a component damaged in transport or by impact. Resolved in 8 hours by replacing the affected part.
+
+FOPS-88907 (Pine & Petal): valve stuck open on the gripper. Cause found: a configuration change made outside the change process. Resolved in 5 hours by replacing the affected part.
+
+FOPS-93834 (Brightmart Columbus): encoder mismatch on the drive. Cause found: intermittent network loss. Resolved in 5 hours by replacing the affected part.
+
+FOPS-48946 (Ostrander Foods Dayton): dns failure on the network. Cause found: intermittent network loss. Resolved in 9 hours after a release.
+
+FOPS-51926 (Ostrander Foods Dayton): belt tension low on the lift mast. Cause found: an expired credential. Resolved in 8 hours by replacing the affected part.
+
+FOPS-33561 (Brightmart Columbus): gripper vacuum low on the gripper. Cause found: debris or dust on the sensor surface. Resolved in 1 hours after a release.
+
+FOPS-22555 (Northgate Grocers): heater fault on the battery. Cause found: a recent site change that was not reflected in the configuration. Resolved in 6 hours after a release.
+
+FOPS-72768 (Ostrander Foods Dayton): mast overload on the lift mast. Cause found: a configuration change made outside the change process. Resolved in 7 hours by a remote fix.
+
+FOPS-99939 (Marlow Outfitters): firmware mismatch on the network. Cause found: a worn component past its service interval. Resolved in 3 hours by a remote fix.
+
+FOPS-46115 (Ostrander Foods Dayton): motor overtemp on the drive. Cause found: ambient temperature outside the rated range. Resolved in 8 hours by a remote fix.
+
+FOPS-49821 (Ostrander Foods Dayton): localization lost on the vision. Cause found: a worn component past its service interval. Resolved in 3 hours on site.
+
+FOPS-79801 (Northgate Grocers): gripper vacuum low on the gripper. Cause found: ambient temperature outside the rated range. Resolved in 9 hours on site.
+
+FOPS-15548 (Fernway Logistics Reno): camera overtemp on the vision. Cause found: an expired credential. Resolved in 7 hours after a configuration rollback.
+
+FOPS-40961 (Fernway Logistics Reno): brake release fail on the drive. Cause found: a recent site change that was not reflected in the configuration. Resolved in 3 hours after a configuration rollback.
+
+FOPS-70175 (Brightmart Columbus): image too dark on the vision. Cause found: intermittent network loss. Resolved in 3 hours after a release.
+
+FOPS-67526 (Tidewater Parcel Norfolk): valve stuck open on the gripper. Cause found: a component damaged in transport or by impact. Resolved in 6 hours on site.
+
+FOPS-33969 (Tidewater Parcel Norfolk): bms timeout on the battery. Cause found: a worn component past its service interval. Resolved in 1 hours by replacing the affected part.
+
+FOPS-84546 (Sundial Pharmacy): heater fault on the battery. Cause found: a worn component past its service interval. Resolved in 8 hours by a remote fix.
+
+FOPS-13726 (Northgate Grocers): payload overweight on the gripper. Cause found: a loose or corroded connector. Resolved in 8 hours after a release.
+
+FOPS-61207 (Ostrander Foods Dayton): pack overtemp on the battery. Cause found: a recent site change that was not reflected in the configuration. Resolved in 4 hours by replacing the affected part.
+
+FOPS-55875 (Fernway Logistics Reno): payload overweight on the gripper. Cause found: a worn component past its service interval. Resolved in 9 hours after a release.
+
+FOPS-88267 (Tidewater Parcel Norfolk): drive can timeout on the drive. Cause found: debris or dust on the sensor surface. Resolved in 2 hours on site.
+
+FOPS-65368 (Sundial Pharmacy): odometry drift on the drive. Cause found: a firmware or software version mismatch. Resolved in 1 hours after a release.
+
+FOPS-26283 (Fernway Logistics Reno): wrist limit reached on the gripper. Cause found: an expired credential. Resolved in 1 hours by replacing the affected part.
+
+FOPS-13576 (Ostrander Foods Dayton): vpn tunnel down on the network. Cause found: an expired credential. Resolved in 6 hours after a configuration rollback.
+
+FOPS-70501 (Northgate Grocers): packet loss high on the network. Cause found: a firmware or software version mismatch. Resolved in 6 hours by replacing the affected part.
+
+FOPS-47969 (Marlow Outfitters): mast position error on the lift mast. Cause found: an expired credential. Resolved in 1 hours by replacing the affected part.
+
+FOPS-49131 (Marlow Outfitters): cup leak detected on the gripper. Cause found: a firmware or software version mismatch. Resolved in 9 hours on site.

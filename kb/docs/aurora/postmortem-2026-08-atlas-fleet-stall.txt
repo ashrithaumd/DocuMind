@@ -1,4 +1,5 @@
 Postmortem — Atlas fleet stall at Brightmart Columbus, 19 August 2026
+Version 1.0, 2026.
 Severity: SEV1. Duration: 2 hours 14 minutes.
 
 Summary

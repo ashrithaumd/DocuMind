@@ -1,4 +1,5 @@
 Product spec — Current (demand forecasting), version 4
+Version 1.0, 2026.
 
 Current predicts daily unit demand per store and product, 8 weeks ahead.
 

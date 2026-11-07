@@ -1,0 +1,173 @@
+# Facts planted by kb/tools/build_long_docs.py, for writing eval questions.
+# kind: exact (full-text search should win), paraphrase (dense search should win),
+# versioned (an older or sibling version holds a different value), mirrored (the other
+# org's document holds a different value). 'ask' is a suggested question.
+facts:
+  - doc: aurora/employee-handbook-2025.txt
+    kind: paraphrase
+    fact: "Caregiver leave: up to 8 weeks on full pay in 12 months"
+    ask: "How much paid time off can I get to look after a family member with a long illness?"
+  - doc: aurora/employee-handbook-2025.txt
+    kind: versioned
+    fact: "2025: 20 vacation days, 14 weeks parental leave"
+    ask: "How many vacation days do Aurora employees get in 2025?"
+  - doc: aurora/employee-handbook-2025.txt
+    kind: mirrored
+    fact: "Gifts up to 50 USD may be accepted; more must be declared"
+    ask: "What is the most a supplier gift can be worth before I have to declare it?"
+  - doc: aurora/employee-handbook-2025.txt
+    kind: mirrored
+    fact: "Wellbeing allowance 40 USD/month; learning budget 1500 USD"
+    ask: "What is the monthly wellbeing allowance?"
+  - doc: aurora/employee-handbook-2026.txt
+    kind: paraphrase
+    fact: "Caregiver leave: up to 10 weeks on full pay in 12 months"
+    ask: "How much paid time off can I get to look after a family member with a long illness?"
+  - doc: aurora/employee-handbook-2026.txt
+    kind: versioned
+    fact: "2026: 22 vacation days, 16 weeks parental leave"
+    ask: "How many vacation days do Aurora employees get in 2026?"
+  - doc: aurora/employee-handbook-2026.txt
+    kind: mirrored
+    fact: "Gifts up to 75 USD may be accepted; more must be declared"
+    ask: "What is the most a supplier gift can be worth before I have to declare it?"
+  - doc: aurora/employee-handbook-2026.txt
+    kind: mirrored
+    fact: "Wellbeing allowance 60 USD/month; learning budget 2000 USD"
+    ask: "What is the monthly wellbeing allowance?"
+  - doc: bluefin/employee-handbook-2025.txt
+    kind: paraphrase
+    fact: "Caregiver leave: up to 12 weeks on full pay in 12 months"
+    ask: "How much paid time off can I get to look after a family member with a long illness?"
+  - doc: bluefin/employee-handbook-2025.txt
+    kind: versioned
+    fact: "2025: 25 vacation days, 18 weeks parental leave"
+    ask: "How many vacation days do Bluefin employees get in 2025?"
+  - doc: bluefin/employee-handbook-2025.txt
+    kind: mirrored
+    fact: "Gifts up to 60 USD may be accepted; more must be declared"
+    ask: "What is the most a supplier gift can be worth before I have to declare it?"
+  - doc: bluefin/employee-handbook-2025.txt
+    kind: mirrored
+    fact: "Wellbeing allowance 50 USD/month; learning budget 1800 USD"
+    ask: "What is the monthly wellbeing allowance?"
+  - doc: bluefin/employee-handbook-2026.txt
+    kind: paraphrase
+    fact: "Caregiver leave: up to 14 weeks on full pay in 12 months"
+    ask: "How much paid time off can I get to look after a family member with a long illness?"
+  - doc: bluefin/employee-handbook-2026.txt
+    kind: versioned
+    fact: "2026: 27 vacation days, 20 weeks parental leave"
+    ask: "How many vacation days do Bluefin employees get in 2026?"
+  - doc: bluefin/employee-handbook-2026.txt
+    kind: mirrored
+    fact: "Gifts up to 100 USD may be accepted; more must be declared"
+    ask: "What is the most a supplier gift can be worth before I have to declare it?"
+  - doc: bluefin/employee-handbook-2026.txt
+    kind: mirrored
+    fact: "Wellbeing allowance 75 USD/month; learning budget 2500 USD"
+    ask: "What is the monthly wellbeing allowance?"
+  - doc: aurora/pika-gen3-service-manual.txt
+    kind: exact
+    fact: "E-2417 GRIPPER_VACUUM_LOW: vacuum below 55 kPa for more than 2 seconds; fix with AUR-PK3-4471-B"
+    ask: "What does E-2417 mean on Pika and which part fixes it?"
+  - doc: aurora/pika-gen3-service-manual.txt
+    kind: versioned
+    fact: "Pika service manual version 3.2 (2026)"
+    ask: "Which version of the Pika service manual is current?"
+  - doc: aurora/atlas-service-manual.txt
+    kind: exact
+    fact: "A-5032 SAFETY_FIELD_OBSTRUCTED: the protective field reports an obstacle for more than 30 seconds; fix with AUR-AT2-7718-C"
+    ask: "What does A-5032 mean on Atlas and which part fixes it?"
+  - doc: aurora/atlas-service-manual.txt
+    kind: versioned
+    fact: "Atlas service manual version 2.4 (2026)"
+    ask: "Which version of the Atlas service manual is current?"
+  - doc: bluefin/current-v4-operations-manual.txt
+    kind: exact
+    fact: "CUR-4107 SCORING_FEATURES_STALE: the newest feature row is older than 30 hours; fix with CUR-CFG-scoring.max_feature_age_hours"
+    ask: "What does CUR-4107 mean on Current and which part fixes it?"
+  - doc: bluefin/current-v4-operations-manual.txt
+    kind: versioned
+    fact: "Current operations guide version 4.6 (2026)"
+    ask: "Which version of the Current operations guide is current?"
+  - doc: aurora/pika-gen2-service-manual.txt
+    kind: exact
+    fact: "E-2417 GRIPPER_VACUUM_LOW: vacuum below 40 kPa for more than 5 seconds; fix with AUR-PK2-3307-A"
+    ask: "What does E-2417 mean on Pika gen 2 and which part fixes it?"
+  - doc: aurora/pika-gen2-service-manual.txt
+    kind: versioned
+    fact: "Pika gen 2 service manual version 2.9 (2024)"
+    ask: "Which version of the Pika gen 2 service manual is current?"
+  - doc: bluefin/current-v3-operations-manual.txt
+    kind: exact
+    fact: "CUR-4107 SCORING_FEATURES_STALE: the newest feature row is older than 48 hours; fix with CUR3-CFG-scoring.max_feature_age_hours"
+    ask: "What does CUR-4107 mean on Current v3 and which part fixes it?"
+  - doc: bluefin/current-v3-operations-manual.txt
+    kind: versioned
+    fact: "Current v3 operations guide version 3.8 (2025)"
+    ask: "Which version of the Current v3 operations guide is current?"
+  - doc: bluefin/tide-admin-guide.txt
+    kind: exact
+    fact: "TD-3309 QUERY_ROW_LIMIT_EXCEEDED: a query returns more than 2,000,000 rows; fix with TIDE-CFG-query.max_rows"
+    ask: "What does TD-3309 mean on Tide and which part fixes it?"
+  - doc: bluefin/tide-admin-guide.txt
+    kind: versioned
+    fact: "Tide operations guide version 7.11 (2026)"
+    ask: "Which version of the Tide operations guide is current?"
+  - doc: aurora/cellcore-supply-agreement.txt
+    kind: exact
+    fact: "Contract AUR-LGL-2025-114: payment within 45 days; service level 98 percent of orders delivered on time"
+    ask: "What payment terms does contract AUR-LGL-2025-114 set?"
+  - doc: aurora/cellcore-supply-agreement.txt
+    kind: paraphrase
+    fact: "Termination for convenience: 9 months' written notice, given no earlier than 1 January 2027"
+    ask: "How much warning does either side need to give to walk away from the CellCore Energy Ltd. deal?"
+  - doc: bluefin/northgate-master-services-agreement.txt
+    kind: exact
+    fact: "Contract BLU-MSA-2024-031: payment within 30 days; service level 99.9 percent monthly availability"
+    ask: "What payment terms does contract BLU-MSA-2024-031 set?"
+  - doc: bluefin/northgate-master-services-agreement.txt
+    kind: paraphrase
+    fact: "Termination for convenience: 90 days' written notice before the end of the term"
+    ask: "How much warning does either side need to give to walk away from the Northgate Grocers LLC deal?"
+  - doc: aurora/postmortem-2026-08-atlas-fleet-stall-full-report.txt
+    kind: exact
+    fact: "Brightmart service credit ticket FOPS-88213; validator gap ticket PLAT-4412"
+    ask: "Which ticket tracked the service credit for the Atlas fleet stall?"
+  - doc: aurora/postmortem-2026-08-atlas-fleet-stall-full-report.txt
+    kind: paraphrase
+    fact: "The no-go polygon was drawn counter-clockwise, so the planner excluded everything outside it"
+    ask: "Why did the robots think almost the whole warehouse was off limits?"
+  - doc: bluefin/postmortem-2026-07-forecast-outage-full-report.txt
+    kind: exact
+    fact: "Northgate credit ticket SUP-55102; failing code CUR-2215 PROMO_CALENDAR_INVALID"
+    ask: "Which error code did the forecast run fail with on 22 July 2026?"
+  - doc: bluefin/postmortem-2026-07-forecast-outage-full-report.txt
+    kind: paraphrase
+    fact: "The failure alert went to a Slack channel that had been archived"
+    ask: "Why did nobody at Bluefin find out the forecasts had failed until the customer called?"
+  - doc: aurora/firmware-release-notes-2026.txt
+    kind: exact
+    fact: "FW-7731 shipped in 2026.9.0: the Pika gripper no longer drops polybags when vacuum recovers late"
+    ask: "Which release fixed FW-7731?"
+  - doc: bluefin/release-notes-2026.txt
+    kind: exact
+    fact: "BLU-6620 shipped in Tide 7.9: dashboards no longer double-count returns in net sales"
+    ask: "Which release fixed BLU-6620?"
+  - doc: aurora/expense-policy-2025.txt
+    kind: versioned
+    fact: "Older version with different numbers"
+    ask: "Use with the current policy's question"
+  - doc: bluefin/expense-policy-2025.txt
+    kind: versioned
+    fact: "Older version with different numbers"
+    ask: "Use with the current policy's question"
+  - doc: aurora/salary-bands-2026.txt
+    kind: versioned
+    fact: "Older version with different numbers"
+    ask: "Use with the current policy's question"
+  - doc: bluefin/salary-bands-2026.txt
+    kind: versioned
+    fact: "Older version with different numbers"
+    ask: "Use with the current policy's question"

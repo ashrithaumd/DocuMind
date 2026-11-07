@@ -1,0 +1,296 @@
+Bluefin release notes — 2026
+
+Version 11 of this document, 2026: one entry per release from January to November 2026. Each item carries its tracking id.
+
+Release Tide 7.1 / Current 4.0 — 3 January 2026
+
+- BLU-5609 Removed: Tide sharing — recipient not licensed now has a clearer message.
+- BLU-4879 Fixed: Tide cache — cache eviction high is reported to the fleet dashboard.
+- BLU-8545 Added: Current scheduler — job overlap no longer needs a manual reset.
+- BLU-9920 Fixed: Tide training — hyperparam invalid is handled more gracefully.
+- BLU-4366 Fixed: Current semantic layer — dimension missing no longer needs a manual reset.
+- BLU-6154 Removed: Tide semantic layer — model not published retries with backoff.
+- BLU-1917 Changed: Tide query engine — concurrency limit is logged with more context.
+- BLU-9444 Improved: Current query engine — query queued too long no longer needs a manual reset.
+- BLU-2920 Added: Tide scheduler — paused by admin no longer needs a manual reset.
+- BLU-7154 Fixed: Tide sharing — export disabled by admin is reported to the fleet dashboard.
+- BLU-4235 Removed: Tide export — csv delimiter conflict threshold adjusted.
+- BLU-7887 Added: Current scoring — scoring oom is logged with more context.
+- BLU-7249 Removed: Tide scheduler — retry exhausted now has a clearer message.
+- BLU-3872 Changed: Tide cache — cache size limit retries with backoff.
+- BLU-2624 Improved: Tide export — export late threshold adjusted.
+- BLU-1773 Added: Current sharing — recipient not licensed threshold adjusted.
+- BLU-6683 Removed: Current ingestion — duplicate keys threshold adjusted.
+- BLU-5041 Removed: Tide semantic layer — currency missing is handled more gracefully.
+- BLU-7997 Removed: Tide ingestion — partition missing no longer needs a manual reset.
+- BLU-2371 Fixed: Tide semantic layer — calendar not set threshold adjusted.
+- BLU-7720 Added: Tide scoring — scoring features stale no longer needs a manual reset.
+- BLU-6796 Fixed: Tide ingestion — source auth failed is handled more gracefully.
+- BLU-1931 Added: Current cache — cache stale is reported to the fleet dashboard.
+- BLU-5201 Improved: Tide ingestion — schema mismatch is handled more gracefully.
+
+Known issues in Tide 7.1 / Current 4.0: a cosmetic error in the status page.
+
+Release Tide 7.2 / Current 4.1 — 18 February 2026
+
+- BLU-8141 Removed: Tide training — spot instance lost is reported to the fleet dashboard.
+- BLU-4289 Removed: Tide training — checkpoint corrupt is reported to the fleet dashboard.
+- BLU-4803 Added: Current semantic layer — measure type mismatch is reported to the fleet dashboard.
+- BLU-5953 Changed: Tide training — backtest regression is handled more gracefully.
+- BLU-6734 Fixed: Tide query engine — query timeout is handled more gracefully.
+- BLU-2071 Changed: Tide semantic layer — dimension missing is logged with more context.
+- BLU-7495 Added: Tide semantic layer — circular reference is handled more gracefully.
+- BLU-2591 Fixed: Tide ingestion — partition missing is reported to the fleet dashboard.
+- BLU-7586 Added: Tide training — training diverged now has a clearer message.
+- BLU-4929 Fixed: Tide sharing — attachment too large is logged with more context.
+- BLU-9844 Removed: Tide sharing — attachment too large no longer needs a manual reset.
+- BLU-2399 Removed: Current query engine — query row limit exceeded is reported to the fleet dashboard.
+- BLU-2331 Removed: Tide semantic layer — alias conflict retries with backoff.
+- BLU-6776 Removed: Current sharing — email digest bounced retries with backoff.
+- BLU-8546 Fixed: Tide scheduler — job overlap is handled more gracefully.
+- BLU-9164 Changed: Current semantic layer — filter unsupported is reported to the fleet dashboard.
+- BLU-3704 Fixed: Tide query engine — query queued too long is logged with more context.
+- BLU-7930 Changed: Tide ingestion — schema mismatch is reported to the fleet dashboard.
+- BLU-4862 Fixed: Current feature store — join explosion threshold adjusted.
+- BLU-5183 Changed: Current scheduler — cron invalid now has a clearer message.
+- BLU-2427 Fixed: Tide export — export file too large is handled more gracefully.
+- BLU-6486 Changed: Current cache — cache key collision retries with backoff.
+
+Known issues in Tide 7.2 / Current 4.1: a cosmetic error in the status page.
+
+Release Tide 7.3 / Current 4.1 — 12 March 2026
+
+- BLU-8560 Changed: Current sharing — email digest bounced is handled more gracefully.
+- BLU-8977 Changed: Tide sso — session expired is handled more gracefully.
+- BLU-6152 Fixed: Tide export — export file too large is logged with more context.
+- BLU-6484 Fixed: Current scoring — scoring oom no longer needs a manual reset.
+- BLU-4705 Added: Current semantic layer — calendar not set is handled more gracefully.
+- BLU-2993 Improved: Tide cache — warmup incomplete no longer needs a manual reset.
+- BLU-9312 Added: Current feature store — holiday calendar stale retries with backoff.
+- BLU-9112 Removed: Tide feature store — promo calendar invalid is logged with more context.
+- BLU-6033 Improved: Tide sharing — pdf render failed retries with backoff.
+- BLU-2731 Added: Tide scheduler — lock held is reported to the fleet dashboard.
+- BLU-2673 Improved: Tide export — erp mapping missing no longer needs a manual reset.
+- BLU-3835 Fixed: Tide scoring — scoring skipped retries with backoff.
+- BLU-8095 Changed: Current query engine — concurrency limit is handled more gracefully.
+- BLU-2972 Changed: Current semantic layer — measure type mismatch retries with backoff.
+- BLU-9402 Added: Tide export — export late threshold adjusted.
+- BLU-6392 Improved: Current feature store — join explosion now has a clearer message.
+- BLU-8336 Removed: Current sharing — export disabled by admin is reported to the fleet dashboard.
+- BLU-9857 Changed: Tide sharing — embed domain blocked retries with backoff.
+- BLU-1793 Changed: Current scheduler — paused by admin threshold adjusted.
+- BLU-4204 Improved: Tide cache — cache key collision retries with backoff.
+- BLU-9418 Improved: Tide feature store — feature version missing is handled more gracefully.
+- BLU-5943 Added: Current ingestion — quota exceeded threshold adjusted.
+- BLU-7703 Changed: Current query engine — warehouse suspended is logged with more context.
+- BLU-2302 Fixed: Tide export — csv delimiter conflict now has a clearer message.
+
+Known issues in Tide 7.3 / Current 4.1: a cosmetic error in the status page.
+
+Release Tide 7.4 / Current 4.2 — 22 April 2026
+
+- BLU-9318 Added: Tide feature store — feature version missing is handled more gracefully.
+- BLU-8233 Changed: Tide scoring — scoring skipped now has a clearer message.
+- BLU-7717 Improved: Current ingestion — partition missing is reported to the fleet dashboard.
+- BLU-9482 Added: Current semantic layer — metric definition invalid is logged with more context.
+- BLU-8683 Fixed: Tide query engine — result too wide retries with backoff.
+- BLU-1776 Improved: Current feature store — backfill incomplete is reported to the fleet dashboard.
+- BLU-6481 Added: Current query engine — query row limit exceeded retries with backoff.
+- BLU-9353 Changed: Tide scoring — scoring features stale threshold adjusted.
+- BLU-4615 Changed: Tide training — checkpoint corrupt is handled more gracefully.
+- BLU-3558 Changed: Current export — csv delimiter conflict is reported to the fleet dashboard.
+- BLU-4855 Changed: Current ingestion — source auth failed no longer needs a manual reset.
+- BLU-3154 Changed: Tide ingestion — row count drop now has a clearer message.
+- BLU-6931 Improved: Current semantic layer — dimension missing is reported to the fleet dashboard.
+- BLU-7051 Added: Current query engine — query cancelled is handled more gracefully.
+- BLU-9087 Removed: Tide ingestion — late arrival no longer needs a manual reset.
+- BLU-2199 Fixed: Current scoring — store not scored is handled more gracefully.
+- BLU-9597 Changed: Tide training — hyperparam invalid is logged with more context.
+- BLU-7180 Added: Current export — csv delimiter conflict threshold adjusted.
+- BLU-8163 Removed: Tide sso — saml assertion invalid retries with backoff.
+- BLU-3740 Changed: Current query engine — spill to disk threshold adjusted.
+
+Known issues in Tide 7.4 / Current 4.2: one rare timeout under heavy load, fixed in the next release.
+
+Release Tide 7.5 / Current 4.2 — 5 May 2026
+
+- BLU-9472 Added: Current scheduler — worker lost is handled more gracefully.
+- BLU-5244 Improved: Current sso — audience mismatch is logged with more context.
+- BLU-9679 Fixed: Current query engine — query cancelled is handled more gracefully.
+- BLU-3450 Improved: Current export — webhook rejected is reported to the fleet dashboard.
+- BLU-2369 Improved: Current export — api rate limited is reported to the fleet dashboard.
+- BLU-1986 Fixed: Tide training — hyperparam invalid now has a clearer message.
+- BLU-2122 Improved: Tide semantic layer — currency missing threshold adjusted.
+- BLU-1572 Fixed: Tide training — backtest regression threshold adjusted.
+- BLU-1269 Changed: Tide sharing — watermark failed now has a clearer message.
+- BLU-5268 Removed: Current training — data leakage detected is reported to the fleet dashboard.
+- BLU-4330 Changed: Current cache — cache size limit is reported to the fleet dashboard.
+- BLU-1131 Added: Current semantic layer — calendar not set now has a clearer message.
+- BLU-3429 Improved: Current cache — cache disabled is logged with more context.
+- BLU-3413 Changed: Tide export — sftp auth failed is logged with more context.
+- BLU-7740 Fixed: Current ingestion — encoding invalid is logged with more context.
+- BLU-1029 Added: Tide connector — warehouse auth failed is handled more gracefully.
+- BLU-3257 Improved: Tide connector — role missing grant is handled more gracefully.
+- BLU-7266 Removed: Current query engine — spill to disk is logged with more context.
+- BLU-4250 Improved: Current scheduler — worker lost threshold adjusted.
+- BLU-3082 Changed: Tide training — seed not set is handled more gracefully.
+- BLU-7429 Removed: Tide cache — cache stale is reported to the fleet dashboard.
+- BLU-6072 Fixed: Current scheduler — cron invalid is handled more gracefully.
+- BLU-9844 Fixed: Current export — export file too large is handled more gracefully.
+
+Known issues in Tide 7.5 / Current 4.2: one rare timeout under heavy load, fixed in the next release.
+
+Release Tide 7.6 / Current 4.3 — 20 June 2026
+
+- BLU-5222 Fixed: Tide cache — cache stale is handled more gracefully.
+- BLU-7038 Fixed: Current feature store — timezone mismatch is handled more gracefully.
+- BLU-5735 Removed: Tide connector — region mismatch is reported to the fleet dashboard.
+- BLU-8529 Changed: Tide query engine — query cancelled threshold adjusted.
+- BLU-4592 Changed: Current ingestion — checksum failed no longer needs a manual reset.
+- BLU-2384 Fixed: Current scheduler — cron invalid is reported to the fleet dashboard.
+- BLU-2693 Fixed: Current ingestion — checksum failed no longer needs a manual reset.
+- BLU-5124 Improved: Current ingestion — file not found is handled more gracefully.
+- BLU-7625 Improved: Tide semantic layer — join path ambiguous is handled more gracefully.
+- BLU-9813 Improved: Tide query engine — query row limit exceeded now has a clearer message.
+- BLU-5546 Fixed: Tide sharing — share limit reached is logged with more context.
+- BLU-3342 Improved: Current query engine — warehouse suspended threshold adjusted.
+- BLU-6542 Added: Current feature store — join explosion is reported to the fleet dashboard.
+- BLU-5084 Added: Tide sso — nameid format invalid is handled more gracefully.
+- BLU-9944 Removed: Tide training — training timeout no longer needs a manual reset.
+- BLU-3836 Improved: Current ingestion — partition missing retries with backoff.
+- BLU-1138 Improved: Tide sso — mfa required is reported to the fleet dashboard.
+- BLU-9446 Changed: Current feature store — join explosion now has a clearer message.
+
+Known issues in Tide 7.6 / Current 4.3: none.
+
+Release Tide 7.7 / Current 4.3 — 11 July 2026
+
+- BLU-4110 Changed: Current scheduler — retry exhausted now has a clearer message.
+- BLU-8972 Improved: Current sharing — watermark failed is logged with more context.
+- BLU-7709 Removed: Current connector — network policy blocked is reported to the fleet dashboard.
+- BLU-5369 Changed: Tide semantic layer — alias conflict is handled more gracefully.
+- BLU-2222 Changed: Tide connector — schema drift no longer needs a manual reset.
+- BLU-7514 Fixed: Tide training — data leakage detected now has a clearer message.
+- BLU-4453 Fixed: Tide scoring — model version unknown is reported to the fleet dashboard.
+- BLU-5756 Removed: Current feature store — store mapping gap is logged with more context.
+- BLU-8996 Added: Current sharing — share limit reached now has a clearer message.
+- BLU-3916 Fixed: Current export — api rate limited retries with backoff.
+- BLU-3781 Removed: Tide training — hyperparam invalid no longer needs a manual reset.
+- BLU-3026 Changed: Current ingestion — late arrival is handled more gracefully.
+- BLU-8364 Improved: Tide semantic layer — join path ambiguous is reported to the fleet dashboard.
+- BLU-7835 Added: Tide ingestion — late arrival is logged with more context.
+- BLU-6358 Improved: Current feature store — holiday calendar stale threshold adjusted.
+- BLU-4801 Changed: Tide semantic layer — circular reference is handled more gracefully.
+- BLU-8429 Improved: Current scoring — scoring timeout threshold adjusted.
+- BLU-4054 Changed: Current connector — view invalid now has a clearer message.
+- BLU-6737 Changed: Tide training — model card missing now has a clearer message.
+- BLU-1855 Added: Tide ingestion — partition missing retries with backoff.
+- BLU-3358 Improved: Current connector — region mismatch is handled more gracefully.
+
+Known issues in Tide 7.7 / Current 4.3: one rare timeout under heavy load, fixed in the next release.
+
+Release Tide 7.8 / Current 4.4 — 6 August 2026
+
+- BLU-3776 Removed: Current ingestion — duplicate keys is reported to the fleet dashboard.
+- BLU-1181 Fixed: Tide training — hyperparam invalid threshold adjusted.
+- BLU-6762 Added: Current semantic layer — currency missing is logged with more context.
+- BLU-3441 Added: Tide cache — warmup incomplete is handled more gracefully.
+- BLU-2436 Fixed: Tide ingestion — file not found is reported to the fleet dashboard.
+- BLU-6228 Added: Tide sharing — attachment too large threshold adjusted.
+- BLU-1320 Added: Current query engine — spill to disk retries with backoff.
+- BLU-5495 Changed: Tide scheduler — queue backlog now has a clearer message.
+- BLU-6689 Fixed: Tide training — hyperparam invalid now has a clearer message.
+- BLU-8953 Fixed: Tide scheduler — job overlap is reported to the fleet dashboard.
+- BLU-8957 Fixed: Current connector — role missing grant is logged with more context.
+- BLU-8978 Improved: Current ingestion — duplicate keys is logged with more context.
+- BLU-7438 Removed: Tide semantic layer — metric definition invalid is handled more gracefully.
+- BLU-9801 Improved: Current scheduler — lock held retries with backoff.
+- BLU-7375 Improved: Tide feature store — weather feed late retries with backoff.
+- BLU-3061 Fixed: Tide scoring — model version unknown is logged with more context.
+- BLU-5000 Changed: Current sso — user not provisioned is handled more gracefully.
+- BLU-4824 Improved: Tide semantic layer — measure type mismatch now has a clearer message.
+- BLU-8040 Changed: Current query engine — query timeout is reported to the fleet dashboard.
+- BLU-6315 Fixed: Tide connector — view invalid now has a clearer message.
+- BLU-4967 Added: Tide connector — credential rotation due threshold adjusted.
+- BLU-8980 Removed: Tide export — export file too large threshold adjusted.
+
+Known issues in Tide 7.8 / Current 4.4: occasional slow start after an update.
+
+Release Tide 7.9 / Current 4.4 — 14 September 2026
+
+- BLU-3711 Improved: Tide training — training timeout no longer needs a manual reset.
+- BLU-4399 Added: Current export — export file too large is reported to the fleet dashboard.
+- BLU-5885 Added: Tide ingestion — source auth failed no longer needs a manual reset.
+- BLU-6777 Removed: Current scheduler — worker lost is reported to the fleet dashboard.
+- BLU-4339 Improved: Current export — export truncated now has a clearer message.
+- BLU-3230 Fixed: Tide export — token expired is handled more gracefully.
+- BLU-7114 Added: Current cache — cache miss storm is reported to the fleet dashboard.
+- BLU-3769 Removed: Current export — export duplicated no longer needs a manual reset.
+- BLU-7821 Removed: Current cache — cache node down no longer needs a manual reset.
+- BLU-3225 Fixed: Current scheduler — job overlap is logged with more context.
+- BLU-9789 Improved: Tide query engine — warehouse suspended is reported to the fleet dashboard.
+- BLU-6831 Improved: Current query engine — permission denied no longer needs a manual reset.
+- BLU-4360 Improved: Tide sso — mfa required no longer needs a manual reset.
+- BLU-6677 Fixed: Tide feature store — feature version missing is handled more gracefully.
+- BLU-9459 Improved: Tide scoring — model alias missing threshold adjusted.
+- BLU-3440 Added: Current sharing — embed domain blocked no longer needs a manual reset.
+- BLU-8074 Fixed: Current cache — cache eviction high is reported to the fleet dashboard.
+- BLU-9539 Added: Tide sso — idp unreachable threshold adjusted.
+- BLU-6028 Added: Tide sharing — watermark failed is reported to the fleet dashboard.
+
+Known issues in Tide 7.9 / Current 4.4: none.
+
+Release Tide 7.10 / Current 4.5 — 6 October 2026
+
+- BLU-8179 Fixed: Current connector — warehouse auth failed threshold adjusted.
+- BLU-8304 Fixed: Current feature store — join explosion no longer needs a manual reset.
+- BLU-6748 Removed: Tide training — gpu out of memory now has a clearer message.
+- BLU-1116 Changed: Current query engine — spill to disk retries with backoff.
+- BLU-3748 Improved: Current sharing — email digest bounced is handled more gracefully.
+- BLU-2984 Removed: Tide cache — cache size limit no longer needs a manual reset.
+- BLU-8563 Improved: Tide training — training timeout no longer needs a manual reset.
+- BLU-9517 Removed: Current connector — connector paused is logged with more context.
+- BLU-3372 Added: Current ingestion — encoding invalid now has a clearer message.
+- BLU-9741 Added: Tide scoring — scoring oom no longer needs a manual reset.
+- BLU-5635 Fixed: Tide semantic layer — calendar not set is reported to the fleet dashboard.
+- BLU-2274 Removed: Current sharing — share limit reached is logged with more context.
+- BLU-3683 Removed: Tide semantic layer — circular reference now has a clearer message.
+- BLU-5342 Fixed: Tide scoring — scoring oom is handled more gracefully.
+- BLU-4535 Changed: Tide export — sftp auth failed is reported to the fleet dashboard.
+- BLU-8176 Changed: Current export — export duplicated retries with backoff.
+- BLU-4765 Improved: Current ingestion — quota exceeded is reported to the fleet dashboard.
+- BLU-2485 Changed: Current cache — cache stale is reported to the fleet dashboard.
+- BLU-8327 Removed: Tide sso — session expired is handled more gracefully.
+- BLU-3175 Changed: Current cache — cache version mismatch is reported to the fleet dashboard.
+- BLU-5285 Changed: Current training — spot instance lost is reported to the fleet dashboard.
+- BLU-3795 Added: Current sso — group mapping missing is reported to the fleet dashboard.
+- BLU-9312 Fixed: Current semantic layer — dimension missing no longer needs a manual reset.
+
+Known issues in Tide 7.10 / Current 4.5: none.
+
+Release Tide 7.11 / Current 4.5 — 27 November 2026
+
+- BLU-4417 Added: Tide ingestion — row count drop is reported to the fleet dashboard.
+- BLU-2191 Fixed: Tide training — training timeout no longer needs a manual reset.
+- BLU-2263 Fixed: Tide semantic layer — join path ambiguous threshold adjusted.
+- BLU-7692 Added: Current sso — nameid format invalid is logged with more context.
+- BLU-2683 Changed: Current ingestion — duplicate keys is reported to the fleet dashboard.
+- BLU-5794 Removed: Tide sharing — email digest bounced retries with backoff.
+- BLU-3871 Changed: Current scheduler — paused by admin is handled more gracefully.
+- BLU-4330 Added: Current connector — role missing grant retries with backoff.
+- BLU-3845 Added: Current ingestion — source auth failed threshold adjusted.
+- BLU-4635 Improved: Current scoring — model version unknown is logged with more context.
+- BLU-9567 Fixed: Current scoring — confidence interval invalid threshold adjusted.
+- BLU-5559 Improved: Tide sso — saml assertion invalid is handled more gracefully.
+- BLU-5907 Fixed: Tide export — export late now has a clearer message.
+- BLU-7507 Changed: Current semantic layer — metric definition invalid is logged with more context.
+- BLU-9123 Changed: Current cache — cache version mismatch is logged with more context.
+- BLU-1880 Fixed: Tide connector — connector paused no longer needs a manual reset.
+- BLU-2209 Removed: Current sharing — attachment too large no longer needs a manual reset.
+- BLU-9312 Fixed: Current sso — saml assertion invalid is handled more gracefully.
+- BLU-3105 Fixed: Current export — csv delimiter conflict threshold adjusted.
+- BLU-1637 Changed: Tide semantic layer — model not published is reported to the fleet dashboard.
+
+Known issues in Tide 7.11 / Current 4.5: a cosmetic error in the status page.
+
+Highlight of the year: BLU-6620 in Tide 7.9: dashboards no longer double-count returns in net sales.

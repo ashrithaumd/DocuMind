@@ -1,4 +1,5 @@
 Welcome to Aurora Robotics
+Version 1.0, 2026.
 
 Your first week
 - Day 1: collect your badge from reception at the Pittsburgh office,

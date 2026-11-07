@@ -1,4 +1,5 @@
 Atlas mover — battery pack specification (rev. D)
+Version 1.0, 2026.
 
 Chemistry: lithium iron phosphate. Nominal 48 V, 105 Ah.
 Runtime: 9 hours at a typical duty cycle of 60 percent.

@@ -1,4 +1,5 @@
 Aurora Robotics — Information Security Policy (summary)
+Version 1.0, 2026.
 
 - Passwords: at least 14 characters; the password manager is 1Password.
 - Multi-factor authentication is required for every company system. Hardware

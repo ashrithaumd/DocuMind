@@ -1,0 +1,295 @@
+Aurora firmware release notes — 2026
+
+Version 11 of this document, 2026: one entry per release from January to November 2026. Each item carries its tracking id.
+
+Release 2026.1.0 — 15 January 2026
+
+- FW-2640 Improved: Pika drive — brake release fail is reported to the fleet dashboard.
+- FW-6130 Added: Pika network — clock skew high now has a clearer message.
+- FW-5718 Added: Atlas vision — camera overtemp is handled more gracefully.
+- FW-5101 Removed: Atlas network — vpn tunnel down retries with backoff.
+- FW-3890 Added: Pika lift deck — load shifted threshold adjusted.
+- FW-8721 Changed: Atlas network — fleet server unreachable now has a clearer message.
+- FW-2870 Improved: Atlas lift deck — lift motor overtemp is reported to the fleet dashboard.
+- FW-9850 Fixed: Pika vision — lidar window dirty now has a clearer message.
+- FW-3031 Removed: Pika gripper — item dropped is logged with more context.
+- FW-9991 Added: Atlas vision — point cloud sparse now has a clearer message.
+- FW-4395 Added: Atlas network — fleet server unreachable is handled more gracefully.
+- FW-7935 Changed: Atlas gripper — cup leak detected now has a clearer message.
+- FW-1878 Changed: Atlas drive — odometry drift no longer needs a manual reset.
+- FW-1028 Removed: Atlas lift mast — mast vibration high is reported to the fleet dashboard.
+- FW-3913 Improved: Pika drive — drive can timeout threshold adjusted.
+- FW-8683 Changed: Atlas gripper — gripper vacuum low retries with backoff.
+- FW-5308 Fixed: Pika drive — wheel wear limit no longer needs a manual reset.
+- FW-2557 Fixed: Pika safety scanner — estop pressed retries with backoff.
+- FW-4052 Changed: Pika lift deck — latch not engaged is logged with more context.
+- FW-9620 Changed: Pika battery — heater fault threshold adjusted.
+- FW-3375 Improved: Pika drive — motor overcurrent is logged with more context.
+- FW-1650 Fixed: Pika drive — wheel slip is logged with more context.
+- FW-7704 Added: Atlas gripper — payload overweight no longer needs a manual reset.
+- FW-9361 Fixed: Pika gripper — wrist limit reached is reported to the fleet dashboard.
+
+Known issues in 2026.1.0: one rare timeout under heavy load, fixed in the next release.
+
+Release 2026.2.0 — 25 February 2026
+
+- FW-8588 Fixed: Atlas drive — odometry drift no longer needs a manual reset.
+- FW-8602 Changed: Atlas safety scanner — bumper triggered is reported to the fleet dashboard.
+- FW-3176 Improved: Pika drive — stall detected is reported to the fleet dashboard.
+- FW-7422 Added: Pika lift mast — mast sensor fault now has a clearer message.
+- FW-3060 Removed: Atlas battery — pack id mismatch is handled more gracefully.
+- FW-9718 Changed: Pika drive — drive can timeout threshold adjusted.
+- FW-5135 Changed: Atlas drive — odometry drift is reported to the fleet dashboard.
+- FW-6392 Added: Atlas network — firmware mismatch is logged with more context.
+- FW-6901 Improved: Atlas gripper — pump overtemp is reported to the fleet dashboard.
+- FW-9525 Changed: Atlas drive — caster jam threshold adjusted.
+- FW-8893 Improved: Atlas lift deck — latch not engaged threshold adjusted.
+- FW-8391 Removed: Atlas safety scanner — scanner config mismatch threshold adjusted.
+- FW-8851 Fixed: Atlas drive — encoder mismatch retries with backoff.
+- FW-4549 Added: Atlas safety scanner — estop pressed threshold adjusted.
+- FW-2825 Fixed: Pika safety scanner — scanner contaminated now has a clearer message.
+- FW-5855 Changed: Pika lift mast — mast brake fault is logged with more context.
+- FW-1214 Added: Pika lift mast — mast sensor fault now has a clearer message.
+- FW-3014 Fixed: Pika drive — wheel slip no longer needs a manual reset.
+- FW-3322 Improved: Pika drive — drive can timeout is handled more gracefully.
+- FW-8501 Improved: Atlas drive — drive can timeout no longer needs a manual reset.
+- FW-7681 Removed: Atlas battery — battery low retries with backoff.
+- FW-7678 Removed: Atlas lift deck — lift timeout now has a clearer message.
+
+Known issues in 2026.2.0: a cosmetic error in the status page.
+
+Release 2026.3.0 — 27 March 2026
+
+- FW-7766 Fixed: Atlas drive — brake release fail now has a clearer message.
+- FW-8860 Fixed: Pika vision — localization lost is reported to the fleet dashboard.
+- FW-1015 Added: Pika battery — heater fault threshold adjusted.
+- FW-6299 Fixed: Atlas lift mast — mast overload now has a clearer message.
+- FW-8990 Changed: Pika gripper — tool change fail is reported to the fleet dashboard.
+- FW-4665 Changed: Atlas drive — motor overtemp is handled more gracefully.
+- FW-8636 Changed: Atlas drive — motor overtemp threshold adjusted.
+- FW-7428 Improved: Atlas vision — marker not found threshold adjusted.
+- FW-3130 Removed: Pika drive — drive can timeout is logged with more context.
+- FW-6367 Fixed: Atlas lift deck — lift overload now has a clearer message.
+- FW-1642 Removed: Pika battery — battery low is handled more gracefully.
+- FW-5565 Added: Atlas lift deck — lift overload now has a clearer message.
+- FW-1836 Fixed: Pika vision — point cloud sparse now has a clearer message.
+- FW-7985 Changed: Pika safety scanner — scanner config mismatch retries with backoff.
+- FW-1483 Changed: Pika network — packet loss high no longer needs a manual reset.
+- FW-7985 Fixed: Pika network — certificate expired no longer needs a manual reset.
+- FW-8338 Improved: Pika safety scanner — muting timeout is logged with more context.
+- FW-1769 Fixed: Pika gripper — wrist limit reached retries with backoff.
+- FW-4736 Improved: Pika drive — brake release fail is logged with more context.
+- FW-6642 Removed: Atlas gripper — gripper vacuum low is handled more gracefully.
+- FW-1874 Fixed: Pika safety scanner — safety field obstructed threshold adjusted.
+
+Known issues in 2026.3.0: none.
+
+Release 2026.4.0 — 18 April 2026
+
+- FW-9946 Fixed: Atlas gripper — finger position error no longer needs a manual reset.
+- FW-4944 Improved: Pika lift deck — lift motor overtemp is reported to the fleet dashboard.
+- FW-1364 Changed: Atlas gripper — item dropped is handled more gracefully.
+- FW-7754 Fixed: Atlas vision — localization lost now has a clearer message.
+- FW-6028 Fixed: Pika lift mast — belt tension low retries with backoff.
+- FW-1428 Fixed: Pika safety scanner — scanner timeout retries with backoff.
+- FW-8854 Improved: Atlas battery — charge contact fault is handled more gracefully.
+- FW-4790 Fixed: Atlas network — firmware mismatch is logged with more context.
+- FW-1903 Improved: Pika battery — pack not latched is handled more gracefully.
+- FW-7912 Added: Atlas drive — drive can timeout no longer needs a manual reset.
+- FW-9112 Fixed: Atlas vision — camera overtemp now has a clearer message.
+- FW-7425 Removed: Pika safety scanner — scanner contaminated now has a clearer message.
+- FW-3401 Fixed: Pika vision — image too dark now has a clearer message.
+- FW-1965 Added: Atlas vision — image too dark retries with backoff.
+- FW-1534 Improved: Pika vision — point cloud sparse is handled more gracefully.
+- FW-7391 Changed: Atlas vision — lidar spin fault now has a clearer message.
+- FW-8737 Improved: Pika battery — pack overtemp is handled more gracefully.
+- FW-8127 Removed: Pika drive — wheel slip threshold adjusted.
+- FW-6323 Removed: Pika battery — pack overtemp is logged with more context.
+- FW-7358 Removed: Atlas drive — brake release fail is logged with more context.
+- FW-9729 Removed: Atlas gripper — tool change fail now has a clearer message.
+
+Known issues in 2026.4.0: a cosmetic error in the status page.
+
+Release 2026.5.0 — 5 May 2026
+
+- FW-2405 Fixed: Atlas safety scanner — estop pressed is reported to the fleet dashboard.
+- FW-6964 Removed: Pika lift deck — deck sensor fault is handled more gracefully.
+- FW-6368 Improved: Atlas network — firmware mismatch retries with backoff.
+- FW-4189 Added: Atlas gripper — item dropped retries with backoff.
+- FW-3253 Removed: Pika safety scanner — field set invalid is reported to the fleet dashboard.
+- FW-4340 Changed: Pika vision — localization lost is handled more gracefully.
+- FW-7026 Improved: Atlas vision — depth calibration lost retries with backoff.
+- FW-4123 Added: Pika battery — charge rate low now has a clearer message.
+- FW-4958 Improved: Pika battery — charge contact fault retries with backoff.
+- FW-1962 Fixed: Pika network — vpn tunnel down no longer needs a manual reset.
+- FW-2286 Added: Atlas drive — caster jam is logged with more context.
+- FW-5804 Added: Atlas battery — charge rate low now has a clearer message.
+- FW-1454 Removed: Atlas lift deck — deck not level retries with backoff.
+- FW-3434 Changed: Pika lift deck — lift timeout is reported to the fleet dashboard.
+- FW-4032 Fixed: Atlas gripper — gripper vacuum low is logged with more context.
+- FW-1754 Improved: Atlas gripper — finger position error is logged with more context.
+- FW-3406 Added: Atlas vision — localization lost threshold adjusted.
+- FW-6213 Changed: Atlas battery — cell imbalance is handled more gracefully.
+- FW-3715 Improved: Pika lift mast — mast position error threshold adjusted.
+- FW-9074 Changed: Pika lift deck — deck not level retries with backoff.
+
+Known issues in 2026.5.0: one rare timeout under heavy load, fixed in the next release.
+
+Release 2026.6.0 — 3 June 2026
+
+- FW-1654 Added: Atlas battery — bms timeout is logged with more context.
+- FW-2312 Improved: Atlas network — telemetry backlog no longer needs a manual reset.
+- FW-5828 Added: Pika gripper — cup leak detected retries with backoff.
+- FW-8919 Changed: Pika gripper — payload overweight is handled more gracefully.
+- FW-5234 Changed: Pika gripper — valve stuck open retries with backoff.
+- FW-4146 Removed: Pika gripper — cup leak detected is handled more gracefully.
+- FW-2609 Removed: Atlas gripper — finger position error threshold adjusted.
+- FW-9467 Fixed: Atlas network — wifi roam fail retries with backoff.
+- FW-4455 Changed: Pika battery — cell undervoltage threshold adjusted.
+- FW-5390 Changed: Pika lift deck — lift overload is handled more gracefully.
+- FW-8693 Improved: Pika network — map sync fail now has a clearer message.
+- FW-7296 Improved: Atlas lift mast — mast sensor fault now has a clearer message.
+- FW-9751 Added: Atlas lift mast — mast overload is handled more gracefully.
+- FW-9686 Changed: Atlas vision — marker not found is logged with more context.
+- FW-5202 Removed: Pika battery — cell undervoltage is handled more gracefully.
+- FW-5993 Added: Atlas vision — camera not detected now has a clearer message.
+- FW-3104 Removed: Pika drive — encoder mismatch threshold adjusted.
+- FW-7886 Removed: Atlas lift deck — deck position unknown is reported to the fleet dashboard.
+
+Known issues in 2026.6.0: occasional slow start after an update.
+
+Release 2026.7.0 — 24 July 2026
+
+- FW-2184 Added: Atlas lift mast — mast brake fault threshold adjusted.
+- FW-3305 Improved: Atlas drive — wheel slip no longer needs a manual reset.
+- FW-2131 Fixed: Pika lift deck — latch not engaged now has a clearer message.
+- FW-8680 Fixed: Pika drive — motor overcurrent retries with backoff.
+- FW-1825 Changed: Atlas lift deck — lift timeout is reported to the fleet dashboard.
+- FW-3161 Removed: Pika gripper — valve stuck open now has a clearer message.
+- FW-8161 Fixed: Pika gripper — wrist limit reached is reported to the fleet dashboard.
+- FW-3038 Changed: Atlas vision — time sync lost is logged with more context.
+- FW-5415 Changed: Atlas lift deck — deck not level now has a clearer message.
+- FW-5998 Changed: Pika vision — time sync lost now has a clearer message.
+- FW-3055 Fixed: Pika gripper — tool change fail no longer needs a manual reset.
+- FW-3706 Improved: Pika safety scanner — speed monitor fault threshold adjusted.
+- FW-3135 Added: Atlas drive — stall detected now has a clearer message.
+- FW-5622 Fixed: Pika vision — lidar window dirty no longer needs a manual reset.
+- FW-2838 Changed: Atlas vision — point cloud sparse is reported to the fleet dashboard.
+- FW-5856 Added: Atlas vision — localization lost retries with backoff.
+- FW-3134 Fixed: Pika safety scanner — scanner config mismatch is handled more gracefully.
+- FW-6501 Added: Pika lift mast — mast motor overtemp retries with backoff.
+
+Known issues in 2026.7.0: none.
+
+Release 2026.8.0 — 22 August 2026
+
+- FW-4758 Changed: Atlas gripper — gripper vacuum low is logged with more context.
+- FW-9695 Removed: Atlas network — telemetry backlog is reported to the fleet dashboard.
+- FW-5505 Improved: Pika safety scanner — estop pressed is reported to the fleet dashboard.
+- FW-9458 Removed: Atlas lift deck — lift timeout threshold adjusted.
+- FW-9407 Fixed: Atlas battery — charge rate low threshold adjusted.
+- FW-3442 Added: Atlas drive — wheel slip is logged with more context.
+- FW-8621 Changed: Pika vision — point cloud sparse is logged with more context.
+- FW-8941 Changed: Atlas lift deck — deck position unknown no longer needs a manual reset.
+- FW-9945 Removed: Atlas drive — encoder mismatch is logged with more context.
+- FW-6104 Improved: Pika gripper — payload overweight retries with backoff.
+- FW-6048 Fixed: Atlas vision — image too dark is reported to the fleet dashboard.
+- FW-1037 Added: Atlas vision — image too dark no longer needs a manual reset.
+- FW-2402 Changed: Pika battery — pack not latched no longer needs a manual reset.
+- FW-4018 Added: Pika gripper — cup leak detected retries with backoff.
+- FW-6898 Changed: Pika drive — encoder mismatch is reported to the fleet dashboard.
+- FW-1888 Fixed: Pika safety scanner — speed monitor fault is handled more gracefully.
+- FW-6742 Fixed: Pika gripper — valve stuck open threshold adjusted.
+- FW-1034 Fixed: Pika lift deck — deck not level threshold adjusted.
+- FW-2466 Added: Atlas gripper — payload overweight retries with backoff.
+- FW-2778 Added: Pika drive — motor overcurrent no longer needs a manual reset.
+- FW-3060 Added: Pika lift mast — carriage jam retries with backoff.
+- FW-8440 Fixed: Atlas lift mast — mast motor overtemp no longer needs a manual reset.
+- FW-1435 Removed: Atlas gripper — pump overtemp is logged with more context.
+- FW-9602 Added: Atlas lift mast — belt tension low retries with backoff.
+
+Known issues in 2026.8.0: none.
+
+Release 2026.9.0 — 15 September 2026
+
+- FW-5514 Improved: Pika battery — battery low no longer needs a manual reset.
+- FW-4516 Fixed: Pika vision — point cloud sparse is reported to the fleet dashboard.
+- FW-1416 Fixed: Atlas vision — lidar window dirty threshold adjusted.
+- FW-3404 Fixed: Atlas vision — marker not found is reported to the fleet dashboard.
+- FW-6156 Improved: Atlas lift deck — deck sensor fault is logged with more context.
+- FW-5093 Improved: Atlas safety scanner — muting timeout threshold adjusted.
+- FW-2419 Added: Pika safety scanner — safety field obstructed is handled more gracefully.
+- FW-3571 Fixed: Atlas gripper — tool change fail is logged with more context.
+- FW-4030 Removed: Pika vision — lidar window dirty now has a clearer message.
+- FW-1047 Fixed: Pika vision — camera overtemp is logged with more context.
+- FW-2824 Fixed: Pika safety scanner — scanner timeout is logged with more context.
+- FW-9747 Changed: Atlas network — clock skew high retries with backoff.
+- FW-2718 Fixed: Atlas vision — lidar spin fault is logged with more context.
+- FW-7283 Added: Pika safety scanner — safety relay fault no longer needs a manual reset.
+- FW-2522 Improved: Pika safety scanner — estop pressed now has a clearer message.
+- FW-4092 Changed: Atlas vision — marker not found is reported to the fleet dashboard.
+- FW-8432 Changed: Pika safety scanner — bumper triggered no longer needs a manual reset.
+- FW-2634 Improved: Pika drive — brake release fail is handled more gracefully.
+- FW-9000 Changed: Pika gripper — item dropped is reported to the fleet dashboard.
+- FW-8112 Improved: Atlas safety scanner — safety relay fault is logged with more context.
+- FW-1609 Changed: Pika network — clock skew high now has a clearer message.
+- FW-7948 Improved: Atlas safety scanner — scanner timeout now has a clearer message.
+- FW-4833 Removed: Atlas gripper — finger position error retries with backoff.
+
+Known issues in 2026.9.0: a cosmetic error in the status page.
+
+Release 2026.10.0 — 25 October 2026
+
+- FW-5841 Changed: Atlas drive — caster jam is logged with more context.
+- FW-8901 Improved: Pika lift deck — lift overload is handled more gracefully.
+- FW-5553 Changed: Pika battery — heater fault no longer needs a manual reset.
+- FW-4724 Fixed: Pika network — wifi roam fail threshold adjusted.
+- FW-4990 Added: Pika battery — cell imbalance is logged with more context.
+- FW-4156 Changed: Pika battery — pack not latched now has a clearer message.
+- FW-8557 Fixed: Atlas lift mast — mast homing fail now has a clearer message.
+- FW-9189 Fixed: Atlas network — dns failure now has a clearer message.
+- FW-6712 Improved: Atlas drive — motor overcurrent is handled more gracefully.
+- FW-1669 Added: Atlas gripper — tool change fail retries with backoff.
+- FW-4146 Added: Pika lift mast — mast homing fail is handled more gracefully.
+- FW-3526 Fixed: Atlas lift deck — deck limit switch retries with backoff.
+- FW-1961 Changed: Pika lift deck — lift overload is handled more gracefully.
+- FW-5998 Removed: Pika gripper — grip force low is reported to the fleet dashboard.
+- FW-4701 Removed: Atlas lift mast — mast motor overtemp retries with backoff.
+- FW-7966 Added: Pika drive — caster jam is reported to the fleet dashboard.
+- FW-5658 Added: Pika lift deck — hydraulic pressure low no longer needs a manual reset.
+- FW-6920 Added: Pika network — wifi roam fail is handled more gracefully.
+- FW-3040 Added: Pika drive — wheel wear limit is handled more gracefully.
+- FW-4890 Changed: Atlas battery — charge contact fault is handled more gracefully.
+
+Known issues in 2026.10.0: none.
+
+Release 2026.11.0 — 26 November 2026
+
+- FW-7058 Fixed: Pika vision — camera not detected now has a clearer message.
+- FW-2640 Fixed: Atlas lift deck — deck position unknown now has a clearer message.
+- FW-9487 Changed: Pika lift mast — mast vibration high threshold adjusted.
+- FW-2921 Removed: Atlas battery — battery low no longer needs a manual reset.
+- FW-7908 Removed: Atlas network — telemetry backlog threshold adjusted.
+- FW-5246 Changed: Pika lift mast — mast position error now has a clearer message.
+- FW-2671 Improved: Pika safety scanner — field set invalid threshold adjusted.
+- FW-9825 Fixed: Pika gripper — gripper vacuum low is handled more gracefully.
+- FW-5950 Improved: Pika battery — heater fault is handled more gracefully.
+- FW-4565 Added: Atlas safety scanner — scanner contaminated no longer needs a manual reset.
+- FW-5566 Removed: Pika battery — pack not latched no longer needs a manual reset.
+- FW-4379 Fixed: Pika vision — time sync lost is handled more gracefully.
+- FW-5244 Changed: Pika vision — time sync lost is handled more gracefully.
+- FW-3758 Added: Pika network — firmware mismatch is handled more gracefully.
+- FW-2697 Changed: Atlas vision — localization lost retries with backoff.
+- FW-2313 Improved: Atlas lift deck — lift timeout threshold adjusted.
+- FW-2891 Removed: Pika gripper — grip force low no longer needs a manual reset.
+- FW-8569 Added: Atlas drive — wheel wear limit is logged with more context.
+- FW-8741 Improved: Atlas battery — heater fault retries with backoff.
+- FW-7933 Improved: Atlas safety scanner — scanner contaminated no longer needs a manual reset.
+- FW-5593 Fixed: Pika gripper — grip force low retries with backoff.
+- FW-5223 Changed: Pika gripper — valve stuck open threshold adjusted.
+- FW-1118 Removed: Pika network — dns failure is logged with more context.
+- FW-9674 Removed: Pika network — wifi roam fail is handled more gracefully.
+
+Known issues in 2026.11.0: occasional slow start after an update.
+
+Highlight of the year: FW-7731 in 2026.9.0: the Pika gripper no longer drops polybags when vacuum recovers late.

@@ -1,4 +1,5 @@
 Product spec — Pika picker, generation 3
+Version 1.0, 2026.
 
 Pika is our shelf-picking robot for small parcels.
 

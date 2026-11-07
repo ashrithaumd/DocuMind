@@ -1,4 +1,5 @@
 Platform team — On-call runbook (fleet backend)
+Version 1.0, 2026.
 Last reviewed: 2 October 2026 by the platform team lead.
 
 Rotation

@@ -59,6 +59,9 @@ class FirebaseTokenChecker:
             # the project id and Google's public certificates.
             options = {"projectId": settings.firebase_project_id} if settings.firebase_project_id else None
             self._app = firebase_admin.initialize_app(options=options, name=self.APP_NAME)
+        # Without it, a token used the moment it's issued fails on any server
+        # whose clock is slightly behind Google's (see config.py).
+        self._clock_skew = settings.firebase_clock_skew_seconds
 
     def verify(self, token: str, check_revoked: bool = False) -> str:
         from firebase_admin import auth
@@ -66,7 +69,8 @@ class FirebaseTokenChecker:
         try:
             # check_revoked looks the user up in Firebase, which needs the
             # service account key (GOOGLE_APPLICATION_CREDENTIALS).
-            claims = auth.verify_id_token(token, app=self._app, check_revoked=check_revoked)
+            claims = auth.verify_id_token(token, app=self._app, check_revoked=check_revoked,
+                                          clock_skew_seconds=self._clock_skew)
         except (auth.InvalidIdTokenError, auth.UserDisabledError) as exc:
             # Expired and revoked tokens are InvalidIdTokenError subclasses;
             # UserDisabledError (check_revoked only) is not. Anything else (no

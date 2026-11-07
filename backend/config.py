@@ -7,7 +7,7 @@ overrides the service hosts.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -58,6 +58,11 @@ class Settings(BaseSettings):
     # Firebase project whose ID tokens are accepted. The service account key
     # (GOOGLE_APPLICATION_CREDENTIALS) is read by the Firebase SDK itself.
     firebase_project_id: str | None = None
+    # Seconds of clock difference tolerated when checking a token's iat/exp.
+    # Firebase stamps iat with Google's clock; a server whose clock lags by
+    # even a second rejects a token used right after sign-in as "used too
+    # early" (seen live: this machine ran ~1.5 s behind). Firebase allows 0-60.
+    firebase_clock_skew_seconds: int = Field(default=5, ge=0, le=60)
     # Return raw provider error text and per-request LLM usage (attempts per
     # model, every failed attempt's message) from /query. Off by default:
     # clients get provider-neutral errors and the details stay in the server

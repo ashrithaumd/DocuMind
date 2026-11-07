@@ -10,7 +10,11 @@ spends a token. Unit tests that only need the log tables use SQLite.
 
 Auth: FakeTokenChecker replaces Firebase, and `client` signs in as a set-up
 user (TEST_UID, in org TEST_ORG) by default; tests about auth itself change
-or drop the Authorization header.
+or drop the Authorization header. Permission tests sign in explicitly as a
+viewer instead (see test_rls.py), never through that default admin.
+
+Postgres roles: migrations run as the TEST_POSTGRES_URL user (the owner,
+pg_url); the app connects as documind_app (app_url), so RLS applies to it.
 """
 import pytest
 
@@ -22,6 +26,9 @@ from tests.helpers import FakeEmbeddings, FakeLLM, FakeTokenChecker
 
 TEST_ORG = "org-test"
 TEST_UID = "uid-test"
+# documind_app is cluster-wide; every test database's migration sets this
+# password on it (db.session._sync_app_role_password).
+APP_ROLE_PASSWORD = "documind-app-test"
 
 
 @pytest.fixture
@@ -35,13 +42,14 @@ def token_checker():
 
 
 @pytest.fixture
-def app_env(pg_url, monkeypatch, fake_llm, token_checker):
+def app_env(pg_url, app_url, monkeypatch, fake_llm, token_checker):
     """Fresh settings + stubbed LLM/embeddings + a fresh Postgres database."""
     monkeypatch.setenv("LLM_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
     monkeypatch.delenv("GENERATION_MODEL", raising=False)
     monkeypatch.delenv("GRADING_MODEL", raising=False)
-    monkeypatch.setenv("DATABASE_URL", pg_url)
+    monkeypatch.setenv("DATABASE_URL", app_url)
+    monkeypatch.setenv("MIGRATION_DATABASE_URL", pg_url)
     monkeypatch.delenv("FIREBASE_PROJECT_ID", raising=False)
     # FakeEmbeddings stands in for the provider; the chunks table must be
     # sized for its 32-dim vectors.
@@ -92,6 +100,15 @@ def client(app_env, pg_url):
         engine.dispose()
         test_client.headers["Authorization"] = f"Bearer token:{TEST_UID}"
         yield test_client
+
+
+@pytest.fixture
+def app_url(pg_url):
+    """pg_url's database, as the documind_app role (exists once migrated)."""
+    import sqlalchemy as sa
+
+    return sa.engine.make_url(pg_url).set(
+        username="documind_app", password=APP_ROLE_PASSWORD).render_as_string(hide_password=False)
 
 
 @pytest.fixture

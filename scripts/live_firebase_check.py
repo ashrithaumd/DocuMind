@@ -9,7 +9,11 @@ deployed service:
         checks, then removes both.
     ... live_firebase_check.py --api https://... --database-url postgresql+psycopg2://...
         Checks a running backend; the database URL is where the test user
-        gets seeded (the backend's own database, as an owner role).
+        gets seeded (the backend's own database, as the owner role: the
+        app role can't write the user tables).
+
+Refuses to run unless EVAL_ADMIN_EMAIL ends in @documind.test: step 5 revokes
+that account's sessions, so it must never be a real person's.
 
 Everything comes from the repo-root .env: EVAL_ADMIN_EMAIL,
 EVAL_ADMIN_PASSWORD, VITE_FIREBASE_API_KEY, FIREBASE_PROJECT_ID and
@@ -42,6 +46,10 @@ REPO = Path(__file__).resolve().parents[1]
 LOCAL_API = "http://127.0.0.1:8011"
 LOCAL_PG_PORT = 5440
 LOCAL_DB = f"postgresql+psycopg2://documind:documind@localhost:{LOCAL_PG_PORT}/documind"
+# The local backend connects as documind_app (RLS applies); this throwaway
+# password is set on the role by the migration step at startup.
+LOCAL_APP_DB = f"postgresql+psycopg2://documind_app:livecheck@localhost:{LOCAL_PG_PORT}/documind"
+TEST_EMAIL_DOMAIN = "@documind.test"
 CONTAINER = "documind-livecheck-fb"
 LOG = Path(tempfile.gettempdir()) / "documind_live_backend.log"
 
@@ -91,6 +99,9 @@ def preflight():
     step("Preflight")
     for name in ("EVAL_ADMIN_EMAIL", "VITE_FIREBASE_API_KEY", "FIREBASE_PROJECT_ID"):
         check(bool(setting(name)), f"{name} set")
+    # Step 5 revokes this account's sessions: only ever a test account.
+    check(setting("EVAL_ADMIN_EMAIL").lower().endswith(TEST_EMAIL_DOMAIN),
+          f"EVAL_ADMIN_EMAIL is a {TEST_EMAIL_DOMAIN} test account")
     check(bool(setting("EVAL_ADMIN_PASSWORD")), "EVAL_ADMIN_PASSWORD set (value not shown)")
     key = Path(setting("GOOGLE_APPLICATION_CREDENTIALS"))
     check(key.is_file(), f"key file exists: {key}")
@@ -110,7 +121,8 @@ def start_local_stack() -> subprocess.Popen:
         time.sleep(1)
     time.sleep(2)  # the image restarts once after init
     env = {**os.environ,
-           "DATABASE_URL": LOCAL_DB,
+           "DATABASE_URL": LOCAL_APP_DB,
+           "MIGRATION_DATABASE_URL": LOCAL_DB,
            "FIREBASE_PROJECT_ID": setting("FIREBASE_PROJECT_ID"),
            "GOOGLE_APPLICATION_CREDENTIALS": setting("GOOGLE_APPLICATION_CREDENTIALS"),
            "EMBEDDING_PROVIDER": "gemini"}  # no torch; startup makes no embedding call

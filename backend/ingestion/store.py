@@ -24,9 +24,19 @@ one (see docs/PROGRESS.md for the before/after comparison).
 
 The store refuses to start if the vector column's size or the stored
 embedding_model doesn't match the configured provider.
+
+Access control is row-level security in Postgres (migration 0004), not
+filtering here. `store.scoped(access)` returns a copy bound to one caller's
+org, clearance and teams; every transaction it opens first sets those as
+transaction-local settings (set_config(..., true)), so both retrieval legs,
+listings, counts and writes run under the policy, and nothing outlives the
+transaction on a pooled connection. An unscoped store sets nothing and sees
+no rows. The store refuses to start on a connection that could bypass RLS.
 """
 import asyncio
+import copy
 import logging
+from contextlib import contextmanager
 from dataclasses import dataclass
 
 import sqlalchemy as sa
@@ -36,6 +46,28 @@ from embeddings import EmbeddingProvider
 from ingestion.chunking import Chunk
 
 logger = logging.getLogger(__name__)
+
+
+@dataclass(frozen=True)
+class Access:
+    """Whose rows a transaction may see. auth.Principal has the same fields."""
+    org_id: str
+    clearance: int
+    team_ids: tuple[str, ...] = ()
+
+
+_SET_ACCESS = sa.text("""
+    SELECT set_config('app.org_id', :org_id, true),
+           set_config('app.clearance', CAST(:clearance AS text), true),
+           set_config('app.team_ids', CAST(CAST(:team_ids AS text[]) AS text), true)
+""")
+
+
+def set_access(conn, access) -> None:
+    """Bind this transaction to `access` (anything with org_id, clearance and
+    team_ids). Transaction-local: gone at commit or rollback."""
+    conn.execute(_SET_ACCESS, {"org_id": access.org_id, "clearance": access.clearance,
+                               "team_ids": list(access.team_ids)})
 
 
 @dataclass
@@ -145,7 +177,38 @@ class HybridStore:
         self._settings = settings
         self._embeddings = embeddings
         self._engine = engine
+        self._access = None
         self._check_embedding_index()
+        self._check_role_cannot_bypass_rls()
+
+    def scoped(self, access) -> "HybridStore":
+        """A copy of this store (same engine) whose transactions run as `access`."""
+        scoped = copy.copy(self)
+        scoped._access = access
+        return scoped
+
+    @contextmanager
+    def _begin(self):
+        with self._engine.begin() as conn:
+            if self._access is not None:
+                set_access(conn, self._access)
+            yield conn
+
+    def _check_role_cannot_bypass_rls(self) -> None:
+        """Refuse a connection the policies wouldn't apply to."""
+        with self._engine.connect() as conn:
+            row = conn.execute(sa.text("""
+                SELECT current_user AS name, r.rolsuper, r.rolbypassrls,
+                       pg_has_role(current_user, c.relowner, 'USAGE') AS owns
+                FROM pg_roles r, pg_class c
+                WHERE r.rolname = current_user AND c.oid = 'chunks'::regclass
+            """)).mappings().one()
+        if row["rolsuper"] or row["rolbypassrls"] or row["owns"]:
+            raise RuntimeError(
+                f"DATABASE_URL connects as '{row['name']}', which bypasses row-level security "
+                "(superuser, BYPASSRLS or table owner). Point DATABASE_URL at the documind_app "
+                "role and MIGRATION_DATABASE_URL at the owner."
+            )
 
     def _check_embedding_index(self) -> None:
         """Fail fast if the chunks table can't hold this provider's vectors."""
@@ -157,7 +220,12 @@ class HybridStore:
             if column is None:
                 raise RuntimeError("No chunks table: run the migrations (alembic upgrade head) "
                                    "against DATABASE_URL first.")
-            models = conn.execute(sa.text("SELECT DISTINCT embedding_model FROM chunks")).scalars().all()
+            if conn.execute(sa.text(
+                    "SELECT to_regprocedure('chunk_embedding_models()')")).scalar() is None:
+                raise RuntimeError("The chunk store needs migration 0004: run the migrations "
+                                   "(alembic upgrade head) against DATABASE_URL first.")
+            # Every org's chunks, past RLS: model names only (migration 0004).
+            models = conn.execute(sa.text("SELECT chunk_embedding_models()")).scalars().all()
         expected = f"vector({self._embeddings.dimension})"
         if column != expected:
             raise RuntimeError(
@@ -176,12 +244,13 @@ class HybridStore:
     # --- index maintenance -------------------------------------------------
 
     def count(self) -> int:
-        with self._engine.connect() as conn:
+        """Chunks this store's caller can see."""
+        with self._begin() as conn:
             return conn.execute(sa.text("SELECT count(*) FROM chunks")).scalar()
 
     def list_documents(self) -> list[dict]:
-        """Distinct uploaded documents, newest first."""
-        with self._engine.connect() as conn:
+        """Distinct uploaded documents the caller can see, newest first."""
+        with self._begin() as conn:
             rows = conn.execute(sa.text("""
                 SELECT doc_id, min(filename) AS filename, max(uploaded_at) AS uploaded_at,
                        count(*) AS chunks
@@ -196,6 +265,8 @@ class HybridStore:
     # --- users (migration 0003) ---------------------------------------------
 
     def get_user(self, firebase_uid: str) -> dict | None:
+        # No access context: the user tables have no RLS (the app role can
+        # only read them).
         """The user row for a Firebase uid, with its team ids; None if unknown."""
         with self._engine.connect() as conn:
             row = conn.execute(sa.text("""
@@ -211,24 +282,31 @@ class HybridStore:
     # --- ingestion ----------------------------------------------------------
 
     async def add_chunks(self, chunks: list[Chunk]) -> None:
+        """Insert chunks into the caller's org, org-wide (no team).
+        shortcut: clearance takes the column default and there's no documents
+        row yet; Phase 2 commit 6 copies org, team and clearance from the
+        documents row instead."""
         if not chunks:
             return
+        if self._access is None:
+            raise RuntimeError("add_chunks needs a scoped store (store.scoped(access)).")
         vectors = await self._embeddings.embed_documents([c.text for c in chunks])
         rows = [
             {"chunk_id": c.chunk_id, "doc_id": c.doc_id, "filename": c.filename,
              "page_number": c.page_number, "chunk_index": c.chunk_index, "text": c.text,
-             "embedding_model": self._embeddings.model, "embedding": _vector_literal(v)}
+             "embedding_model": self._embeddings.model, "embedding": _vector_literal(v),
+             "org_id": self._access.org_id}
             for c, v in zip(chunks, vectors)
         ]
 
         def insert() -> None:
             # One transaction, one now(): a document's chunks share uploaded_at.
-            with self._engine.begin() as conn:
+            with self._begin() as conn:
                 conn.execute(sa.text("""
                     INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index,
-                                        text, embedding_model, embedding)
+                                        text, embedding_model, embedding, org_id)
                     VALUES (:chunk_id, :doc_id, :filename, :page_number, :chunk_index,
-                            :text, :embedding_model, CAST(:embedding AS vector))
+                            :text, :embedding_model, CAST(:embedding AS vector), :org_id)
                 """), rows)
 
         await asyncio.to_thread(insert)
@@ -260,7 +338,9 @@ class HybridStore:
     def _fused_ranking(self, query: str, query_vector: list[float],
                        doc_ids: list[str] | None) -> list[RetrievedChunk]:
         params = {"doc_ids": list(doc_ids) if doc_ids else None, "n": self._settings.rrf_candidates}
-        with self._engine.begin() as conn:
+        # Both legs run under the RLS policy: the access check is a filter on
+        # each row's own columns, which iterative scans handle like doc_id.
+        with self._begin() as conn:
             conn.execute(sa.text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
             dense_rows = conn.execute(
                 _DENSE, {**params, "query_vector": _vector_literal(query_vector)}

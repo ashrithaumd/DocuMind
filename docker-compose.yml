@@ -35,7 +35,10 @@ services:
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
       FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
       EXPOSE_LLM_DIAGNOSTICS: ${EXPOSE_LLM_DIAGNOSTICS:-false}
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:-documind}@postgres:5432/${POSTGRES_DB:-documind}
+      # The app connects as documind_app (row-level security applies to it);
+      # migrations run as the owner.
+      DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:-documind_app}@postgres:5432/${POSTGRES_DB:-documind}
+      MIGRATION_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:-documind}@postgres:5432/${POSTGRES_DB:-documind}
     volumes:
       # Local embedding model cache (~90 MB, only with EMBEDDING_PROVIDER=local;
       # downloaded from HuggingFace on first start) — persisted so

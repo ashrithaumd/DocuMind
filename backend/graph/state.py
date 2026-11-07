@@ -11,6 +11,9 @@ from typing import Annotated, TypedDict
 class GraphState(TypedDict, total=False):
     question: str
     doc_ids: list[str] | None  # documents the caller asked to query (None = default)
+    # The caller (auth.Principal): retrieval runs under RLS as this org,
+    # clearance and teams. Missing = no access context = no rows.
+    access: object
 
     # input_validation
     rejection: str | None      # user-facing message when the query is rejected

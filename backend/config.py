@@ -51,8 +51,14 @@ class Settings(BaseSettings):
     google_cloud_location: str = "us-central1"
 
     # --- Postgres: chunk store (pgvector + full-text) and query log ---
-    # Required: the chunks live here. Migrations run at startup.
+    # Required: the chunks live here. The app connects as the documind_app
+    # role, which row-level security applies to; the store refuses to start
+    # on a superuser, BYPASSRLS or table-owner connection.
     database_url: str | None = None
+    # The owner role that runs the migrations at startup (and sets
+    # documind_app's password from DATABASE_URL). Empty = DATABASE_URL, which
+    # only works for databases without the chunk store (e.g. SQLite tests).
+    migration_database_url: str | None = None
 
     # --- Auth (auth.py) ---
     # Firebase project whose ID tokens are accepted. The service account key

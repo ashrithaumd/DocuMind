@@ -33,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from auth import get_admin_principal, get_me, get_principal
+from auth import Principal, get_admin_principal, get_me, get_principal
 from config import get_settings
 from db import session as db
 from deps import get_store
@@ -53,8 +53,8 @@ async def lifespan(app: FastAPI):
     # The store fails fast with a clear error if the chunks table is missing
     # or was built for a different embedding model (vector size or model
     # name). With EMBEDDING_PROVIDER=local this also loads the model.
-    store = get_store()
-    logger.info("Store ready: %d chunks indexed.", store.count())
+    get_store()
+    logger.info("Store ready.")
     if not settings.firebase_project_id:
         logger.warning("FIREBASE_PROJECT_ID not set: sign-in token checks will fail.")
     yield
@@ -87,8 +87,9 @@ class FeedbackRequest(BaseModel):
 # --- helpers -------------------------------------------------------------------
 
 
-def _initial_state(request: QueryRequest) -> dict:
-    return {"question": request.question, "doc_ids": request.doc_ids, "timings": {}}
+def _initial_state(request: QueryRequest, principal: Principal) -> dict:
+    return {"question": request.question, "doc_ids": request.doc_ids, "access": principal,
+            "timings": {}}
 
 
 def _merge_update(final: dict, delta: dict) -> None:
@@ -171,8 +172,9 @@ def _stage_detail(node: str, delta: dict) -> dict:
 # --- endpoints -----------------------------------------------------------------
 
 
-@app.post("/upload", dependencies=[Depends(get_principal)])
-async def upload_document(file: UploadFile = File(...)):
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...),
+                          principal: Principal = Depends(get_principal)):
     settings = get_settings()
     file_bytes = await file.read()
     filename = file.filename or ""
@@ -184,7 +186,7 @@ async def upload_document(file: UploadFile = File(...)):
 
     chunks = chunk_pages(pages, filename, settings)
     try:
-        await get_store().add_chunks(chunks)
+        await get_store().scoped(principal).add_chunks(chunks)
     except Exception as exc:
         logger.exception("Embedding/indexing failed during ingestion")
         kind = classify_error(exc)
@@ -208,10 +210,11 @@ async def upload_document(file: UploadFile = File(...)):
     }
 
 
-@app.get("/documents", dependencies=[Depends(get_principal)])
-async def list_documents():
-    """Uploaded documents, newest first. The first entry is the default query scope."""
-    return {"documents": get_store().list_documents()}
+@app.get("/documents")
+async def list_documents(principal: Principal = Depends(get_principal)):
+    """Documents the caller can see, newest first. The first entry is the
+    default query scope."""
+    return {"documents": get_store().scoped(principal).list_documents()}
 
 
 def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
@@ -234,13 +237,13 @@ def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
     return JSONResponse(status_code=503 if kind else 500, content=content)
 
 
-@app.post("/query", dependencies=[Depends(get_principal)])
-async def query(request: QueryRequest):
+@app.post("/query")
+async def query(request: QueryRequest, principal: Principal = Depends(get_principal)):
     """Non-streaming variant — used by the eval harness and handy for curl."""
     start = time.perf_counter()
     with track_usage() as llm_usage:
         try:
-            state = await pipeline.ainvoke(_initial_state(request))
+            state = await pipeline.ainvoke(_initial_state(request, principal))
         except Exception as exc:
             return _pipeline_error(exc, llm_usage)
     total_ms = round((time.perf_counter() - start) * 1000, 1)
@@ -280,14 +283,14 @@ async def query(request: QueryRequest):
     return response
 
 
-@app.post("/query/stream", dependencies=[Depends(get_principal)])
-async def query_stream(request: QueryRequest):
+@app.post("/query/stream")
+async def query_stream(request: QueryRequest, principal: Principal = Depends(get_principal)):
     async def event_stream():
         start = time.perf_counter()
         final: dict = {}
         try:
             async for update in pipeline.astream(
-                _initial_state(request), stream_mode="updates"
+                _initial_state(request, principal), stream_mode="updates"
             ):
                 for node, delta in update.items():
                     _merge_update(final, delta)
@@ -371,4 +374,6 @@ async def me(body: dict = Depends(get_me)):
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "chunks_indexed": get_store().count()}
+    # No chunk count: /health is unauthenticated, and under RLS a count is
+    # per caller anyway.
+    return {"status": "ok"}

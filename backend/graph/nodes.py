@@ -111,7 +111,8 @@ async def small_talk_node(state: GraphState) -> dict:
 
 async def retrieve_node(state: GraphState) -> dict:
     start = time.perf_counter()
-    store = get_store()
+    # Bound to the caller: RLS limits both legs and the listing to their rows.
+    store = get_store().scoped(state.get("access"))
 
     # Default scope is the single most recent upload, NOT the whole corpus —
     # querying everything by default invites answers stitched from unrelated
@@ -307,7 +308,7 @@ def route_after_groundedness(state: GraphState) -> str:
 async def refuse_node(state: GraphState) -> dict:
     """Terminal node for both failure paths. Refusing beats guessing."""
     if not state.get("grade_relevant"):
-        no_docs = not state["chunks"] and get_store().count() == 0
+        no_docs = not state["chunks"] and get_store().scoped(state.get("access")).count() == 0
         return {
             "answer": REFUSAL_NO_DOCUMENTS if no_docs else REFUSAL_NO_CONTEXT,
             "citations": [],

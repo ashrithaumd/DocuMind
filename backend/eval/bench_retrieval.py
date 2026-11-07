@@ -43,14 +43,18 @@ are not evidence about retrieval quality.
 
 The index is built from eval/sample.pdf with the app's own extraction and
 chunking, in Postgres (pgvector + full-text search) at --database-url
-(default DATABASE_URL), migrated first. Use an empty database per
+(default DATABASE_URL, the documind_app role), migrated first as the owner
+(--migration-database-url, default MIGRATION_DATABASE_URL). Searches run
+under row-level security as a 'bench' org, like a real request, so the
+policy's cost is in the numbers. Use an empty database per
 embedding provider: the vector column's size follows the provider.
 --embeddings picks the provider being measured. (Phase 0's Chroma + BM25
 run is kept in docs/baseline/phase0/retrieval_bench_split.json.)
 
 Usage (from backend/):
     python eval/bench_retrieval.py [--embeddings local|gemini]
-        [--database-url URL] [--reps 20] [--warmup 1] [--embed-reps 3]
+        [--database-url URL] [--migration-database-url URL]
+        [--reps 20] [--warmup 1] [--embed-reps 3]
         [--out FILE.json]
 """
 import argparse
@@ -72,14 +76,26 @@ EMBEDDINGS = ("local", "gemini")
 RECALL_AT = (1, 3)
 
 
+BENCH_ORG = "bench"
+
+
 def build_store(settings):
+    """The store, scoped to the bench org (created if missing)."""
+    import sqlalchemy as sa
+
     from db.session import init_db
     from embeddings import build_embeddings
-    from ingestion.store import HybridStore
+    from ingestion.store import Access, HybridStore
 
     if not init_db(settings):  # runs the migrations
         raise SystemExit("Could not connect to or migrate the database (--database-url)")
-    return HybridStore(settings, build_embeddings(settings))
+    owner = sa.create_engine(settings.migration_database_url or settings.database_url)
+    with owner.begin() as conn:
+        conn.execute(sa.text("INSERT INTO orgs VALUES (:org, 'Benchmark') ON CONFLICT DO NOTHING"),
+                     {"org": BENCH_ORG})
+    owner.dispose()
+    store = HybridStore(settings, build_embeddings(settings))
+    return store.scoped(Access(org_id=BENCH_ORG, clearance=0))
 
 
 async def ensure_indexed(store, settings, pdf_path: Path) -> str:
@@ -204,14 +220,17 @@ async def main() -> int:
     parser.add_argument("--warmup", type=int, default=1, help="Discarded searches per question")
     parser.add_argument("--embed-reps", type=int, default=3, help="Timed embed calls per question")
     parser.add_argument("--database-url", default=None,
-                        help="Postgres URL (default: DATABASE_URL)")
+                        help="App (documind_app) Postgres URL (default: DATABASE_URL)")
+    parser.add_argument("--migration-database-url", default=None,
+                        help="Owner Postgres URL for migrations (default: MIGRATION_DATABASE_URL)")
     parser.add_argument("--out", default=None, help="Write the results as JSON here")
     args = parser.parse_args()
 
     from config import Settings
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    overrides = {"database_url": args.database_url} if args.database_url else {}
+    overrides = {k: v for k, v in (("database_url", args.database_url),
+                                   ("migration_database_url", args.migration_database_url)) if v}
     settings = Settings(embedding_provider=args.embeddings, embedding_model="",
                         embedding_dimensions=0, **overrides)
     store = build_store(settings)

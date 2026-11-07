@@ -392,7 +392,9 @@ false-refusal rate.
 ## Phase 2 plan
 
 Status (2026-11-06): plan and RLS decision recorded; commits 1-4 done (CI chore + guard,
-migration 0003, get_principal and /me, revoked-token check on /admin/*).
+migration 0003, get_principal and /me, revoked-token check on /admin/*,
+clock-skew fix, live Firebase check script, documind_app role and RLS on
+chunks and documents).
 
 ### Auth provider: Firebase Auth (option A)
 
@@ -516,7 +518,8 @@ caller happened to have every permission.
    transaction (used by commit 8's script). Tests: an access change updates
    every chunk at once, and no chunk's access ever differs from its
    document's. `/documents` reads the `documents` table under RLS.
-   **Also in this commit: drop the clearance default (migration 0004).**
+   **Also in this commit: drop the clearance default (migration 0005;
+   0004 is commit 5's RLS).**
    0003 gave `chunks.clearance` and `documents.clearance` `NOT NULL DEFAULT
    0`. The commit that makes chunk writes copy org, team and clearance from
    the `documents` row also drops both defaults, so a write that forgets

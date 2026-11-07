@@ -10,6 +10,9 @@ class FakeStore:
         self.documents = documents
         self.search_calls = []
 
+    def scoped(self, access):
+        return self
+
     def list_documents(self):
         return self.documents
 

@@ -22,9 +22,8 @@ def test_pdf_docx_txt_ingest_and_are_listed_newest_first(client):
         assert body["chunks_created"] >= 1
         doc_ids.append(body["doc_id"])
 
-    # Index actually grew (real chunks table, not a mock).
-    health = client.get("/health").json()
-    assert health["chunks_indexed"] >= 3
+    # /health is open, so it no longer reports a corpus size.
+    assert client.get("/health").json() == {"status": "ok"}
 
     # /documents: newest first, so the reverse of upload order.
     documents = client.get("/documents").json()["documents"]

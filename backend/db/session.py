@@ -11,7 +11,7 @@ from pathlib import Path
 
 from alembic import command
 from alembic.config import Config
-from sqlalchemy import create_engine, inspect, select, text
+from sqlalchemy import create_engine, inspect, make_url, select, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from config import Settings
@@ -20,6 +20,7 @@ from db.models import Base, Feedback, QueryLog
 logger = logging.getLogger(__name__)
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
+APP_ROLE = "documind_app"  # created by migration 0004
 # The revision matching the schema create_all built before Alembic.
 BASELINE_REVISION = "0001"
 BASELINE_TABLES = ("query_logs", "feedback")
@@ -28,15 +29,20 @@ _session_factory: sessionmaker | None = None
 
 
 def init_db(settings: Settings) -> bool:
-    """Create the engine and migrate the schema to the latest revision.
-    Returns True if logging is active."""
+    """Migrate the schema to the latest revision as the owner
+    (MIGRATION_DATABASE_URL, default DATABASE_URL), then log through the app's
+    own connection (DATABASE_URL). Returns True if logging is active."""
     global _session_factory
     if not settings.database_url:
         logger.warning("DATABASE_URL not set — query logging is DISABLED.")
         return False
     try:
+        owner = create_engine(settings.migration_database_url or settings.database_url)
+        try:
+            migrate(owner, settings)
+        finally:
+            owner.dispose()
         engine = create_engine(settings.database_url, pool_pre_ping=True)
-        migrate(engine, settings)
         _session_factory = sessionmaker(bind=engine, expire_on_commit=False)
         logger.info("Query logging enabled (Postgres).")
         return True
@@ -64,6 +70,28 @@ def migrate(engine, settings: Settings) -> None:
             command.stamp(config, BASELINE_REVISION)
             logger.info("Adopted a pre-Alembic database at revision %s.", BASELINE_REVISION)
         command.upgrade(config, "head")
+        _sync_app_role_password(conn, settings)
+
+
+def _sync_app_role_password(conn, settings: Settings) -> None:
+    """Give documind_app the password in DATABASE_URL, so one setting holds
+    it. Only when migrating as a different (owner) role, on Postgres."""
+    if conn.dialect.name != "postgresql" or not settings.migration_database_url:
+        return
+    app = make_url(settings.database_url)
+    if app.username != APP_ROLE or not app.password:
+        return
+    # format(%L) quotes the password as a literal; it's never logged.
+    statement = conn.execute(text(f"SELECT format('ALTER ROLE {APP_ROLE} PASSWORD %L', :pw)"),
+                             {"pw": app.password}).scalar()
+    # The raw cursor with no parameters: SQLAlchemy would %-format the
+    # statement (breaking on a '%' in the password) and text() would read
+    # ':x' in it as a bind parameter. Same transaction as the migration.
+    cursor = conn.connection.cursor()
+    try:
+        cursor.execute(statement)
+    finally:
+        cursor.close()
 
 
 def _add_missing_columns(conn) -> None:

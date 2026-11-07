@@ -1,6 +1,9 @@
 # secrets
 .env
 backend/.env
+*service-account*.json
+*serviceAccount*.json
+*firebase-adminsdk*.json
 
 # python
 __pycache__/

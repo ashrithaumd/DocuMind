@@ -389,6 +389,151 @@ correct: a grader that can't see the answer is broken. Cheaper grading
 belongs in Phase 7 (see Phase 7 notes), measured against the
 false-refusal rate.
 
+## Phase 2 plan
+
+Status (2026-11-06): plan and RLS decision recorded; commit 1 (CI chore + guard)
+started.
+
+### Auth provider: Firebase Auth (option A)
+
+- **Firebase Auth only identifies the user.** Org, teams, role and clearance
+  live in Postgres and are read on every request to set the RLS context.
+  No custom claims for authorization: a claim change reaches a token only
+  at the next sign-in or token refresh, and claims are capped at 1,000
+  bytes.
+- **Plain Firebase Auth, no billing, until Phase 9.** The free Spark plan
+  allows 3,000 daily active users. Identity Platform (multi-tenancy, MFA,
+  SAML/OIDC) isn't needed: org lives in our own tables.
+- **Rejected:** Keycloak (about 1 GB of RAM per instance at idle on top of
+  Docker's 1.2-1.5 GB; another service to run on Cloud Run) and app-issued
+  JWTs (we would own password storage, resets and lockout).
+
+### Required behavior
+
+1. **Disabling a user takes effect immediately.** A `users.active` flag is
+   checked on every request, and admin routes also use Firebase's
+   revoked-token check, so neither waits for the token to expire. Both are
+   tested.
+2. **Deny by default.** A valid Firebase user who isn't in our tables, or has
+   no org, gets 403 on everything except a "who am I" endpoint (`GET /me`).
+   Tested.
+3. **No emulator in tests.** Tests replace the token check with a fake
+   verifier: no emulator, no network. The emulator is optional, only for
+   trying the login UI locally.
+4. **The eval harness gets a seeded admin test user**, so it can read
+   diagnostics once they are admin-only.
+
+### Decision: RLS policy shape (decided 2026-11-05)
+
+**Option 1: per-request settings checked against access columns on each
+`chunks` row.**
+
+- **Context per request.** Each request sets `app.org_id`, `app.clearance`
+  and `app.team_ids` for its transaction only (`set_config(..., true)`),
+  from the user rows it has just read. Unset settings read as NULL, so no
+  rows match.
+- **Policy, roughly:** `org_id = <org> AND clearance <= <clearance> AND
+  (team_id IS NULL OR team_id = ANY(<teams>))`. Each row is checked on its
+  own columns with no join, which works with the HNSW iterative scans.
+- **Trade-off accepted:** the policy trusts the values the backend sets.
+  They come from Postgres in the same request, and `documind_app` can't
+  bypass RLS.
+- **Rejected:** a policy that looks up teams and clearance itself from
+  `app.user_id` (a lookup per candidate row in the vector search, and the
+  app role would need to read the user tables).
+
+The user's four changes on top:
+
+1. **A `documents` table is the source of truth for access.** Its org, team
+   and clearance are copied onto every chunk of that document in the same
+   transaction, on upload and on any access change. A test checks that an
+   access change updates every chunk at once. The policies read only the
+   copy on each row, so they still need no join.
+2. **RLS on the query and feedback log tables, by org**, with a leakage test.
+3. **Clearance is an integer level** (higher sees more).
+4. **Credentials stay out of the repo.** The service account key file
+   pattern goes in `.gitignore` and the variables in `.env.example`, and a
+   CI check fails if a key file is committed.
+
+### Known limitations (accepted for Phase 2)
+
+- **One team per document.** A document is either org-wide (`team_id` NULL)
+  or belongs to exactly one team; sharing it with two teams isn't possible.
+- **Clearance is a single ordered level**, with no compartments: anyone at
+  level N sees everything at N or below in their org and teams.
+
+### Prerequisites from the user
+
+- A Firebase project on the Spark plan with email/password sign-in enabled,
+  and its web config (not secret).
+- A service account key for the revoked-token check, kept outside the repo.
+  Phase 9 replaces it with Workload Identity.
+
+### Checklist (one commit each)
+
+1. **CI chore, credential guard and Phase 2 decisions.** Bump
+   `actions/checkout` and `setup-python` to their Node 24 versions. Add the
+   service account key file pattern to `.gitignore` and the Firebase
+   variables to `.env.example`. Add a CI step that fails if a key file is
+   committed, matched by file name and by content (a JSON file with
+   type `service_account`, or one with a `private_key` field), so a renamed key
+   is caught too. Record the decisions above. This lands before any key
+   exists on the machine.
+2. **Migration 0003: user and access tables.** `orgs`, `teams`, `users`
+   (`firebase_uid` unique, `org_id`, `role` viewer/editor/admin, integer
+   `clearance`, `active`) and `team_memberships`. A `documents` table
+   (`doc_id`, `filename`, `org_id`, `team_id` nullable, integer `clearance`,
+   `uploaded_by`, `uploaded_at`) as the source of truth for access, plus
+   `org_id`, `team_id` and `clearance` copied onto `chunks`. Existing chunks
+   get no org, so they're invisible.
+3. **Identifying the user on each request.** A token-checker interface with
+   a real Firebase checker and a fake one for tests. A `get_principal`
+   dependency checks the token, loads the user, and checks `active` and org
+   on every request; otherwise 403. `GET /me` always answers and says
+   whether the user is set up. Replaces `require_api_key`. Tests: unknown
+   user, no org, inactive user, `/me`.
+4. **Revoked-token check on admin routes**
+   (`verify_id_token(check_revoked=True)`). Tests: a revoked token and a
+   deactivated user, each refused on the very next request.
+5. **`documind_app` role and RLS on `chunks` and `documents`.** Migrations
+   run as the owner; the app connects as `documind_app` (not the owner,
+   can't bypass RLS), with `FORCE ROW LEVEL SECURITY` on both tables.
+   Separate connection URLs for migrations and the app (both in
+   `.env.example`). The store sets the context in every transaction.
+   Leakage tests on real Postgres: another org, another team, higher
+   clearance, no context (zero rows), and the app role can't bypass the
+   policy.
+6. **Uploads and access changes keep chunks in step with `documents`.**
+   Uploads: editors and admins only; the `documents` row and its chunks are
+   written in one transaction, with no team you're not in and no clearance
+   above your own. Access changes: one store function updates the
+   `documents` row and every chunk of that document in the same
+   transaction (used by commit 8's script). Tests: an access change updates
+   every chunk at once, and no chunk's access ever differs from its
+   document's. `/documents` reads the `documents` table under RLS.
+7. **Admin-only diagnostics, and RLS on the log tables.** Query and
+   feedback logs record `user_id` and `org_id`, under RLS by org with
+   `FORCE ROW LEVEL SECURITY`. `/admin/*` is admin-only. LLM diagnostics go
+   to admins instead of following `EXPOSE_LLM_DIAGNOSTICS`. Tests: a
+   leakage test showing one org's admin can't read another org's query or
+   feedback rows, and non-admins are refused.
+8. **Eval admin user.** A script sets up an `eval` org and an admin mapped
+   to a real Firebase test account (also how the first admin is created),
+   and changes a document's access through commit 6's function.
+   The harness signs in through Firebase's REST API and refreshes the token,
+   since runs can last over an hour. `sample.pdf` is uploaded again into the
+   eval org. Checked with a one-question eval run.
+9. **Frontend lint fix and frontend CI.** Fix `src/App.tsx:24`; add
+   `npm ci && npm run lint && npm run build` to CI.
+10. **Frontend login.** Firebase JS SDK sign-in, the ID token on every
+    request, and a "not set up yet" screen for 403s.
+11. **Docs and the Phase 2 PR.** README auth section, including the known
+    limitations above; Phase 2 results here; the full suite in a
+    CI-matching environment; then the PR.
+
+Not in Phase 2: an admin web page for assigning users (commit 8's script
+does it). Until commit 8 lands, the eval harness can't authenticate.
+
 ## Phase 2 notes
 
 - **LLM diagnostics become admin-only.** Phase 0 gates the raw provider error
@@ -402,6 +547,10 @@ false-refusal rate.
   the Phase 0 dependency pins, which didn't change any resolved version.
 - **Add the frontend to CI:** `npm ci && npm run lint && npm run build`
   (today CI runs only the backend suite, so this error went unnoticed).
+- **CI chore: move the actions off Node 20.** CI warns that
+  `actions/checkout@v4` and `actions/setup-python@v5` target the deprecated
+  Node.js 20 and are being forced onto Node 24. Bump both to their Node 24
+  majors, checked against each action's release notes.
 
 ## Phase 6 notes
 

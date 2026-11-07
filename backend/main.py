@@ -41,6 +41,7 @@ from auth import Principal, get_admin_principal, get_me, get_principal
 from config import get_settings
 from db.access import WRITER_ROLES
 from db import session as db
+import deps
 from deps import get_store
 from graph.pipeline import pipeline
 from ingestion.chunking import chunk_pages
@@ -60,14 +61,16 @@ async def lifespan(app: FastAPI):
         raise RuntimeError("MIGRATION_DATABASE_URL is set in the backend's environment. "
                            "Run migrations with `python migrate.py` (the migrate service) and "
                            "give the backend only DATABASE_URL (the documind_app role).")
+    # Fail fast, with what to fix, rather than a 500 on the first sign-in.
+    # Checked before the database: a config error shouldn't wait on Postgres.
+    deps.get_token_checker().check_ready()
+    logger.info("Firebase token checks ready.")
     db.init_db(settings)
     # The store fails fast with a clear error if the chunks table is missing
-    # or was built for a different embedding model (vector size or model
-    # name). With EMBEDDING_PROVIDER=local this also loads the model.
+    # or its vector column doesn't match the embedding model. With
+    # EMBEDDING_PROVIDER=local this also loads the model.
     get_store()
     logger.info("Store ready.")
-    if not settings.firebase_project_id:
-        logger.warning("FIREBASE_PROJECT_ID not set: sign-in token checks will fail.")
     yield
 
 

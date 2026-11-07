@@ -59,11 +59,18 @@ services:
       EMBEDDING_USE_VERTEXAI: ${EMBEDDING_USE_VERTEXAI:-false}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
-      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:-}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:?Set FIREBASE_PROJECT_ID in .env}
+      # The Firebase service account key, mounted read-only below from the
+      # host path in .env; never copied into the image or the repo.
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-key.json
       # Only the documind_app role (row-level security applies to it). The
       # backend refuses to start if MIGRATION_DATABASE_URL is set.
       DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
     volumes:
+      - type: bind
+        source: ${GOOGLE_APPLICATION_CREDENTIALS:?Set GOOGLE_APPLICATION_CREDENTIALS in .env to the key file on this machine}
+        target: /run/secrets/firebase-key.json
+        read_only: true
       # Local embedding model cache (~90 MB, only with EMBEDDING_PROVIDER=local;
       # downloaded from HuggingFace on first start) — persisted so
       # rebuilds/restarts don't re-download it.

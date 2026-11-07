@@ -68,3 +68,30 @@ def test_clock_skew_follows_the_setting(monkeypatch):
 def test_clock_skew_outside_firebases_0_to_60_is_rejected(value):
     with pytest.raises(ValidationError):
         Settings(_env_file=None, firebase_clock_skew_seconds=value)
+
+
+# --- startup check: fail fast instead of a 500 on the first sign-in -----------
+
+def test_check_ready_needs_a_project_id():
+    checker = FirebaseTokenChecker(Settings(_env_file=None, firebase_project_id=None))
+    checker._project_id = None
+    with pytest.raises(RuntimeError, match="FIREBASE_PROJECT_ID is not set"):
+        checker.check_ready()
+
+
+def test_check_ready_needs_credentials(checker, monkeypatch):
+    # firebase-admin loads credentials when its auth client is created, so a
+    # missing key breaks even plain token checks (seen in docker-compose).
+    from google.auth.exceptions import DefaultCredentialsError
+
+    def missing():
+        raise DefaultCredentialsError("Your default credentials were not found.")
+
+    monkeypatch.setattr(checker._app.credential, "get_credential", missing)
+    with pytest.raises(RuntimeError, match="GOOGLE_APPLICATION_CREDENTIALS"):
+        checker.check_ready()
+
+
+def test_check_ready_passes_with_project_and_credentials(checker, monkeypatch):
+    monkeypatch.setattr(checker._app.credential, "get_credential", lambda: object())
+    checker.check_ready()

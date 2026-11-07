@@ -144,6 +144,10 @@ class FakeTokenChecker:
 
     def __init__(self):
         self.revoked: set[str] = set()
+        self.ready_checks = 0
+
+    def check_ready(self) -> None:
+        self.ready_checks += 1
         self.revocation_checks = 0
 
     def revoke(self, token: str) -> None:

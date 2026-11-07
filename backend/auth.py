@@ -39,6 +39,10 @@ class InvalidToken(Exception):
 
 
 class TokenChecker(Protocol):
+    def check_ready(self) -> None:
+        """Raise RuntimeError, with what to fix, if tokens can't be checked."""
+        ...
+
     def verify(self, token: str, check_revoked: bool = False) -> str:
         """Return the Firebase uid the token was issued to, or raise InvalidToken.
         check_revoked also refuses revoked tokens and disabled accounts."""
@@ -51,17 +55,35 @@ class FirebaseTokenChecker:
     def __init__(self, settings: Settings):
         import firebase_admin
 
+        self._project_id = settings.firebase_project_id
         try:
             self._app = firebase_admin.get_app(self.APP_NAME)
         except ValueError:
-            # Credentials: GOOGLE_APPLICATION_CREDENTIALS (a key file outside
-            # the repo), loaded lazily; checking a token's signature needs only
-            # the project id and Google's public certificates.
+            # Credentials come from GOOGLE_APPLICATION_CREDENTIALS (a key file
+            # kept outside the repo; in docker-compose, mounted read-only).
+            # firebase-admin loads them when its auth client is created, so
+            # even a plain signature check needs them: check_ready() at
+            # startup fails fast instead of a 500 on the first request.
             options = {"projectId": settings.firebase_project_id} if settings.firebase_project_id else None
             self._app = firebase_admin.initialize_app(options=options, name=self.APP_NAME)
         # Without it, a token used the moment it's issued fails on any server
         # whose clock is slightly behind Google's (see config.py).
         self._clock_skew = settings.firebase_clock_skew_seconds
+
+    def check_ready(self) -> None:
+        """Fail at startup, with what to fix, if Firebase config is missing."""
+        if not self._project_id:
+            raise RuntimeError("FIREBASE_PROJECT_ID is not set: no sign-in token can be checked.")
+        from google.auth.exceptions import DefaultCredentialsError
+
+        try:
+            self._app.credential.get_credential()
+        except DefaultCredentialsError as exc:
+            # The message names the missing variable or file, never a secret.
+            raise RuntimeError(
+                "Firebase credentials not found: set GOOGLE_APPLICATION_CREDENTIALS to the "
+                "service account key file (outside the repo; docker-compose mounts it "
+                f"read-only). Details: {exc}") from exc
 
     def verify(self, token: str, check_revoked: bool = False) -> str:
         from firebase_admin import auth

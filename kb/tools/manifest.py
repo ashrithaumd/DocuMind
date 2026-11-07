@@ -105,4 +105,10 @@ def load_manifest(path: Path = MANIFEST, docs_dir: Path = DOCS) -> Manifest:
 
 
 def doc_text(file: str, docs_dir: Path = DOCS) -> str:
-    return (Path(docs_dir) / file).read_text(encoding="utf-8")
+    """The document's text with LF line endings, whatever the checkout did:
+    a CRLF copy must chunk, hash and embed exactly like the LF original."""
+    return normalise_newlines((Path(docs_dir) / file).read_bytes().decode("utf-8"))
+
+
+def normalise_newlines(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")

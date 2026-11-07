@@ -32,7 +32,7 @@ from typing import Protocol
 from google import genai
 from google.genai import types as genai_types
 
-from llm import _BackoffLLM, gemini_retry_delay
+from llm import _BackoffLLM, _usage, gemini_retry_delay
 
 logger = logging.getLogger(__name__)
 
@@ -101,14 +101,21 @@ class GeminiEmbeddings(_BackoffLLM):
         vectors: list[list[float]] = []
         for start in range(0, len(texts), self._batch_size):
             batch = texts[start:start + self._batch_size]
-            response = await self._call(
-                self.model,
-                lambda batch=batch: self._client.aio.models.embed_content(
+
+            def request(batch=batch):
+                # Called once per attempt, so a retried batch counts again:
+                # the free tier charges every text in every request.
+                usage = _usage.get()
+                if usage is not None:
+                    sent = usage.setdefault("embedding_texts_per_model", {})
+                    sent[self.model] = sent.get(self.model, 0) + len(batch)
+                return self._client.aio.models.embed_content(
                     model=self.model,
                     contents=[genai_types.Content(parts=[genai_types.Part(text=t)]) for t in batch],
                     config=self._config,
-                ),
-            )
+                )
+
+            response = await self._call(self.model, request)
             if len(response.embeddings) != len(batch):
                 raise RuntimeError(f"{self.model} returned {len(response.embeddings)} embeddings "
                                    f"for {len(batch)} texts")

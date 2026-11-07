@@ -65,14 +65,44 @@ class CountingEmbedder:
         return [[1.0, 0.0, 0.0] for _ in texts]
 
 
-def test_paced_embedder_slices_to_the_limit_and_counts_every_text():
+def _paced(inner, clock, texts_per_minute, tokens_per_minute, tokens=lambda t: 1):
+    return load_corpus.PacedEmbedder(
+        inner, load_corpus.RateLimiter(texts_per_minute, clock=clock, sleep=clock.sleep),
+        load_corpus.RateLimiter(tokens_per_minute, clock=clock, sleep=clock.sleep), tokens=tokens)
+
+
+def test_paced_embedder_slices_to_the_text_limit():
     clock = FakeClock()
     inner = CountingEmbedder()
-    paced = load_corpus.PacedEmbedder(inner, load_corpus.RateLimiter(10, clock=clock, sleep=clock.sleep))
+    paced = _paced(inner, clock, texts_per_minute=10, tokens_per_minute=10_000)
 
     vectors = paced.embed([f"t{i}" for i in range(25)])
 
     assert len(vectors) == 25
     assert inner.calls == [10, 10, 5]
-    assert paced.requests == 25
+    assert paced.tokens_paced == 25
     assert clock.slept == [60, 60]  # each new slice waited for the window
+
+
+def test_paced_embedder_slices_to_the_token_limit():
+    # 40-token texts under 100 tokens a minute: two texts per slice, and a
+    # wait whenever the next slice would push the rolling minute over 100.
+    clock = FakeClock()
+    inner = CountingEmbedder()
+    paced = _paced(inner, clock, texts_per_minute=90, tokens_per_minute=100, tokens=lambda t: 40)
+
+    paced.embed([f"t{i}" for i in range(5)])
+
+    assert inner.calls == [2, 2, 1]
+    assert paced.tokens_paced == 200
+    assert clock.slept == [60, 60]
+
+
+def test_token_count_uses_the_chunkers_tokenizer_with_the_gemini_prefix():
+    import tiktoken
+
+    from embeddings import GEMINI_DOCUMENT_PREFIX
+
+    text = "Pump 3 runs at 402 RPM in module 3."
+    expected = len(tiktoken.get_encoding("cl100k_base").encode(GEMINI_DOCUMENT_PREFIX + text))
+    assert load_corpus.count_tokens(text) == expected > len(text.split())

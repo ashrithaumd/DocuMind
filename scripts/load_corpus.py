@@ -1,7 +1,7 @@
 """Load the Phase 3 corpus (kb/) into Postgres, as the owner. Idempotent.
 
     backend/.venv/Scripts/python scripts/load_corpus.py --database-url OWNER_URL
-        [--dry-run] [--prune] [--per-minute 90]
+        [--dry-run] [--prune] [--per-minute 90] [--tokens-per-minute 27000]
 
 Reads and validates kb/manifest.yaml, then:
   1. upserts each org and its teams (team ids are unique across orgs);
@@ -33,18 +33,24 @@ corpus is one embedding call per chunk, about 300.
 Document ids are "kb-" plus a hash of the path and content, so the same
 file always gets the same id and an edited file gets a new one.
 
-Pacing and quota (Gemini's free tier allows about 100 embedding requests a
-minute, and every text counts as one request, even inside a batch):
-  - texts are paced to at most --per-minute (default 90) in any rolling
-    minute, before they are sent;
+Pacing and quota. Gemini's free tier limits embedding requests (about 100 a
+minute, every text counting as one) and, the tighter limit in practice,
+embedding tokens (30,000 a minute, measured in the Phase 3 load):
+  - texts are paced to at most --per-minute (default 90) and their tokens to
+    at most --tokens-per-minute (default 27,000) in any rolling minute,
+    before they are sent, counted with the chunker's tokenizer (cl100k_base,
+    an estimate of Gemini's own count, hence the margin);
   - a per-minute 429 that outlasts the provider's own retries waits a
     minute and tries the document again (up to 3 times);
   - a daily-quota error stops the run cleanly (exit code 3) with how far it
     got. Embedding happens before a document's write transaction opens, and
     each document is written in one transaction, so nothing half-loaded is
     ever left: re-run the same command, and loaded documents are skipped.
-At the end it reports the corpus's chunks per org and the embedding
-requests this run sent (retries included).
+At the end it reports the corpus's chunks per org and, from the embedding
+client's own usage tracking (so its internal retries are included), the
+texts and requests sent and the retries, plus the tokens paced.
+Text is read with LF line endings whatever the checkout did, so a CRLF copy
+chunks and hashes exactly like the original.
 """
 import argparse
 import asyncio
@@ -59,20 +65,24 @@ from pathlib import Path
 REPO = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(REPO / "kb" / "tools"))
 sys.path.insert(0, str(REPO / "backend"))
-from manifest import DOCS, Doc, Manifest, doc_text, load_manifest  # noqa: E402
+from manifest import DOCS, Doc, Manifest, doc_text, load_manifest, normalise_newlines  # noqa: E402
 
 PREFIX = "kb-"
 EXIT_QUOTA = 3
+TOKENS_PER_MINUTE = 27_000  # under the measured free-tier limit of 30,000
 RATE_LIMIT_RETRIES = 3
 RATE_LIMIT_WAIT_S = 60
 
 
 class QuotaStop(Exception):
-    """The provider's daily quota is used up; the run stopped cleanly."""
+    """The provider's daily quota is used up; the run stopped cleanly.
+    `counts` holds the usage up to that point."""
+    model: str | None = None
+    counts: dict = {}
 
 
 class RateLimiter:
-    """At most `per_minute` texts in any rolling 60-second window."""
+    """At most `per_minute` units (texts, or tokens) in any rolling 60-second window."""
 
     def __init__(self, per_minute: int, clock=time.monotonic, sleep=time.sleep):
         if per_minute < 1:
@@ -83,7 +93,7 @@ class RateLimiter:
 
     def acquire(self, n: int) -> None:
         if n > self.per_minute:
-            raise ValueError(f"{n} texts can never fit in {self.per_minute} a minute; split them")
+            raise ValueError(f"{n} can never fit in {self.per_minute} a minute; split them")
         while True:
             now = self._clock()
             while self._sent and self._sent[0][0] <= now - 60:
@@ -94,22 +104,48 @@ class RateLimiter:
             self._sleep(self._sent[0][0] + 60 - now)
 
 
-class PacedEmbedder:
-    """Sends texts through a RateLimiter, in slices that fit one minute, and
-    counts every text sent (retries included)."""
+def count_tokens(text: str) -> int:
+    """The chunker's tokenizer (cl100k_base), with the prefix the Gemini
+    embedder adds to every document text."""
+    import tiktoken
 
-    def __init__(self, embeddings, limiter: RateLimiter):
+    from embeddings import GEMINI_DOCUMENT_PREFIX
+
+    return len(tiktoken.get_encoding("cl100k_base").encode(GEMINI_DOCUMENT_PREFIX + text))
+
+
+class PacedEmbedder:
+    """Sends texts in slices that fit both limits (texts and tokens per
+    minute), waiting for each. tokens_paced counts the tokens it let through
+    (first sends; retries resend them)."""
+
+    def __init__(self, embeddings, limiter: RateLimiter, token_limiter: RateLimiter | None = None,
+                 tokens=count_tokens):
         self._embeddings, self._limiter = embeddings, limiter
+        self._token_limiter = token_limiter or RateLimiter(TOKENS_PER_MINUTE)
+        self._tokens = tokens
         self.model, self.dimension = embeddings.model, embeddings.dimension
-        self.requests = 0
+        self.tokens_paced = 0
+
+    def _slices(self, texts: list[str]):
+        part, part_tokens = [], 0
+        for text in texts:
+            n = self._tokens(text)
+            if part and (len(part) == self._limiter.per_minute
+                         or part_tokens + n > self._token_limiter.per_minute):
+                yield part, part_tokens
+                part, part_tokens = [], 0
+            part.append(text)
+            part_tokens += n
+        if part:
+            yield part, part_tokens
 
     def embed(self, texts: list[str]) -> list[list[float]]:
         vectors: list[list[float]] = []
-        step = self._limiter.per_minute
-        for start in range(0, len(texts), step):
-            part = texts[start:start + step]
+        for part, part_tokens in self._slices(texts):
             self._limiter.acquire(len(part))
-            self.requests += len(part)
+            self._token_limiter.acquire(part_tokens)
+            self.tokens_paced += part_tokens
             vectors += asyncio.run(self._embeddings.embed_documents(part))
         return vectors
 
@@ -280,11 +316,38 @@ def chunks_by_org(conn) -> dict[str, int]:
     return {org: n for org, n in rows}
 
 
+def usage_counts(usage: dict, model: str | None) -> dict:
+    """Texts, requests and retries for `model`, from the embedding client's
+    own tracking (llm.track_usage), so internal retries are included."""
+    if model is None:
+        return {"embedding_texts_sent": 0, "embedding_requests": 0, "embedding_retries": 0}
+    return {
+        "embedding_texts_sent": usage.get("embedding_texts_per_model", {}).get(model, 0),
+        "embedding_requests": usage["attempts_per_model"].get(model, 0),
+        "embedding_retries": sum(1 for f in usage["failures"] if f["model"] == model),
+    }
+
+
 def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool = False,
          docs_dir: Path = DOCS, embeddings=None, limiter: RateLimiter | None = None,
-         sleep=time.sleep) -> dict:
+         sleep=time.sleep, token_limiter: RateLimiter | None = None) -> dict:
     """Load the manifest's documents. Raises QuotaStop (after printing how far
     it got) if the daily quota runs out; a re-run resumes."""
+    from llm import track_usage
+
+    with track_usage() as usage:
+        try:
+            counts = _load(owner_url, manifest, dry_run, prune, docs_dir, embeddings, limiter,
+                           sleep, token_limiter, usage)
+        except QuotaStop as stop:
+            stop.counts = usage_counts(usage, stop.model)
+            raise
+    counts.update(usage_counts(usage, counts.pop("model")))
+    return counts
+
+
+def _load(owner_url, manifest, dry_run, prune, docs_dir, embeddings, limiter, sleep,
+          token_limiter, usage) -> dict:
     import sqlalchemy as sa
 
     engine = sa.create_engine(owner_url)
@@ -297,7 +360,7 @@ def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool 
             if not dry_run:
                 _upsert_orgs(conn, manifest)
         for doc in manifest.docs.values():
-            text = doc_text(doc.file, docs_dir)
+            text = normalise_newlines(doc_text(doc.file, docs_dir))  # LF, whatever the checkout
             doc_id = doc_id_for(doc.file, text)
             with engine.begin() as conn:
                 action = plan(doc, doc_id, _loaded(conn, doc))
@@ -318,7 +381,8 @@ def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool 
                     from embeddings import build_embeddings
 
                     embeddings = build_embeddings(Settings())
-                embedder = PacedEmbedder(embeddings, limiter or RateLimiter(90))
+                embedder = PacedEmbedder(embeddings, limiter or RateLimiter(90),
+                                         token_limiter or RateLimiter(TOKENS_PER_MINUTE))
                 with engine.begin() as conn:
                     _check_owner(conn, embedder)
             pieces = chunk(doc, doc_id, text)
@@ -326,11 +390,14 @@ def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool 
                 # Before the write transaction opens: no transaction waits on
                 # the network, and a failure here leaves nothing behind.
                 vectors = _embed_with_retries(embedder, [c.text for c in pieces], sleep)
-            except QuotaStop:
+            except QuotaStop as stop:
                 counts[action] -= 1
-                print(f"Daily embedding quota used up: {done} of {total} documents are loaded, "
-                      f"{embedder.requests} embedding requests sent this run. Re-run the same "
-                      "command to resume; loaded documents are skipped.", flush=True)
+                sent = usage_counts(usage, embedder.model)
+                print(f"Daily embedding quota used up: {done} of {total} documents are loaded; "
+                      f"{sent['embedding_texts_sent']} texts in {sent['embedding_requests']} requests "
+                      f"sent this run ({sent['embedding_retries']} retries). Re-run the same command "
+                      "to resume; loaded documents are skipped.", flush=True)
+                stop.model = embedder.model
                 raise
             with engine.begin() as conn:
                 # Re-read: another run may have loaded it meanwhile.
@@ -351,7 +418,8 @@ def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool 
             counts["chunks_by_org"] = chunks_by_org(conn)
     finally:
         engine.dispose()
-    counts["embedding_requests"] = embedder.requests if embedder else 0
+    counts["model"] = embedder.model if embedder else None
+    counts["embedding_tokens_paced"] = embedder.tokens_paced if embedder else 0
     return counts
 
 
@@ -364,6 +432,8 @@ def main() -> int:
                         help="Delete loaded corpus documents that are no longer in the manifest")
     parser.add_argument("--per-minute", type=int, default=90,
                         help="Most embedding texts sent in any minute (free tier: about 100)")
+    parser.add_argument("--tokens-per-minute", type=int, default=TOKENS_PER_MINUTE,
+                        help="Most embedding tokens sent in any minute (free tier: 30,000)")
     args = parser.parse_args()
     if not args.database_url:
         print("Pass --database-url (the owner) or set MIGRATION_DATABASE_URL.", file=sys.stderr)
@@ -371,7 +441,8 @@ def main() -> int:
     manifest = load_manifest()
     try:
         counts = load(args.database_url, manifest, dry_run=args.dry_run, prune=args.prune,
-                      limiter=RateLimiter(args.per_minute))
+                      limiter=RateLimiter(args.per_minute),
+                      token_limiter=RateLimiter(args.tokens_per_minute))
     except QuotaStop:
         return EXIT_QUOTA
     by_org = counts.pop("chunks_by_org")

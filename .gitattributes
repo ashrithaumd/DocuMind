@@ -1,0 +1,9 @@
+# Corpus and eval text: LF on every platform. Chunk counts and document ids
+# depend on the exact text, and CRLF (git's default checkout on Windows)
+# adds tokens: the Phase 3 corpus counted 303 chunks on a Windows checkout
+# against 284 with LF. The loader also normalises line endings, as a second
+# guard.
+kb/** text eol=lf
+backend/eval/*.json text eol=lf
+backend/eval/enterprise/** text eol=lf
+*.pdf binary

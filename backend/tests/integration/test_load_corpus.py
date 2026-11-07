@@ -32,18 +32,28 @@ def _quota_error(daily: bool):
                      "violations": [{"quotaId": quota_id}]}]}})
 
 
-class FailingEmbeddings(FakeEmbeddings):
-    """FakeEmbeddings that raises `error` once `fail_after` texts have gone
-    through (and, if `times` is set, only that many times)."""
+class GatewayEmbeddings(FakeEmbeddings):
+    """FakeEmbeddings that records into llm.track_usage the way the real
+    Gemini embedder's gateway does: an attempt and its texts on every call,
+    and a failure when it raises. Raises `error` once `fail_after` texts
+    have gone through (only `times` times, if set)."""
 
-    def __init__(self, fail_after: int, error, times: int | None = None):
+    def __init__(self, fail_after: int | None = None, error=None, times: int | None = None):
         super().__init__()
         self.sent, self.fail_after, self.error, self.times = 0, fail_after, error, times
 
     async def embed_documents(self, texts):
-        if self.sent + len(texts) > self.fail_after and (self.times is None or self.times > 0):
+        from llm import _usage
+
+        usage = _usage.get()
+        usage["attempts_per_model"][self.model] = usage["attempts_per_model"].get(self.model, 0) + 1
+        sent = usage.setdefault("embedding_texts_per_model", {})
+        sent[self.model] = sent.get(self.model, 0) + len(texts)
+        failing = self.fail_after is not None and self.sent + len(texts) > self.fail_after
+        if failing and (self.times is None or self.times > 0):
             if self.times is not None:
                 self.times -= 1
+            usage["failures"].append({"model": self.model, "attempt": 1, "error": repr(self.error)})
             raise self.error
         self.sent += len(texts)
         return await super().embed_documents(texts)
@@ -59,7 +69,7 @@ def owner(pg_url):
 
 
 def _fast():
-    return load_corpus.RateLimiter(100_000)
+    return load_corpus.RateLimiter(10**12)  # never waits: the corpus is ~120k tokens
 
 
 def _db_state(engine):
@@ -75,33 +85,37 @@ def _db_state(engine):
 
 def test_full_load_then_an_idempotent_rerun(owner, pg_url):
     manifest = load_manifest()
-    first = load_corpus.load(pg_url, manifest, embeddings=FakeEmbeddings(), limiter=_fast())
+    first = load_corpus.load(pg_url, manifest, embeddings=GatewayEmbeddings(), limiter=_fast(), token_limiter=_fast())
 
     docs, chunks, empty = _db_state(owner)
     assert (first["insert"], docs, empty) == (50, 50, 0)
-    assert first["embedding_requests"] == chunks == sum(first["chunks_by_org"].values())
-    assert set(first["chunks_by_org"]) == {"aurora", "bluefin"}
+    assert first["chunks_by_org"] == {"aurora": 151, "bluefin": 133}  # as in the Phase 3 load
+    assert first["embedding_texts_sent"] == chunks == 284
+    # Every document fits one slice (under 90 texts and 27,000 tokens).
+    assert (first["embedding_requests"], first["embedding_retries"]) == (50, 0)
+    assert first["embedding_tokens_paced"] > chunks * 100
 
-    again = load_corpus.load(pg_url, manifest, embeddings=FakeEmbeddings(), limiter=_fast())
-    assert (again["skip"], again["insert"], again["embedding_requests"]) == (50, 0, 0)
+    again = load_corpus.load(pg_url, manifest, embeddings=GatewayEmbeddings(), limiter=_fast(), token_limiter=_fast())
+    assert (again["skip"], again["insert"], again["embedding_texts_sent"]) == (50, 0, 0)
     assert _db_state(owner) == (docs, chunks, 0)
 
 
 def test_a_daily_quota_stop_leaves_whole_documents_and_a_rerun_resumes(owner, pg_url, capsys):
     manifest = load_manifest()
-    with pytest.raises(load_corpus.QuotaStop):
-        load_corpus.load(pg_url, manifest, embeddings=FailingEmbeddings(100, _quota_error(daily=True)),
-                         limiter=_fast())
+    with pytest.raises(load_corpus.QuotaStop) as stop:
+        load_corpus.load(pg_url, manifest, embeddings=GatewayEmbeddings(100, _quota_error(daily=True)),
+                         limiter=_fast(), token_limiter=_fast())
+    assert stop.value.counts["embedding_retries"] == 1  # the failed attempt is counted
     docs_partial, chunks_partial, empty = _db_state(owner)
     assert 0 < docs_partial < 50 and empty == 0  # whole documents only
     assert "Re-run the same command to resume" in capsys.readouterr().out
 
-    resumed = load_corpus.load(pg_url, manifest, embeddings=FakeEmbeddings(), limiter=_fast())
+    resumed = load_corpus.load(pg_url, manifest, embeddings=GatewayEmbeddings(), limiter=_fast(), token_limiter=_fast())
 
     assert resumed["skip"] == docs_partial and resumed["insert"] == 50 - docs_partial
     docs, chunks, empty = _db_state(owner)
     assert (docs, empty) == (50, 0)
-    full = load_corpus.load(pg_url, manifest, embeddings=FakeEmbeddings(), limiter=_fast())
+    full = load_corpus.load(pg_url, manifest, embeddings=GatewayEmbeddings(), limiter=_fast(), token_limiter=_fast())
     assert sum(full["chunks_by_org"].values()) == chunks  # same totals as a clean load would give
     with owner.connect() as conn:  # one documents row per file, no leftovers
         assert conn.execute(sa.text(
@@ -111,17 +125,19 @@ def test_a_daily_quota_stop_leaves_whole_documents_and_a_rerun_resumes(owner, pg
 
 def test_a_per_minute_429_waits_and_retries(owner, pg_url):
     waits: list[float] = []
-    embeddings = FailingEmbeddings(0, _quota_error(daily=False), times=1)  # fails once, first call
-    counts = load_corpus.load(pg_url, load_manifest(), embeddings=embeddings, limiter=_fast(),
+    embeddings = GatewayEmbeddings(0, _quota_error(daily=False), times=1)  # fails once, first call
+    counts = load_corpus.load(pg_url, load_manifest(), embeddings=embeddings, limiter=_fast(), token_limiter=_fast(),
                               sleep=waits.append)
     assert waits == [load_corpus.RATE_LIMIT_WAIT_S]
     assert counts["insert"] == 50
-    # The failed attempt's texts were sent too, so they count.
-    assert counts["embedding_requests"] > sum(counts["chunks_by_org"].values())
+    # The failed attempt and its texts were sent too, so they count.
+    assert counts["embedding_retries"] == 1
+    assert counts["embedding_requests"] == 51
+    assert counts["embedding_texts_sent"] > sum(counts["chunks_by_org"].values())
 
 
 def test_an_access_change_in_the_manifest_is_applied_in_place(owner, pg_url, tmp_path):
-    load_corpus.load(pg_url, load_manifest(), embeddings=FakeEmbeddings(), limiter=_fast())
+    load_corpus.load(pg_url, load_manifest(), embeddings=GatewayEmbeddings(), limiter=_fast(), token_limiter=_fast())
     original = (REPO / "kb" / "manifest.yaml").read_text(encoding="utf-8")
     changed = original.replace(
         "  - file: aurora/atlas-battery-spec.txt\n    org: aurora\n    team: null\n    clearance: 1",
@@ -131,9 +147,9 @@ def test_an_access_change_in_the_manifest_is_applied_in_place(owner, pg_url, tmp
     path.write_text(changed, encoding="utf-8")
 
     counts = load_corpus.load(pg_url, load_manifest(path, REPO / "kb" / "docs"),
-                              embeddings=FakeEmbeddings(), limiter=_fast())
+                              embeddings=GatewayEmbeddings(), limiter=_fast(), token_limiter=_fast())
 
-    assert (counts["update_access"], counts["skip"], counts["embedding_requests"]) == (1, 49, 0)
+    assert (counts["update_access"], counts["skip"], counts["embedding_texts_sent"]) == (1, 49, 0)
     with owner.connect() as conn:
         rows = conn.execute(sa.text(
             "SELECT DISTINCT d.team_id, d.clearance, c.team_id, c.clearance FROM documents d "

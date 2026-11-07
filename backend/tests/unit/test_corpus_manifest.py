@@ -137,3 +137,25 @@ def test_chunks_get_ids_from_the_document_id_not_a_random_one():
     assert [c.chunk_id for c in first] == [c.chunk_id for c in again]
     assert first[0].chunk_id == "kb-abc-0000" and len(first) > 10
     assert {c.filename for c in first} == {"pika-gen3-service-manual.txt"}
+
+
+def test_a_crlf_copy_chunks_and_hashes_exactly_like_the_lf_original(tmp_path):
+    from manifest import doc_text
+
+    source = "aurora/pika-gen3-service-manual.txt"
+    lf = load_corpus.doc_text(source)
+    assert "\r" not in lf
+    copies = {"lf": lf.encode("utf-8"), "crlf": lf.replace("\n", "\r\n").encode("utf-8")}
+    for name, data in copies.items():
+        (tmp_path / name / "aurora").mkdir(parents=True)
+        (tmp_path / name / source).write_bytes(data)
+    assert b"\r\n" in (tmp_path / "crlf" / source).read_bytes()
+    texts = {n: doc_text(source, tmp_path / n) for n in copies}
+    assert texts["crlf"] == texts["lf"] == lf
+
+    doc = Doc(file=source, org="aurora", team=None, clearance=1)
+    ids = {n: load_corpus.doc_id_for(source, t) for n, t in texts.items()}
+    chunks = {n: load_corpus.chunk(doc, ids[n], t) for n, t in texts.items()}
+    assert ids["crlf"] == ids["lf"]
+    assert [(c.chunk_id, c.text) for c in chunks["crlf"]] == [(c.chunk_id, c.text) for c in chunks["lf"]]
+    assert len(chunks["lf"]) == 26  # as loaded into the Phase 3 database

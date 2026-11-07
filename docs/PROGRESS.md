@@ -391,7 +391,8 @@ false-refusal rate.
 
 ## Phase 2 plan
 
-Status (2026-11-07): plan and RLS decision recorded; commits 1-7 done (CI chore + guard,
+Status (2026-11-07): plan and RLS decision recorded; commits 1-8 done (8: eval admin; its live one-question eval run is
+still pending) (CI chore + guard,
 migration 0003, get_principal and /me, revoked-token check on /admin/*,
 clock-skew fix, live Firebase check script, documind_app role and RLS on
 chunks and documents, separate migrate step, documents table as the

@@ -147,16 +147,11 @@ def start_local_stack() -> subprocess.Popen:
 
 
 def seed_admin(database_url, uid):
-    import sqlalchemy as sa
+    # The same idempotent owner-side setup as scripts/setup_eval_admin.py.
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from setup_eval_admin import ensure_eval_admin
 
-    engine = sa.create_engine(database_url)
-    with engine.begin() as conn:
-        conn.execute(sa.text("INSERT INTO orgs VALUES ('eval', 'Eval') ON CONFLICT DO NOTHING"))
-        conn.execute(sa.text(
-            "INSERT INTO users (firebase_uid, org_id, role, clearance) VALUES (:uid, 'eval', 'admin', 0) "
-            "ON CONFLICT (firebase_uid) DO UPDATE SET org_id = 'eval', role = 'admin', active = true"
-        ), {"uid": uid})
-    engine.dispose()
+    ensure_eval_admin(database_url, uid)
 
 
 def revoke(uid):
@@ -183,7 +178,7 @@ def run_checks(api, database_url):
     else:
         check(body.get("reason") == "unknown_user", "not set up: unknown_user")
 
-    step("3. Seed the user as an admin in org 'eval'")
+    step("3. Make the user an admin in org 'eval' (setup_eval_admin.ensure_eval_admin)")
     seed_admin(database_url, uid)
     check(True, "seeded")
 

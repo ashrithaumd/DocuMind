@@ -22,11 +22,15 @@ or answered and fully scored); errored, not-run and partly scored questions
 are run again. The last record per question wins.
 
 Usage:
-    1. Start the stack (docker compose up, or uvicorn locally). /query
-       returns llm_usage and full error text for the report only to admins,
-       so the harness must call it as one (signing in arrives with Phase 2
-       commit 8).
-    2. Upload the sample document once:  see --ingest below.
+    1. Start the stack (docker compose up, or uvicorn locally), and make the
+       eval account an admin of the eval org once:
+       scripts/setup_eval_admin.py --database-url OWNER_URL.
+       The harness signs in as EVAL_ADMIN_EMAIL / EVAL_ADMIN_PASSWORD
+       (repo-root .env) through the Firebase REST API and refreshes the token
+       as needed; /query returns llm_usage and full error text for the report
+       only to admins.
+    2. Upload the sample document once:  see --ingest below (it goes into
+       the eval org, at --clearance).
     3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR] [--resume]
 
 Outputs results.jsonl, report.json and report.md (default: eval/).
@@ -42,9 +46,10 @@ import sys
 from pathlib import Path
 
 import httpx
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 EVAL_DIR = Path(__file__).parent
+REPO_ROOT = EVAL_DIR.parents[1]
 
 # Judge per provider. Overridable with JUDGE_MODEL. Defaults:
 #   gemini:    gemini-3.1-flash-lite — free tier, a stable (non-preview) ID,
@@ -89,6 +94,20 @@ def quota_hits(text: str) -> list[str]:
 
 
 # --- querying the live pipeline ------------------------------------------------
+
+
+def eval_admin_auth():
+    """Sign-in as the eval admin for every call (eval/firebase_auth.py),
+    from the repo-root .env (or the environment)."""
+    from firebase_auth import FirebaseAuth
+
+    env = {**dotenv_values(REPO_ROOT / ".env"), **{k: v for k, v in os.environ.items() if v}}
+    names = ("VITE_FIREBASE_API_KEY", "EVAL_ADMIN_EMAIL", "EVAL_ADMIN_PASSWORD")
+    missing = [n for n in names if not env.get(n)]
+    if missing:
+        raise SystemExit(f"Set {', '.join(missing)} in the repo-root .env to sign the harness in.")
+    return FirebaseAuth(env["VITE_FIREBASE_API_KEY"], env["EVAL_ADMIN_EMAIL"],
+                        env["EVAL_ADMIN_PASSWORD"])
 
 
 def call_api(client: httpx.Client, api: str, question: str) -> dict:
@@ -540,6 +559,10 @@ def main() -> int:
         "--resume", action="store_true",
         help=f"Continue from OUT_DIR/{RESULTS_FILE}, skipping finished questions",
     )
+    parser.add_argument(
+        "--clearance", type=int, default=0,
+        help="Clearance of the --ingest upload (the eval admin's must be at least this)",
+    )
     args = parser.parse_args()
 
     out_dir = Path(args.out_dir)
@@ -556,9 +579,7 @@ def main() -> int:
     load_dotenv()  # the RAGAS judge needs the provider key (see build_judge)
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    # shortcut: no Authorization header, so every call gets 401 until Phase 2
-    # commit 8 signs the harness in as the seeded eval admin.
-    client = httpx.Client()
+    client = httpx.Client(auth=eval_admin_auth())
 
     if args.ingest:
         pdf_path = EVAL_DIR / dataset["document"]
@@ -566,7 +587,7 @@ def main() -> int:
             response = client.post(
                 f"{args.api}/upload",
                 files={"file": (pdf_path.name, fh, "application/pdf")},
-                data={"clearance": "0"},  # org-wide, lowest level, in the caller's org
+                data={"clearance": str(args.clearance)},  # org-wide, in the eval org
                 timeout=300,
             )
         response.raise_for_status()

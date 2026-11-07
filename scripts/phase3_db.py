@@ -32,18 +32,19 @@ def read_env(path: Path = ENV_FILE) -> dict[str, str]:
     return {k: v for k, v in dotenv_values(path).items() if v is not None} if path.exists() else {}
 
 
-def ensure_secrets(path: Path = ENV_FILE) -> list[str]:
-    """Append any missing Phase 3 password to .env; never change an existing
-    one. Returns the names added (never their values)."""
+def ensure_secrets(path: Path = ENV_FILE, names: tuple[str, ...] = SECRETS,
+                   header: str = "# Phase 3 database (scripts/phase3_db.py)") -> list[str]:
+    """Append a generated value for any of `names` missing from .env; never
+    change an existing one. Returns the names added (never their values)."""
     current = read_env(path)
-    missing = [name for name in SECRETS if not current.get(name)]
+    missing = [name for name in names if not current.get(name)]
     if missing:
         # Raw read: read_text() would turn CRLF into LF and hide the file's line endings.
         text = path.read_bytes().decode("utf-8") if path.exists() else ""
         nl = "\r\n" if "\r\n" in text else "\n"
         lines = [] if not text or text.endswith(("\n", "\r\n")) else [""]
-        if not any(line.startswith("# Phase 3 database") for line in text.splitlines()):
-            lines.append("# Phase 3 database (scripts/phase3_db.py)")
+        if header not in text.splitlines():
+            lines.append(header)
         lines += [f"{name}={secrets.token_urlsafe(32)}" for name in missing]
         with path.open("a", encoding="utf-8", newline="") as fh:
             fh.write(nl.join(lines) + nl)

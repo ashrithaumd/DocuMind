@@ -1,0 +1,61 @@
+# Test users for every access boundary of the Phase 3 corpus (kb/manifest.yaml).
+#
+# Seeded through the owner path by scripts/seed_test_users.py. The automated
+# tests use the same file: each user's Firebase uid there is "test:<id>"
+# (FakeTokenChecker token "token:test:<id>"), so no real Firebase account is
+# involved. Users with an `email` are the real Firebase demo accounts: their
+# uid is looked up in Firebase by email, and their passwords live only in
+# the local .env (never in this file or the repo).
+#
+#   id:        unique; also the fake-checker uid suffix
+#   org:       aurora | bluefin
+#   role:      viewer | editor | admin
+#   clearance: 0-3
+#   teams:     team ids of that org (empty = org-wide documents only)
+#   email:     only for demo users; must be @documind.test
+
+users:
+  # --- aurora: org-wide viewers at every clearance ---
+  - {id: aurora-viewer-c0, org: aurora, role: viewer, clearance: 0, teams: []}
+  - {id: aurora-viewer-c1, org: aurora, role: viewer, clearance: 1, teams: []}
+  - {id: aurora-viewer-c2, org: aurora, role: viewer, clearance: 2, teams: []}
+  - {id: aurora-viewer-c3, org: aurora, role: viewer, clearance: 3, teams: []}
+  # --- aurora: each team at the lowest and highest clearance ---
+  - {id: aurora-platform-c0, org: aurora, role: viewer, clearance: 0, teams: [platform]}
+  - {id: aurora-platform-c3, org: aurora, role: viewer, clearance: 3, teams: [platform]}
+  - {id: aurora-firmware-c0, org: aurora, role: viewer, clearance: 0, teams: [firmware]}
+  - {id: aurora-firmware-c3, org: aurora, role: viewer, clearance: 3, teams: [firmware]}
+  - {id: aurora-field-ops-c0, org: aurora, role: viewer, clearance: 0, teams: [field-ops]}
+  - {id: aurora-field-ops-c3, org: aurora, role: viewer, clearance: 3, teams: [field-ops]}
+  - {id: aurora-people-c0, org: aurora, role: viewer, clearance: 0, teams: [people]}
+  - {id: aurora-people-c3, org: aurora, role: viewer, clearance: 3, teams: [people]}
+  # --- aurora: writers ---
+  - {id: aurora-editor, org: aurora, role: editor, clearance: 2, teams: [platform]}
+  - {id: aurora-admin, org: aurora, role: admin, clearance: 3, teams: [platform, firmware, field-ops, people]}
+
+  # --- bluefin: org-wide viewers at every clearance ---
+  - {id: bluefin-viewer-c0, org: bluefin, role: viewer, clearance: 0, teams: []}
+  - {id: bluefin-viewer-c1, org: bluefin, role: viewer, clearance: 1, teams: []}
+  - {id: bluefin-viewer-c2, org: bluefin, role: viewer, clearance: 2, teams: []}
+  - {id: bluefin-viewer-c3, org: bluefin, role: viewer, clearance: 3, teams: []}
+  # --- bluefin: each team at the lowest and highest clearance ---
+  - {id: bluefin-data-eng-c0, org: bluefin, role: viewer, clearance: 0, teams: [data-eng]}
+  - {id: bluefin-data-eng-c3, org: bluefin, role: viewer, clearance: 3, teams: [data-eng]}
+  - {id: bluefin-ml-c0, org: bluefin, role: viewer, clearance: 0, teams: [ml]}
+  - {id: bluefin-ml-c3, org: bluefin, role: viewer, clearance: 3, teams: [ml]}
+  - {id: bluefin-support-c0, org: bluefin, role: viewer, clearance: 0, teams: [support]}
+  - {id: bluefin-support-c3, org: bluefin, role: viewer, clearance: 3, teams: [support]}
+  - {id: bluefin-finance-c0, org: bluefin, role: viewer, clearance: 0, teams: [finance]}
+  - {id: bluefin-finance-c3, org: bluefin, role: viewer, clearance: 3, teams: [finance]}
+  # Finance at clearance 2: sees the finance review and the Northgate MSA,
+  # not the salary bands or the Gullwing plan (a clearance step in one team).
+  - {id: bluefin-finance-c2, org: bluefin, role: viewer, clearance: 2, teams: [finance]}
+  # --- bluefin: writers ---
+  - {id: bluefin-editor, org: bluefin, role: editor, clearance: 2, teams: [data-eng]}
+  - {id: bluefin-admin, org: bluefin, role: admin, clearance: 3, teams: [data-eng, ml, support, finance]}
+
+  # --- real Firebase demo users (passwords only in the local .env) ---
+  - {id: demo-aurora-viewer, org: aurora, role: viewer, clearance: 0, teams: [], email: aurora-viewer@documind.test}
+  - {id: demo-bluefin-finance, org: bluefin, role: viewer, clearance: 3, teams: [finance], email: bluefin-finance@documind.test}
+  # ml at the top clearance still can't see the finance-only Gullwing plan.
+  - {id: demo-bluefin-ml, org: bluefin, role: viewer, clearance: 3, teams: [ml], email: bluefin-ml@documind.test}

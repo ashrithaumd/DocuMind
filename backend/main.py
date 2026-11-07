@@ -12,7 +12,8 @@ Endpoints:
     GET  /health        — liveness + index size
 
 Every endpoint except /me and /health requires a signed-in, set-up user
-(auth.get_principal: 401 without a valid token, 403 if not set up).
+(auth.get_principal: 401 without a valid token, 403 if not set up); /admin/*
+also checks with Firebase that the token wasn't revoked.
 
 Streaming design note: the answer is only sent AFTER the groundedness check
 passes, so we cannot forward raw LLM tokens as they are produced (they might
@@ -32,7 +33,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from auth import get_me, get_principal
+from auth import get_admin_principal, get_me, get_principal
 from config import get_settings
 from db import session as db
 from deps import get_store
@@ -353,12 +354,12 @@ async def submit_feedback(request: FeedbackRequest):
     return {"status": "ok"}
 
 
-@app.get("/admin/logs", dependencies=[Depends(get_principal)])
+@app.get("/admin/logs", dependencies=[Depends(get_admin_principal)])
 async def admin_logs(limit: int = 20):
     return {"logs": await asyncio.to_thread(db.fetch_logs, min(limit, 100))}
 
 
-@app.get("/admin/stats", dependencies=[Depends(get_principal)])
+@app.get("/admin/stats", dependencies=[Depends(get_admin_principal)])
 async def admin_stats():
     return await asyncio.to_thread(db.fetch_stats)
 

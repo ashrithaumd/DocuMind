@@ -5,7 +5,7 @@ very next one. Tokens come from FakeTokenChecker: no Firebase, no network."""
 import pytest
 import sqlalchemy as sa
 
-from auth import get_principal
+from auth import get_admin_principal, get_principal
 from tests.conftest import TEST_ORG, TEST_UID
 
 # One request per protected endpoint; the body only has to get past auth.
@@ -48,7 +48,9 @@ def test_every_route_but_me_and_health_requires_a_principal():
         if route.path in open_routes:
             continue
         calls = {d.call for d in route.dependant.dependencies}
-        assert get_principal in calls, f"{route.path} is not behind get_principal"
+        # Admin routes also check revocation with Firebase; the rest don't.
+        expected = get_admin_principal if route.path.startswith("/admin/") else get_principal
+        assert calls & {get_principal, get_admin_principal} == {expected}, route.path
     assert {p for _, p, _ in PROTECTED} == {r.path for r in app.routes} - open_routes
 
 
@@ -111,3 +113,49 @@ def test_me_still_needs_a_valid_token(client):
 
 def test_health_stays_open(client):
     assert client.get("/health", headers={"Authorization": ""}).status_code == 200
+
+
+# --- revoked tokens (admin routes) -------------------------------------------
+
+ADMIN_ROUTES = ["/admin/logs", "/admin/stats"]
+
+
+@pytest.mark.parametrize("path", ADMIN_ROUTES)
+def test_revoked_token_is_refused_on_the_next_admin_request(client, token_checker, path):
+    token = f"token:{TEST_UID}"
+    assert client.get(path).status_code == 200
+
+    token_checker.revoke(token)
+
+    response = client.get(path)
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_revoked_token_still_works_off_admin_routes_until_it_expires(client, token_checker):
+    # Firebase's revocation check is a network call, so only admin routes make
+    # it. Elsewhere the token works until it expires (at most an hour), and
+    # users.active=false is the immediate off switch.
+    token_checker.revoke(f"token:{TEST_UID}")
+    assert client.get("/documents").status_code == 200
+    assert client.get("/admin/stats").status_code == 401
+
+
+def test_only_admin_routes_ask_firebase_about_revocation(client, token_checker):
+    client.get("/documents")
+    client.get("/me")
+    assert token_checker.revocation_checks == 0
+    client.get("/admin/logs")
+    assert token_checker.revocation_checks == 1
+
+
+@pytest.mark.parametrize("path", ADMIN_ROUTES)
+def test_deactivated_user_is_refused_on_the_next_admin_request(client, sql, token_checker, path):
+    assert client.get(path).status_code == 200
+
+    sql("UPDATE users SET active = false WHERE firebase_uid = :uid", uid=TEST_UID)
+
+    response = client.get(path)
+    assert response.status_code == 403
+    assert "inactive" in response.json()["detail"]
+    assert not token_checker.revoked  # refused on the flag alone, token still valid

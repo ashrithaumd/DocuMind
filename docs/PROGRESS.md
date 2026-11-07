@@ -391,8 +391,8 @@ false-refusal rate.
 
 ## Phase 2 plan
 
-Status (2026-11-06): plan and RLS decision recorded; commits 1-3 done (CI chore + guard,
-migration 0003, get_principal and /me).
+Status (2026-11-06): plan and RLS decision recorded; commits 1-4 done (CI chore + guard,
+migration 0003, get_principal and /me, revoked-token check on /admin/*).
 
 ### Auth provider: Firebase Auth (option A)
 
@@ -470,6 +470,11 @@ The user's four changes on top:
   Phase 9 replaces it with Workload Identity.
 
 ### Checklist (one commit each)
+
+**Test rule from commit 5 on (decided 2026-11-06):** permission tests sign in
+explicitly as a viewer (or whichever role the test is about), never through
+the `client` fixture's default admin, so a test can't pass because the
+caller happened to have every permission.
 
 1. **CI chore, credential guard and Phase 2 decisions.** Bump
    `actions/checkout` and `setup-python` to their Node 24 versions. Add the

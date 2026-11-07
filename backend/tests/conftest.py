@@ -30,7 +30,12 @@ def fake_llm():
 
 
 @pytest.fixture
-def app_env(pg_url, monkeypatch, fake_llm):
+def token_checker():
+    return FakeTokenChecker()
+
+
+@pytest.fixture
+def app_env(pg_url, monkeypatch, fake_llm, token_checker):
     """Fresh settings + stubbed LLM/embeddings + a fresh Postgres database."""
     monkeypatch.setenv("LLM_PROVIDER", "gemini")
     monkeypatch.setenv("GEMINI_API_KEY", "test-key-not-real")
@@ -56,7 +61,7 @@ def app_env(pg_url, monkeypatch, fake_llm):
     monkeypatch.setattr(deps, "get_llm", lambda: fake_llm)
     monkeypatch.setattr(nodes, "get_llm", lambda: fake_llm)
     monkeypatch.setattr(deps, "get_embeddings", lambda: embeddings)
-    monkeypatch.setattr(deps, "get_token_checker", lambda: FakeTokenChecker())
+    monkeypatch.setattr(deps, "get_token_checker", lambda: token_checker)
 
     yield fake_llm
 

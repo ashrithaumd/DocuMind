@@ -12,6 +12,13 @@ Deny by default: every endpoint depends on `get_principal`, which answers
 whether the user is set up (so the frontend can show "not set up yet").
 `/health` stays open.
 
+Admin routes use `get_admin_principal`, which also asks Firebase whether the
+token was revoked (or the Firebase account disabled), so a revoked admin
+session is refused on its very next request. Other routes skip that check:
+it's a network call per request. There, a revoked token keeps working until
+it expires (at most an hour); setting users.active=false is the immediate
+off switch everywhere.
+
 The token check sits behind the TokenChecker protocol: production uses
 FirebaseTokenChecker, tests use tests.helpers.FakeTokenChecker (no
 emulator, no network).
@@ -32,8 +39,9 @@ class InvalidToken(Exception):
 
 
 class TokenChecker(Protocol):
-    def verify(self, token: str) -> str:
-        """Return the Firebase uid the token was issued to, or raise InvalidToken."""
+    def verify(self, token: str, check_revoked: bool = False) -> str:
+        """Return the Firebase uid the token was issued to, or raise InvalidToken.
+        check_revoked also refuses revoked tokens and disabled accounts."""
         ...
 
 
@@ -52,15 +60,18 @@ class FirebaseTokenChecker:
             options = {"projectId": settings.firebase_project_id} if settings.firebase_project_id else None
             self._app = firebase_admin.initialize_app(options=options, name=self.APP_NAME)
 
-    def verify(self, token: str) -> str:
+    def verify(self, token: str, check_revoked: bool = False) -> str:
         from firebase_admin import auth
 
         try:
-            claims = auth.verify_id_token(token, app=self._app)
-        except auth.InvalidIdTokenError as exc:
-            # Expired and revoked tokens are subclasses. Anything else (no
-            # project id configured, Google's certificates unreachable) is a
-            # server problem, not a bad token, and surfaces as a 500.
+            # check_revoked looks the user up in Firebase, which needs the
+            # service account key (GOOGLE_APPLICATION_CREDENTIALS).
+            claims = auth.verify_id_token(token, app=self._app, check_revoked=check_revoked)
+        except (auth.InvalidIdTokenError, auth.UserDisabledError) as exc:
+            # Expired and revoked tokens are InvalidIdTokenError subclasses;
+            # UserDisabledError (check_revoked only) is not. Anything else (no
+            # project id or key configured, Firebase unreachable) is a server
+            # problem, not a bad token, and surfaces as a 500.
             raise InvalidToken(str(exc)) from exc
         return claims["uid"]
 
@@ -78,13 +89,15 @@ class Principal:
 _bearer = HTTPBearer(auto_error=False)
 
 
-async def _identify(credentials: HTTPAuthorizationCredentials | None) -> tuple[str, dict | None]:
+async def _identify(credentials: HTTPAuthorizationCredentials | None,
+                    check_revoked: bool = False) -> tuple[str, dict | None]:
     """The token's Firebase uid and that user's row (None if unknown); 401 on a bad token."""
     if credentials is None:
         raise HTTPException(status_code=401, detail="Sign in required.",
                             headers={"WWW-Authenticate": "Bearer"})
     try:
-        uid = await asyncio.to_thread(deps.get_token_checker().verify, credentials.credentials)
+        uid = await asyncio.to_thread(deps.get_token_checker().verify, credentials.credentials,
+                                      check_revoked)
     except InvalidToken as exc:
         raise HTTPException(status_code=401, detail="Invalid or expired token.",
                             headers={"WWW-Authenticate": "Bearer"}) from exc
@@ -105,7 +118,19 @@ def _not_set_up(user: dict | None) -> str | None:
 async def get_principal(
     credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
 ) -> Principal:
-    _, user = await _identify(credentials)
+    return await _principal(credentials, check_revoked=False)
+
+
+async def get_admin_principal(
+    credentials: HTTPAuthorizationCredentials | None = Depends(_bearer),
+) -> Principal:
+    """get_principal plus Firebase's revoked-token check, for admin routes.
+    (Requiring role=admin comes with the admin-only diagnostics commit.)"""
+    return await _principal(credentials, check_revoked=True)
+
+
+async def _principal(credentials, check_revoked: bool) -> Principal:
+    _, user = await _identify(credentials, check_revoked)
     reason = _not_set_up(user)
     if reason:
         raise HTTPException(status_code=403, detail=f"Account not set up ({reason}).")

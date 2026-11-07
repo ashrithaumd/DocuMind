@@ -64,8 +64,11 @@ and an error code quoted in a postmortem is the one in the manual.
 ## Size
 
 At the app's default chunking (600 tokens, 90 overlap), the corpus is
-303 chunks; the largest documents split into about 25 to 29
-chunks each.
+284 chunks: 151 for Aurora and 133 for Bluefin, as loaded into the
+Phase 3 database. The largest documents split into about 22 to 26 chunks
+each. (An earlier count of 303 read a Windows checkout, where git turns
+LF into CRLF: the extra carriage returns add tokens. The files are stored
+with LF, and the loader reads them that way on every platform.)
 
 ## Access design
 

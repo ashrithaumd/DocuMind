@@ -814,6 +814,41 @@ on fakes in CI. Memory rules: at least 2 GB free for runs that call Gemini,
     the indexes waits for a decision.
 12. **Phase 3 results and the PR** to main.
 
+## Phase 3 results
+
+### Item 4: the corpus loaded (2026-11-07)
+
+Loaded with `scripts/phase3_db.py run -- python scripts/load_corpus.py`
+into the Phase 3 database (real `gemini-embedding-2` embeddings,
+1536 dimensions, paced at 90 texts a minute). Free memory before the run:
+3.3 GB.
+
+| | |
+|---|---|
+| Documents | 50 inserted, none empty; a dry run first planned the same 50 |
+| Chunks | **284**: Aurora 151, Bluefin 133 (largest document: 26) |
+| Texts the loader sent | 284, one per chunk |
+| Texts resent by the provider's own retries | 26 (4 retries) |
+| **Embedding texts sent to Gemini in all** | **310** |
+| Time | 537 s |
+| Daily quota | not reached |
+| Check | `documind_app` with no access context sees 0 chunks |
+
+Findings, for follow-up commits:
+
+- **The binding free-tier limit is tokens per minute, not requests.** Every
+  retry was `EmbedContentTokensPerMinutePerProjectPerModel-FreeTier`
+  (limit 30,000 tokens a minute). At 90 texts a minute of up to 600 tokens,
+  the loader can send about 50,000 tokens a minute, so the provider's
+  backoff (inside the embedding gateway) absorbed four 429s. The load
+  still finished, but the pacing should count tokens too: about 27,000 a
+  minute, alongside the 90 texts.
+- **The loader's request count missed those retries**: it counts texts
+  handed to the embedder (284), not attempts the embedder made (310). The
+  count should come from the embedding gateway's own usage tracking.
+- **284, not 303, chunks**: the earlier count read the Windows checkout
+  (CRLF); `kb/README.md` is corrected.
+
 ## Phase 3 notes
 
 - **Check the query plan under RLS on the real corpus.** Run EXPLAIN

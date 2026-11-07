@@ -1,6 +1,7 @@
 """Load the Phase 3 corpus (kb/) into Postgres, as the owner. Idempotent.
 
-    backend/.venv/Scripts/python scripts/load_corpus.py --database-url OWNER_URL [--dry-run] [--prune]
+    backend/.venv/Scripts/python scripts/load_corpus.py --database-url OWNER_URL
+        [--dry-run] [--prune] [--per-minute 90]
 
 Reads and validates kb/manifest.yaml, then:
   1. upserts each org and its teams (team ids are unique across orgs);
@@ -31,12 +32,27 @@ provider (EMBEDDING_PROVIDER etc., as for the backend): loading the whole
 corpus is one embedding call per chunk, about 300.
 Document ids are "kb-" plus a hash of the path and content, so the same
 file always gets the same id and an edited file gets a new one.
+
+Pacing and quota (Gemini's free tier allows about 100 embedding requests a
+minute, and every text counts as one request, even inside a batch):
+  - texts are paced to at most --per-minute (default 90) in any rolling
+    minute, before they are sent;
+  - a per-minute 429 that outlasts the provider's own retries waits a
+    minute and tries the document again (up to 3 times);
+  - a daily-quota error stops the run cleanly (exit code 3) with how far it
+    got. Embedding happens before a document's write transaction opens, and
+    each document is written in one transaction, so nothing half-loaded is
+    ever left: re-run the same command, and loaded documents are skipped.
+At the end it reports the corpus's chunks per org and the embedding
+requests this run sent (retries included).
 """
 import argparse
 import asyncio
 import hashlib
 import os
 import sys
+import time
+from collections import deque
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -46,6 +62,56 @@ sys.path.insert(0, str(REPO / "backend"))
 from manifest import DOCS, Doc, Manifest, doc_text, load_manifest  # noqa: E402
 
 PREFIX = "kb-"
+EXIT_QUOTA = 3
+RATE_LIMIT_RETRIES = 3
+RATE_LIMIT_WAIT_S = 60
+
+
+class QuotaStop(Exception):
+    """The provider's daily quota is used up; the run stopped cleanly."""
+
+
+class RateLimiter:
+    """At most `per_minute` texts in any rolling 60-second window."""
+
+    def __init__(self, per_minute: int, clock=time.monotonic, sleep=time.sleep):
+        if per_minute < 1:
+            raise ValueError("per_minute must be at least 1")
+        self.per_minute = per_minute
+        self._clock, self._sleep = clock, sleep
+        self._sent: deque[tuple[float, int]] = deque()
+
+    def acquire(self, n: int) -> None:
+        if n > self.per_minute:
+            raise ValueError(f"{n} texts can never fit in {self.per_minute} a minute; split them")
+        while True:
+            now = self._clock()
+            while self._sent and self._sent[0][0] <= now - 60:
+                self._sent.popleft()
+            if sum(count for _, count in self._sent) + n <= self.per_minute:
+                self._sent.append((now, n))
+                return
+            self._sleep(self._sent[0][0] + 60 - now)
+
+
+class PacedEmbedder:
+    """Sends texts through a RateLimiter, in slices that fit one minute, and
+    counts every text sent (retries included)."""
+
+    def __init__(self, embeddings, limiter: RateLimiter):
+        self._embeddings, self._limiter = embeddings, limiter
+        self.model, self.dimension = embeddings.model, embeddings.dimension
+        self.requests = 0
+
+    def embed(self, texts: list[str]) -> list[list[float]]:
+        vectors: list[list[float]] = []
+        step = self._limiter.per_minute
+        for start in range(0, len(texts), step):
+            part = texts[start:start + step]
+            self._limiter.acquire(len(part))
+            self.requests += len(part)
+            vectors += asyncio.run(self._embeddings.embed_documents(part))
+        return vectors
 
 
 @dataclass(frozen=True)
@@ -188,13 +254,43 @@ def _not_in_manifest(conn, manifest: Manifest) -> list[tuple[str, str, str]]:
     return [tuple(r) for r in rows if (r[1], r[2]) not in wanted]
 
 
+def _embed_with_retries(embedder: "PacedEmbedder", texts: list[str], sleep) -> list[list[float]]:
+    from llm import classify_error
+
+    for attempt in range(1, RATE_LIMIT_RETRIES + 2):
+        try:
+            return embedder.embed(texts)
+        except Exception as exc:
+            kind = classify_error(exc)
+            if kind == "daily_quota":
+                raise QuotaStop(str(type(exc).__name__)) from exc
+            if kind in ("rate_limited", "unavailable") and attempt <= RATE_LIMIT_RETRIES:
+                print(f"  {kind}: waiting {RATE_LIMIT_WAIT_S} s, then retry {attempt} of "
+                      f"{RATE_LIMIT_RETRIES}", flush=True)
+                sleep(RATE_LIMIT_WAIT_S)
+                continue
+            raise
+
+
+def chunks_by_org(conn) -> dict[str, int]:
+    import sqlalchemy as sa
+
+    rows = conn.execute(sa.text("SELECT org_id, count(*) FROM chunks WHERE doc_id LIKE :p "
+                                "GROUP BY org_id ORDER BY org_id"), {"p": PREFIX + "%"}).all()
+    return {org: n for org, n in rows}
+
+
 def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool = False,
-         docs_dir: Path = DOCS) -> dict[str, int]:
+         docs_dir: Path = DOCS, embeddings=None, limiter: RateLimiter | None = None,
+         sleep=time.sleep) -> dict:
+    """Load the manifest's documents. Raises QuotaStop (after printing how far
+    it got) if the daily quota runs out; a re-run resumes."""
     import sqlalchemy as sa
 
     engine = sa.create_engine(owner_url)
     counts = {"insert": 0, "skip": 0, "update_access": 0, "replace": 0, "pruned": 0}
-    embeddings = None
+    embedder: PacedEmbedder | None = None
+    total, done = len(manifest.docs), 0
     try:
         with engine.begin() as conn:
             _check_owner(conn, None)
@@ -204,26 +300,47 @@ def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool 
             text = doc_text(doc.file, docs_dir)
             doc_id = doc_id_for(doc.file, text)
             with engine.begin() as conn:
-                loaded = _loaded(conn, doc)
-                action = plan(doc, doc_id, loaded)
-                counts[action] += 1
-                print(f"{action:13s} {doc.file} -> {doc_id} (team {doc.team or 'org-wide'}, "
-                      f"clearance {doc.clearance})", flush=True)
-                if dry_run or action == "skip":
-                    continue
-                if action == "update_access":
+                action = plan(doc, doc_id, _loaded(conn, doc))
+            counts[action] += 1
+            print(f"{action:13s} {doc.file} -> {doc_id} (team {doc.team or 'org-wide'}, "
+                  f"clearance {doc.clearance})", flush=True)
+            if dry_run or action == "skip":
+                done += 1
+                continue
+            if action == "update_access":
+                with engine.begin() as conn:
                     _update_access(conn, doc, doc_id)
-                    continue
-                if embeddings is None:  # built only when something needs embedding
+                done += 1
+                continue
+            if embedder is None:  # built only when something needs embedding
+                if embeddings is None:
                     from config import Settings
                     from embeddings import build_embeddings
 
                     embeddings = build_embeddings(Settings())
-                    _check_owner(conn, embeddings)
-                chunks = chunk(doc, doc_id, text)
-                vectors = asyncio.run(embeddings.embed_documents([c.text for c in chunks]))
+                embedder = PacedEmbedder(embeddings, limiter or RateLimiter(90))
+                with engine.begin() as conn:
+                    _check_owner(conn, embedder)
+            pieces = chunk(doc, doc_id, text)
+            try:
+                # Before the write transaction opens: no transaction waits on
+                # the network, and a failure here leaves nothing behind.
+                vectors = _embed_with_retries(embedder, [c.text for c in pieces], sleep)
+            except QuotaStop:
+                counts[action] -= 1
+                print(f"Daily embedding quota used up: {done} of {total} documents are loaded, "
+                      f"{embedder.requests} embedding requests sent this run. Re-run the same "
+                      "command to resume; loaded documents are skipped.", flush=True)
+                raise
+            with engine.begin() as conn:
+                # Re-read: another run may have loaded it meanwhile.
+                loaded = _loaded(conn, doc)
+                if plan(doc, doc_id, loaded) == "skip":
+                    done += 1
+                    continue
                 _delete(conn, [row.doc_id for row in loaded])
-                _insert(conn, doc, doc_id, chunks, vectors, embeddings.model)
+                _insert(conn, doc, doc_id, pieces, vectors, embedder.model)
+            done += 1
         with engine.begin() as conn:
             stale = _not_in_manifest(conn, manifest)
             for doc_id, org, name in stale:
@@ -231,8 +348,10 @@ def load(owner_url: str, manifest: Manifest, dry_run: bool = False, prune: bool 
             if prune and not dry_run:
                 _delete(conn, [s[0] for s in stale])
                 counts["pruned"] = len(stale)
+            counts["chunks_by_org"] = chunks_by_org(conn)
     finally:
         engine.dispose()
+    counts["embedding_requests"] = embedder.requests if embedder else 0
     return counts
 
 
@@ -243,13 +362,22 @@ def main() -> int:
     parser.add_argument("--dry-run", action="store_true", help="Report the plan; write nothing")
     parser.add_argument("--prune", action="store_true",
                         help="Delete loaded corpus documents that are no longer in the manifest")
+    parser.add_argument("--per-minute", type=int, default=90,
+                        help="Most embedding texts sent in any minute (free tier: about 100)")
     args = parser.parse_args()
     if not args.database_url:
         print("Pass --database-url (the owner) or set MIGRATION_DATABASE_URL.", file=sys.stderr)
         return 2
     manifest = load_manifest()
-    counts = load(args.database_url, manifest, dry_run=args.dry_run, prune=args.prune)
+    try:
+        counts = load(args.database_url, manifest, dry_run=args.dry_run, prune=args.prune,
+                      limiter=RateLimiter(args.per_minute))
+    except QuotaStop:
+        return EXIT_QUOTA
+    by_org = counts.pop("chunks_by_org")
     print(", ".join(f"{k} {v}" for k, v in counts.items()) + (" (dry run)" if args.dry_run else ""))
+    print("corpus chunks per org: " + ", ".join(f"{o} {n}" for o, n in by_org.items())
+          + f" (total {sum(by_org.values())})")
     return 0
 
 

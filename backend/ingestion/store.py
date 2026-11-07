@@ -34,6 +34,11 @@ transaction-local settings (set_config(..., true)), so both retrieval legs,
 listings, counts and writes run under the policy, and nothing outlives the
 transaction on a pooled connection. An unscoped store sets nothing and sees
 no rows. The store refuses to start on a connection that could bypass RLS.
+
+The documents table is the source of truth for access. add_document writes
+the documents row and its chunks in one transaction, the chunks copying org,
+team and clearance from that row in SQL; set_document_access changes a
+document and all its chunks in one statement. Nothing else writes access.
 """
 import asyncio
 import copy
@@ -238,25 +243,28 @@ class HybridStore:
             return conn.execute(sa.text("SELECT count(*) FROM chunks")).scalar()
 
     def list_documents(self) -> list[dict]:
-        """Distinct uploaded documents the caller can see, newest first."""
+        """Documents the caller can see (the documents table, under RLS),
+        newest first."""
         with self._begin() as conn:
             rows = conn.execute(sa.text("""
-                SELECT doc_id, min(filename) AS filename, max(uploaded_at) AS uploaded_at,
-                       count(*) AS chunks
-                FROM chunks GROUP BY doc_id ORDER BY max(uploaded_at) DESC, doc_id
+                SELECT d.doc_id, d.filename, d.uploaded_at, d.team_id, d.clearance,
+                       count(c.chunk_id) AS chunks
+                FROM documents d LEFT JOIN chunks c ON c.doc_id = d.doc_id
+                GROUP BY d.doc_id ORDER BY d.uploaded_at DESC, d.doc_id
             """)).mappings().all()
         return [
             {"doc_id": r["doc_id"], "filename": r["filename"],
-             "uploaded_at": r["uploaded_at"].isoformat(), "chunks": r["chunks"]}
+             "uploaded_at": r["uploaded_at"].isoformat(), "chunks": r["chunks"],
+             "team_id": r["team_id"], "clearance": r["clearance"]}
             for r in rows
         ]
 
     # --- users (migration 0003) ---------------------------------------------
 
     def get_user(self, firebase_uid: str) -> dict | None:
-        # No access context: the user tables have no RLS (the app role can
-        # only read them).
-        """The user row for a Firebase uid, with its team ids; None if unknown."""
+        """The user row for a Firebase uid, with its team ids; None if unknown.
+        No access context: the user tables have no RLS (the app role can only
+        read them)."""
         with self._engine.connect() as conn:
             row = conn.execute(sa.text("""
                 SELECT u.user_id, u.firebase_uid, u.org_id, u.role, u.clearance, u.active,
@@ -270,35 +278,73 @@ class HybridStore:
 
     # --- ingestion ----------------------------------------------------------
 
-    async def add_chunks(self, chunks: list[Chunk]) -> None:
-        """Insert chunks into the caller's org, org-wide (no team).
-        shortcut: clearance takes the column default and there's no documents
-        row yet; Phase 2 commit 6 copies org, team and clearance from the
-        documents row instead."""
+    async def add_document(self, chunks: list[Chunk], *, team_id: str | None,
+                           clearance: int, uploaded_by: str | None) -> None:
+        """Store one document: its documents row (the caller's org, `team_id`
+        or org-wide when None, `clearance`) and its chunks, in one
+        transaction. The chunks copy org, team and clearance from that row in
+        SQL, so they can't differ from it. RLS refuses a team the caller isn't
+        in or a clearance above theirs (the API checks first, for a clear 403)."""
         if not chunks:
-            return
+            raise ValueError("add_document needs at least one chunk")
         if self._access is None:
-            raise RuntimeError("add_chunks needs a scoped store (store.scoped(access)).")
+            raise RuntimeError("add_document needs a scoped store (store.scoped(access)).")
+        doc_id, filename = chunks[0].doc_id, chunks[0].filename
+        if any(c.doc_id != doc_id for c in chunks):
+            raise ValueError("add_document takes the chunks of one document")
         vectors = await self._embeddings.embed_documents([c.text for c in chunks])
         rows = [
-            {"chunk_id": c.chunk_id, "doc_id": c.doc_id, "filename": c.filename,
-             "page_number": c.page_number, "chunk_index": c.chunk_index, "text": c.text,
-             "embedding_model": self._embeddings.model, "embedding": _vector_literal(v),
-             "org_id": self._access.org_id}
+            {"chunk_id": c.chunk_id, "doc_id": doc_id, "page_number": c.page_number,
+             "chunk_index": c.chunk_index, "text": c.text,
+             "embedding_model": self._embeddings.model, "embedding": _vector_literal(v)}
             for c, v in zip(chunks, vectors)
         ]
 
         def insert() -> None:
-            # One transaction, one now(): a document's chunks share uploaded_at.
+            # One transaction, one now(): the document and its chunks share
+            # uploaded_at, and a failure leaves neither behind.
             with self._begin() as conn:
                 conn.execute(sa.text("""
+                    INSERT INTO documents (doc_id, filename, org_id, team_id, clearance, uploaded_by)
+                    VALUES (:doc_id, :filename, :org_id, :team_id, :clearance, :uploaded_by)
+                """), {"doc_id": doc_id, "filename": filename, "org_id": self._access.org_id,
+                       "team_id": team_id, "clearance": clearance, "uploaded_by": uploaded_by})
+                inserted = conn.execute(sa.text("""
                     INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index,
-                                        text, embedding_model, embedding, org_id)
-                    VALUES (:chunk_id, :doc_id, :filename, :page_number, :chunk_index,
-                            :text, :embedding_model, CAST(:embedding AS vector), :org_id)
-                """), rows)
+                                        text, embedding_model, embedding,
+                                        org_id, team_id, clearance)
+                    SELECT :chunk_id, d.doc_id, d.filename, :page_number, :chunk_index,
+                           :text, :embedding_model, CAST(:embedding AS vector),
+                           d.org_id, d.team_id, d.clearance
+                    FROM documents d WHERE d.doc_id = :doc_id
+                """), rows).rowcount
+                if inserted != len(rows):  # the documents row must be visible right here
+                    raise RuntimeError(f"Inserted {inserted} of {len(rows)} chunks for {doc_id}")
 
         await asyncio.to_thread(insert)
+
+    def set_document_access(self, doc_id: str, *, team_id: str | None, clearance: int) -> None:
+        """Change a document's team and clearance, and every one of its
+        chunks, in one statement: no reader ever sees the chunks out of step
+        with the document. The org stays the same. Runs under RLS as the
+        caller: they must see the document now and be able to see it after
+        (their own team, at most their clearance). Raises LookupError if the
+        caller can't see the document."""
+        with self._begin() as conn:
+            changed = conn.execute(sa.text("""
+                WITH d AS (
+                    UPDATE documents SET team_id = :team_id, clearance = :clearance
+                    WHERE doc_id = :doc_id
+                    RETURNING doc_id, org_id, team_id, clearance
+                ), c AS (
+                    UPDATE chunks SET org_id = d.org_id, team_id = d.team_id, clearance = d.clearance
+                    FROM d WHERE chunks.doc_id = d.doc_id
+                    RETURNING 1
+                )
+                SELECT (SELECT count(*) FROM d) AS documents, (SELECT count(*) FROM c) AS chunks
+            """), {"doc_id": doc_id, "team_id": team_id, "clearance": clearance}).one()
+        if changed.documents != 1:
+            raise LookupError(f"No document {doc_id} visible to this caller")
 
     # --- retrieval ----------------------------------------------------------
 

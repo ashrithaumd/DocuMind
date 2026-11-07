@@ -37,6 +37,11 @@ def _store(urls, embeddings=None, **overrides) -> HybridStore:
     return HybridStore(settings, embeddings or FakeEmbeddings()).scoped(ORG)
 
 
+async def _add(store, chunks):
+    """One org-wide, clearance-0 document (org o1), like an upload."""
+    await store.add_document(chunks, team_id=None, clearance=0, uploaded_by=None)
+
+
 def _chunks(doc_id, texts, filename="a.pdf"):
     return [Chunk(chunk_id=f"{doc_id}-{i:04d}", doc_id=doc_id, filename=filename,
                   page_number=i + 1, chunk_index=i, text=t) for i, t in enumerate(texts)]
@@ -47,8 +52,8 @@ PUMPS = [f"Pump {i} runs at {400 + i} RPM in module {i}." for i in range(6)]
 
 async def test_ingest_count_and_list_documents(urls):
     store = _store(urls)
-    await store.add_chunks(_chunks("d1", PUMPS))
-    await store.add_chunks(_chunks("d2", ["The HR handbook covers vacation."], "hr.docx"))
+    await _add(store, _chunks("d1", PUMPS))
+    await _add(store, _chunks("d2", ["The HR handbook covers vacation."], "hr.docx"))
 
     assert store.count() == 7
     docs = store.list_documents()
@@ -58,7 +63,7 @@ async def test_ingest_count_and_list_documents(urls):
 
 async def test_search_is_top_k_of_the_fused_ranking_with_both_legs(urls):
     store = _store(urls)
-    await store.add_chunks(_chunks("d1", PUMPS))
+    await _add(store, _chunks("d1", PUMPS))
     query = "Which pump runs at 402 RPM?"
     vector = await store.embed_query(query)
 
@@ -74,7 +79,7 @@ async def test_search_is_top_k_of_the_fused_ranking_with_both_legs(urls):
 
 async def test_sparse_leg_matches_any_shared_term_with_english_stemming(urls):
     store = _store(urls)
-    await store.add_chunks(_chunks("d1", [
+    await _add(store, _chunks("d1", [
         "Cooling pumps were running all night.",
         "The greenhouse uses carbon dioxide flooding.",
     ]))
@@ -89,8 +94,8 @@ async def test_sparse_leg_matches_any_shared_term_with_english_stemming(urls):
 
 async def test_scoping_restricts_both_legs(urls):
     store = _store(urls)
-    await store.add_chunks(_chunks("d1", PUMPS))
-    await store.add_chunks(_chunks("d2", ["Pump maintenance happens monthly."]))
+    await _add(store, _chunks("d1", PUMPS))
+    await _add(store, _chunks("d2", ["Pump maintenance happens monthly."]))
 
     ranking = await store.fused_ranking("pump", await store.embed_query("pump"), doc_ids=["d2"])
 
@@ -105,8 +110,8 @@ async def test_filtered_hnsw_search_uses_iterative_scans(urls):
     The RLS policy's org filter is checked on each HNSW candidate like the
     doc_id filter.)"""
     store = _store(urls, rrf_candidates=3)
-    await store.add_chunks(_chunks("big", [f"Filler passage number {i}." for i in range(200)]))
-    await store.add_chunks(_chunks("small", ["Alpha.", "Beta.", "Gamma."]))
+    await _add(store, _chunks("big", [f"Filler passage number {i}." for i in range(200)]))
+    await _add(store, _chunks("small", ["Alpha.", "Beta.", "Gamma."]))
     engine = sa.create_engine(urls[0], isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         conn.execute(sa.text("DROP INDEX ix_chunks_doc_id"))
@@ -154,7 +159,7 @@ async def test_migrate_step_refuses_vectors_from_another_model(urls):
     # Checked as the owner, across every org's chunks (RLS would hide them
     # from the app role).
     store = _store(urls, embedding_model="fake-embeddings")
-    await store.add_chunks(_chunks("d1", PUMPS))
+    await _add(store, _chunks("d1", PUMPS))
 
     with pytest.raises(RuntimeError, match=r"\['fake-embeddings'\].*'other-model'"):
         db_session.migrate_database(_settings(urls, embedding_model="other-model"))

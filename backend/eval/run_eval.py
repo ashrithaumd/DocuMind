@@ -565,6 +565,7 @@ def main() -> int:
             response = client.post(
                 f"{args.api}/upload",
                 files={"file": (pdf_path.name, fh, "application/pdf")},
+                data={"clearance": "0"},  # org-wide, lowest level, in the caller's org
                 timeout=300,
             )
         response.raise_for_status()

@@ -107,7 +107,7 @@ async def ensure_indexed(store, settings, pdf_path: Path) -> str:
             return doc["doc_id"]
     pages, _ = validate_and_extract(pdf_path.read_bytes(), pdf_path.name, settings)
     chunks = chunk_pages(pages, pdf_path.name, settings)
-    await store.add_chunks(chunks)
+    await store.add_document(chunks, team_id=None, clearance=0, uploaded_by=None)
     return chunks[0].doc_id
 
 

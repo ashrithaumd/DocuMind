@@ -16,6 +16,7 @@ def _ingest_two_docs(client):
         files={"file": ("reactor.txt",
                         b"The reactor manual covers cooling. Cooling pumps run at 400 RPM.",
                         "text/plain")},
+        data={"clearance": "0"},
     ).json()
     second = client.post(
         "/upload",
@@ -23,6 +24,7 @@ def _ingest_two_docs(client):
                         make_docx(["The HR handbook covers vacation.",
                                    "Vacation days accrue at 1.5 per month."]),
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data={"clearance": "0"},
     ).json()
     return first["doc_id"], second["doc_id"]
 

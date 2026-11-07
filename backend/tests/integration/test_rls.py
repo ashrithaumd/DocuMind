@@ -49,6 +49,10 @@ def corpus(client, owner):
         conn.execute(sa.text("INSERT INTO teams VALUES ('t1', 'A', 'One'), ('t2', 'A', 'Two')"))
         for (doc, (org, team, clearance)), vector in zip(CORPUS.items(), vectors):
             conn.execute(sa.text("""
+                INSERT INTO documents (doc_id, filename, org_id, team_id, clearance)
+                VALUES (:doc, :doc || '.txt', :org, :team, :clearance)
+            """), {"doc": doc, "org": org, "team": team, "clearance": clearance})
+            conn.execute(sa.text("""
                 INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index, text,
                                     embedding_model, embedding, org_id, team_id, clearance)
                 VALUES (:doc || '-0000', :doc, :doc || '.txt', 1, 0,
@@ -119,14 +123,10 @@ def test_query_across_all_visible_documents(client, corpus):
     assert {c["chunk_id"].rsplit("-", 1)[0] for c in body["chunks"]} == VISIBLE
 
 
-def test_upload_lands_in_the_uploaders_org(client, corpus, owner):
-    response = client.post("/upload", headers=AS_VIEWER,
+def test_viewers_cannot_upload(client, corpus):
+    response = client.post("/upload", headers=AS_VIEWER, data={"clearance": "0"},
                            files={"file": ("new.txt", b"Fresh pump notes.", "text/plain")})
-    assert response.status_code == 200
-    with owner.connect() as conn:
-        org, team = conn.execute(sa.text("SELECT DISTINCT org_id, team_id FROM chunks WHERE doc_id = :d"),
-                                 {"d": response.json()["doc_id"]}).one()
-    assert (org, team) == ("A", None)
+    assert response.status_code == 403
 
 
 # --- documind_app can't get around the policy ---------------------------------
@@ -187,7 +187,7 @@ def test_writes_outside_the_viewers_access_are_refused(app_conn, org, team, clea
         app_conn.execute(sa.text("""
             INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index, text,
                                 embedding_model, embedding, org_id, team_id, clearance)
-            SELECT 'x-0000', 'x', 'x.txt', 1, 0, 'x', 'fake-embeddings', embedding,
+            SELECT 'x-0000', 'a_public', 'x.txt', 1, 0, 'x', 'fake-embeddings', embedding,
                    :org, :team, :clearance FROM chunks LIMIT 1
         """), {"org": org, "team": team, "clearance": clearance})
     app_conn.rollback()

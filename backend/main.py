@@ -1,7 +1,8 @@
 """DocuMind API.
 
 Endpoints:
-    POST /upload        — validate + ingest a PDF/DOCX/TXT (chunks -> Postgres)
+    POST /upload        — validate + ingest a PDF/DOCX/TXT (editors/admins; the
+                          form sets its clearance and optional team)
     GET  /documents     — uploaded documents, newest first
     POST /query         — run the full pipeline, return one JSON response
     POST /query/stream  — same pipeline over SSE: stage events, then the
@@ -28,7 +29,7 @@ import re
 import time
 from contextlib import asynccontextmanager
 
-from fastapi import Depends, FastAPI, File, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
@@ -178,9 +179,26 @@ def _stage_detail(node: str, delta: dict) -> dict:
 # --- endpoints -----------------------------------------------------------------
 
 
+UPLOAD_ROLES = {"editor", "admin"}
+
+
 @app.post("/upload")
 async def upload_document(file: UploadFile = File(...),
+                          # Required: who may read it is always an explicit choice.
+                          clearance: int = Form(..., ge=0),
+                          # Empty = org-wide; otherwise one of the uploader's teams.
+                          team_id: str | None = Form(None),
                           principal: Principal = Depends(get_principal)):
+    # Checked before any work. RLS enforces the team and clearance rules
+    # again in the database; these give a clear 403 instead of a 500.
+    team_id = team_id or None
+    if principal.role not in UPLOAD_ROLES:
+        raise HTTPException(status_code=403, detail="Only editors and admins can upload.")
+    if team_id is not None and team_id not in principal.team_ids:
+        raise HTTPException(status_code=403, detail=f"You're not in team '{team_id}'.")
+    if clearance > principal.clearance:
+        raise HTTPException(status_code=403,
+                            detail=f"Clearance {clearance} is above your own ({principal.clearance}).")
     settings = get_settings()
     file_bytes = await file.read()
     filename = file.filename or ""
@@ -192,7 +210,8 @@ async def upload_document(file: UploadFile = File(...),
 
     chunks = chunk_pages(pages, filename, settings)
     try:
-        await get_store().scoped(principal).add_chunks(chunks)
+        await get_store().scoped(principal).add_document(
+            chunks, team_id=team_id, clearance=clearance, uploaded_by=principal.user_id)
     except Exception as exc:
         logger.exception("Embedding/indexing failed during ingestion")
         kind = classify_error(exc)
@@ -212,6 +231,8 @@ async def upload_document(file: UploadFile = File(...),
         "doc_id": chunks[0].doc_id,
         "pages": len(pages),
         "chunks_created": len(chunks),
+        "team_id": team_id,
+        "clearance": clearance,
         "warnings": warnings,
     }
 

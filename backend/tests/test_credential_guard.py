@@ -32,7 +32,19 @@ def test_key_by_name_fails(tmp_path):
     assert r.returncode == 1 and "adminsdk" in r.stdout
 
 
-@pytest.mark.parametrize("body", ['{"type": "service_account"}', '{"private_key": "x"}'])
+# Joined at runtime so this file never holds the literal patterns itself.
+@pytest.mark.parametrize("body", [
+    '{"type": "service' + '_account"}',
+    '{"private' + '_key": "x"}',
+])
 def test_renamed_key_fails_by_content(tmp_path, body):
     r = _guard(tmp_path, {"innocent.txt": body})
     assert r.returncode == 1 and "innocent.txt" in r.stdout
+
+
+def test_guard_has_no_exemptions_and_passes_on_this_repo():
+    # Only the script itself may be skipped; no test or doc is exempt.
+    script = (ROOT / "scripts/check_no_keys.sh").read_text()
+    assert script.count("grep -zvxF") == 1 and "test_" not in script
+    r = subprocess.run(["bash", "scripts/check_no_keys.sh"], cwd=ROOT, capture_output=True, text=True)
+    assert r.returncode == 0, r.stdout

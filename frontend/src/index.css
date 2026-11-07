@@ -461,3 +461,54 @@ body {
   padding: 10px 12px;
   line-height: 1.5;
 }
+
+/* ── Sign-in and account screens ───────────────────────────────── */
+.auth-screen {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  padding: 16px;
+}
+
+.auth-card {
+  width: 100%;
+  max-width: 380px;
+  padding: 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+}
+
+.auth-card h1 { margin: 0 0 16px; font-size: 20px; color: var(--accent); }
+.auth-form { display: flex; flex-direction: column; gap: 14px; }
+.auth-form label, .access-fields label {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 13px;
+  color: var(--muted);
+}
+.auth-form input, .access-fields select {
+  padding: 9px 11px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: inherit;
+}
+.auth-reason, .auth-signed-in { color: var(--muted); font-size: 13px; }
+.access-fields { display: flex; gap: 12px; margin: 12px 0; }
+.access-fields label { flex: 1; }
+
+.user-badge { margin-left: auto; color: var(--muted); font-size: 13px; }
+.link-btn {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent-hover);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  text-decoration: underline;
+}

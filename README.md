@@ -147,7 +147,7 @@ LLM settings in `.env`:
 - API docs: http://localhost:8000/docs (set `BACKEND_PORT` in `.env` if 8000 is taken)
 - Health check: `GET http://localhost:8000/health`
 
-Every endpoint except `/me` and `/health` requires a Firebase ID token (`Authorization: Bearer ...`) for a user set up in Postgres, in the project named by `FIREBASE_PROJECT_ID`. Sign-in is being built in Phase 2: until the frontend login lands, the web UI can't call the API.
+Every endpoint except `/me` and `/health` requires a Firebase ID token (`Authorization: Bearer ...`) for a user set up in Postgres, in the project named by `FIREBASE_PROJECT_ID`. The web UI signs in with Firebase email/password (the `VITE_FIREBASE_*` web config in `.env`), sends the ID token on every call, and shows a "not set up yet" screen, with the reason from `/me`, to users who aren't registered, have no org, or were deactivated.
 
 ### Running without Docker
 

@@ -725,6 +725,95 @@ green; commit 11 (these docs) opens the Phase 2 PR.
   `service_completed_successfully`). The backend gets only `DATABASE_URL`
   (documind_app) and refuses to start if `MIGRATION_DATABASE_URL` is set.
 
+## Phase 3 plan
+
+Status (2026-11-07): plan and decisions recorded; work on `phase3-corpus`
+(main merged in at d74cdd7). One commit per item; CI green after each push.
+
+Goal: a realistic two-org corpus (kb/: 50 documents, 303 chunks at the
+default chunking, access in kb/manifest.yaml) loaded for real, and proof,
+on that corpus, that access control holds: no leak across orgs, teams or
+clearance levels, under adversarial prompts, through versioning and
+deletion, and with the vector index still used under RLS.
+
+Quota: items marked (quota) use real Gemini calls; everything else runs
+on fakes in CI. Memory rules: at least 2 GB free for runs that call Gemini,
+4 GB for anything that loads torch; checked before every run.
+
+### Decisions (2026-11-07)
+
+- **A dedicated Phase 3 database**: a local pgvector container with a
+  published port (localhost only) and its own volume, separate from the
+  compose stack used for demos.
+- **Test users** for every access boundary in `kb/test-users.yaml`, seeded
+  through the owner path; the automated tests use the same file with the
+  fake token checker. **Three real Firebase demo users**:
+  `aurora-viewer@documind.test` (org-wide, clearance 0),
+  `bluefin-finance@documind.test` (finance, 3) and
+  `bluefin-ml@documind.test` (ml, 3: must not see the finance-only
+  Gullwing plan). Their passwords are generated, stored only in the local
+  `.env`, never printed.
+- **Canaries live in the corpus files**: unique strings near the start and
+  end of each restricted document, listed in `kb/canaries.yaml`. Every
+  negative canary test has a positive control: a user who can see the
+  document retrieves its canary, so the negative tests can't pass
+  vacuously.
+- **Versioning**: an upload may name the document it supersedes; the new
+  row records its version and `supersedes_doc_id`; default retrieval uses
+  only the latest version of each chain; older versions answer only when
+  asked for by id. The corpus's 2025/2026 handbooks and expense policies
+  stay unlinked (independent documents), so the version-trap eval items
+  stay traps.
+- **Deletion**: a hard delete of the document and all its chunks in one
+  transaction, under RLS, with an audit row in a new `document_events`
+  table (who, when, doc id, filename; under the same org RLS). Only the
+  document's uploader or an admin of its org may delete it: another
+  editor who can see it gets 403, and anyone who can't see it gets 404
+  (indistinguishable from a document that doesn't exist).
+
+### Checklist (one commit each)
+
+1. **This plan.**
+2. **Phase 3 database**: a compose file with only a pgvector service
+   (localhost port, named volume, required passwords generated into the
+   local `.env`), and a helper that starts it, runs the migrate step and
+   runs commands with its URLs in the environment, without printing them.
+3. **Loader: pacing, resume, reporting.** Embedding requests paced under
+   the measured free-tier limit of 100 per minute (default 90, every text
+   counts as one request); per-minute 429s retried with backoff; a
+   daily-quota error stops cleanly with how far it got and a distinct exit
+   code, and a re-run resumes (each document loads in its own transaction,
+   so nothing half-loaded is left). Reports chunks per org and embedding
+   requests used. The embedder can be injected, so tests load the real
+   corpus with fake embeddings. Tests: the pacing with a fake clock, a
+   quota stop then a resume with no duplicates, the counts.
+4. **(quota) Load the corpus** into the Phase 3 database with real
+   embeddings (about 303 requests); record chunks per org and requests used.
+5. **Test users** (`kb/test-users.yaml`, `scripts/seed_test_users.py`, owner
+   path), plus the three Firebase demo users.
+6. **Leakage tests on the real corpus, through the API**: cross-org
+   (mirrored facts), cross-team (including the clearance-0 pair #13/#35),
+   clearance (summary vs full report, salary bands), old versions that are
+   team-only (#17/#18, #28/#29), and #26 (team plus clearance 3). Expected
+   visibility comes from the manifest (`can_see`), not a second list.
+7. **Canaries** in the restricted documents, with positive controls; never
+   in an answer, citation, log row or admin view for a user who can't see
+   the document.
+8. **Adversarial prompts**: (a) in CI, with the fake LLM, retrieval,
+   citations and logs contain only visible chunks whatever the prompt says;
+   (b) (quota) a small live run against Gemini on the Phase 3 database:
+   answers refuse or use only visible documents, zero canaries.
+9. **Versioning** (supersedes chain, latest-only by default, older versions
+   by id).
+10. **Deletion** (uploader or org admin only; 403 for other editors who can
+    see it, 404 for anyone who can't; audit row). Tests include an editor
+    who can see but didn't upload (403) and an admin of the same org
+    (allowed).
+11. **Query plan**: EXPLAIN ANALYZE on the real corpus as documind_app with
+    an access context, both retrieval legs, recorded here; any change to
+    the indexes waits for a decision.
+12. **Phase 3 results and the PR** to main.
+
 ## Phase 3 notes
 
 - **Check the query plan under RLS on the real corpus.** Run EXPLAIN

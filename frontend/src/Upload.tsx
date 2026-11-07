@@ -1,5 +1,5 @@
 import { useState, useRef } from "react";
-import { API_BASE, type DocumentInfo } from "./api";
+import { apiFetch, type DocumentInfo, type Me } from "./api";
 
 interface UploadResult {
   filename: string;
@@ -9,6 +9,7 @@ interface UploadResult {
 }
 
 interface Props {
+  me: Me;
   onUploadSuccess: () => void;
   documents: DocumentInfo[];
   selectedDocIds: string[];
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function Upload({
+  me,
   onUploadSuccess,
   documents,
   selectedDocIds,
@@ -25,7 +27,13 @@ export default function Upload({
   const [status, setStatus] = useState<"idle" | "uploading" | "done" | "error">("idle");
   const [result, setResult] = useState<UploadResult | null>(null);
   const [errorMsg, setErrorMsg] = useState("");
+  // Who may read it: always chosen (the backend has no default). Offered
+  // only up to the uploader's own clearance and within their own teams.
+  const [clearance, setClearance] = useState(0);
+  const [teamId, setTeamId] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
+  const canUpload = me.role === "editor" || me.role === "admin";
+  const clearanceLevels = Array.from({ length: (me.clearance ?? 0) + 1 }, (_, i) => i);
 
   function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     const selected = e.target.files?.[0];
@@ -43,9 +51,11 @@ export default function Upload({
 
     const formData = new FormData();
     formData.append("file", file);
+    formData.append("clearance", String(clearance));
+    if (teamId) formData.append("team_id", teamId);
 
     try {
-      const res = await fetch(`${API_BASE}/upload`, {
+      const res = await apiFetch("/upload", {
         method: "POST",
         body: formData,
       });
@@ -76,25 +86,53 @@ export default function Upload({
         PDF, DOCX, or TXT with extractable text (no scans — OCR is out of scope).
       </p>
 
-      <label className="file-drop">
-        <input
-          ref={inputRef}
-          type="file"
-          accept=".pdf,.docx,.txt"
-          onChange={handleFileChange}
-          style={{ display: "none" }}
-        />
-        <span className="file-icon">📄</span>
-        <span>{file ? file.name : "Click to select a PDF, DOCX, or TXT"}</span>
-      </label>
+      {!canUpload && (
+        <p className="doc-hint">Viewers can't upload. Ask an editor or admin to add documents.</p>
+      )}
 
-      <button
-        className="upload-btn"
-        onClick={handleUpload}
-        disabled={!file || status === "uploading"}
-      >
-        {status === "uploading" ? "Ingesting…" : "Upload"}
-      </button>
+      {canUpload && (
+        <>
+          <label className="file-drop">
+            <input
+              ref={inputRef}
+              type="file"
+              accept=".pdf,.docx,.txt"
+              onChange={handleFileChange}
+              style={{ display: "none" }}
+            />
+            <span className="file-icon">📄</span>
+            <span>{file ? file.name : "Click to select a PDF, DOCX, or TXT"}</span>
+          </label>
+
+          <div className="access-fields">
+            <label>
+              Visible to
+              <select value={teamId} onChange={(e) => setTeamId(e.target.value)}>
+                <option value="">Whole organization</option>
+                {(me.team_ids ?? []).map((t) => (
+                  <option key={t} value={t}>Team {t}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Clearance
+              <select value={clearance} onChange={(e) => setClearance(Number(e.target.value))}>
+                {clearanceLevels.map((level) => (
+                  <option key={level} value={level}>{level}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+
+          <button
+            className="upload-btn"
+            onClick={handleUpload}
+            disabled={!file || status === "uploading"}
+          >
+            {status === "uploading" ? "Ingesting…" : "Upload"}
+          </button>
+        </>
+      )}
 
       {status === "done" && result && (
         <div className="upload-success">

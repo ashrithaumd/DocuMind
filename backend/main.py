@@ -1,14 +1,22 @@
 """DocuMind API.
 
 Endpoints:
-    POST /upload        — validate + ingest a PDF/DOCX/TXT (chunks -> Postgres)
+    POST /upload        — validate + ingest a PDF/DOCX/TXT (editors/admins; the
+                          form sets its clearance and optional team)
     GET  /documents     — uploaded documents, newest first
     POST /query         — run the full pipeline, return one JSON response
     POST /query/stream  — same pipeline over SSE: stage events, then the
                           verified answer, citations, and outcome
-    GET  /admin/logs    — recent query logs (Postgres)
-    GET  /admin/stats   — outcome counts + per-stage latency percentiles
+    PATCH /documents/{doc_id}/access — change a document's team/clearance
+                          (editors/admins), with every chunk at once
+    GET  /admin/logs    — recent query logs of the admin's org (admins only)
+    GET  /admin/stats   — the same org's outcome counts + latency percentiles
+    GET  /me            — who the token belongs to and whether they're set up
     GET  /health        — liveness + index size
+
+Every endpoint except /me and /health requires a signed-in, set-up user
+(auth.get_principal: 401 without a valid token, 403 if not set up); /admin/*
+also checks with Firebase that the token wasn't revoked.
 
 Streaming design note: the answer is only sent AFTER the groundedness check
 passes, so we cannot forward raw LLM tokens as they are produced (they might
@@ -22,14 +30,18 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager
+from functools import partial
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
+from auth import Principal, get_admin_principal, get_me, get_principal
 from config import get_settings
+from db.access import WRITER_ROLES
 from db import session as db
+import deps
 from deps import get_store
 from graph.pipeline import pipeline
 from ingestion.chunking import chunk_pages
@@ -43,14 +55,22 @@ logger = logging.getLogger("documind")
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     settings = get_settings()
+    if settings.migration_database_url:
+        # Owner credentials belong to the one-shot migrate step (migrate.py),
+        # never to the serving process: with them, one bug could undo RLS.
+        raise RuntimeError("MIGRATION_DATABASE_URL is set in the backend's environment. "
+                           "Run migrations with `python migrate.py` (the migrate service) and "
+                           "give the backend only DATABASE_URL (the documind_app role).")
+    # Fail fast, with what to fix, rather than a 500 on the first sign-in.
+    # Checked before the database: a config error shouldn't wait on Postgres.
+    deps.get_token_checker().check_ready()
+    logger.info("Firebase token checks ready.")
     db.init_db(settings)
     # The store fails fast with a clear error if the chunks table is missing
-    # or was built for a different embedding model (vector size or model
-    # name). With EMBEDDING_PROVIDER=local this also loads the model.
-    store = get_store()
-    logger.info("Store ready: %d chunks indexed.", store.count())
-    if not settings.api_key:
-        logger.warning("API_KEY not set — endpoints are unauthenticated (dev mode).")
+    # or its vector column doesn't match the embedding model. With
+    # EMBEDDING_PROVIDER=local this also loads the model.
+    get_store()
+    logger.info("Store ready.")
     yield
 
 
@@ -65,18 +85,16 @@ app.add_middleware(
 )
 
 
-async def require_api_key(x_api_key: str | None = Header(default=None)):
-    """Single shared-key gate. When API_KEY is unset (local dev), it's open."""
-    expected = get_settings().api_key
-    if expected and x_api_key != expected:
-        raise HTTPException(status_code=401, detail="Invalid or missing API key.")
-
-
 class QueryRequest(BaseModel):
     question: str
     # Documents to query. Omitted/empty -> the single most recent upload
     # (deliberately NOT the whole corpus, to avoid cross-document bleed).
     doc_ids: list[str] | None = None
+
+
+class AccessChange(BaseModel):
+    clearance: int = Field(ge=0)
+    team_id: str | None = None  # None = org-wide
 
 
 class FeedbackRequest(BaseModel):
@@ -88,8 +106,9 @@ class FeedbackRequest(BaseModel):
 # --- helpers -------------------------------------------------------------------
 
 
-def _initial_state(request: QueryRequest) -> dict:
-    return {"question": request.question, "doc_ids": request.doc_ids, "timings": {}}
+def _initial_state(request: QueryRequest, principal: Principal) -> dict:
+    return {"question": request.question, "doc_ids": request.doc_ids, "access": principal,
+            "timings": {}}
 
 
 def _merge_update(final: dict, delta: dict) -> None:
@@ -101,10 +120,13 @@ def _merge_update(final: dict, delta: dict) -> None:
             final[key] = value
 
 
-def _db_record(request: QueryRequest, state: dict, total_ms: float) -> dict:
+def _db_record(request: QueryRequest, state: dict, total_ms: float,
+               principal: Principal) -> dict:
     timings = state.get("timings", {})
     redaction_categories = state.get("redaction_categories", [])
     return {
+        "user_id": principal.user_id,
+        "org_id": principal.org_id,
         # state["question"] is the REDACTED question (set by input_validation);
         # the raw one must not reach the log. Fall back to the request only for
         # crashes before validation ran.
@@ -172,8 +194,17 @@ def _stage_detail(node: str, delta: dict) -> dict:
 # --- endpoints -----------------------------------------------------------------
 
 
-@app.post("/upload", dependencies=[Depends(require_api_key)])
-async def upload_document(file: UploadFile = File(...)):
+@app.post("/upload")
+async def upload_document(file: UploadFile = File(...),
+                          # Required: who may read it is always an explicit choice.
+                          clearance: int = Form(..., ge=0),
+                          # Empty = org-wide; otherwise one of the uploader's teams.
+                          team_id: str | None = Form(None),
+                          principal: Principal = Depends(get_principal)):
+    # Checked before any work. RLS enforces the team and clearance rules
+    # again in the database; these give a clear 403 instead of a 500.
+    team_id = team_id or None
+    _check_can_grant(principal, team_id, clearance)
     settings = get_settings()
     file_bytes = await file.read()
     filename = file.filename or ""
@@ -185,7 +216,8 @@ async def upload_document(file: UploadFile = File(...)):
 
     chunks = chunk_pages(pages, filename, settings)
     try:
-        await get_store().add_chunks(chunks)
+        await get_store().scoped(principal).add_document(
+            chunks, team_id=team_id, clearance=clearance, uploaded_by=principal.user_id)
     except Exception as exc:
         logger.exception("Embedding/indexing failed during ingestion")
         kind = classify_error(exc)
@@ -205,23 +237,55 @@ async def upload_document(file: UploadFile = File(...)):
         "doc_id": chunks[0].doc_id,
         "pages": len(pages),
         "chunks_created": len(chunks),
+        "team_id": team_id,
+        "clearance": clearance,
         "warnings": warnings,
     }
 
 
-@app.get("/documents", dependencies=[Depends(require_api_key)])
-async def list_documents():
-    """Uploaded documents, newest first. The first entry is the default query scope."""
-    return {"documents": get_store().list_documents()}
+def _check_can_grant(principal: Principal, team_id: str | None, clearance: int) -> None:
+    """Uploads and access changes: editors and admins only, never into a team
+    they're not in or above their own clearance. RLS enforces the team and
+    clearance rules again in the database, and the store the role; these
+    give a clear 403 first."""
+    if principal.role not in WRITER_ROLES:
+        raise HTTPException(status_code=403, detail="Only editors and admins can do that.")
+    if team_id is not None and team_id not in principal.team_ids:
+        raise HTTPException(status_code=403, detail=f"You're not in team '{team_id}'.")
+    if clearance > principal.clearance:
+        raise HTTPException(status_code=403,
+                            detail=f"Clearance {clearance} is above your own ({principal.clearance}).")
 
 
-def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
+@app.get("/documents")
+async def list_documents(principal: Principal = Depends(get_principal)):
+    """Documents the caller can see, newest first. The first entry is the
+    default query scope."""
+    return {"documents": get_store().scoped(principal).list_documents()}
+
+
+@app.patch("/documents/{doc_id}/access")
+async def change_document_access(doc_id: str, change: AccessChange,
+                                 principal: Principal = Depends(get_principal)):
+    """Move a document to another team (or org-wide) and/or clearance; its
+    chunks follow in the same statement. 404 if the caller can't see it."""
+    team_id = change.team_id or None
+    _check_can_grant(principal, team_id, change.clearance)
+    try:
+        await asyncio.to_thread(get_store().scoped(principal).set_document_access,
+                                doc_id, team_id=team_id, clearance=change.clearance)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=f"No document {doc_id}.") from exc
+    return {"doc_id": doc_id, "team_id": team_id, "clearance": change.clearance}
+
+
+def _pipeline_error(exc: Exception, llm_usage: dict, diagnostics: bool) -> JSONResponse:
     """Structured failure for /query: which pipeline node failed and a
     provider-neutral error kind (raw provider messages stay in the server
-    log). With EXPOSE_LLM_DIAGNOSTICS on, it also carries the full error text
-    and every LLM attempt the request made, so the eval report can record
-    quota ids and limits. LLM capacity errors are 503 (retry later); anything
-    else is 500."""
+    log). For admins (`diagnostics`) it also carries the full error text and
+    every LLM attempt the request made, so the eval report can record quota
+    ids and limits. LLM capacity errors are 503 (retry later); anything else
+    is 500."""
     # LangGraph notes the failing node on the exception:
     # "During task with name 'generate' and id '...'".
     notes = " ".join(getattr(exc, "__notes__", []))
@@ -230,24 +294,24 @@ def _pipeline_error(exc: Exception, llm_usage: dict) -> JSONResponse:
     kind = classify_error(exc)
     logger.exception("Pipeline failed at %s (%s)", stage, kind or "internal")
     content = {"detail": "Pipeline failed.", "stage": stage, "error": kind or "internal"}
-    if get_settings().expose_llm_diagnostics:
+    if diagnostics:
         content |= {"message": f"{type(exc).__name__}: {exc}", "llm_usage": llm_usage}
     return JSONResponse(status_code=503 if kind else 500, content=content)
 
 
-@app.post("/query", dependencies=[Depends(require_api_key)])
-async def query(request: QueryRequest):
+@app.post("/query")
+async def query(request: QueryRequest, principal: Principal = Depends(get_principal)):
     """Non-streaming variant — used by the eval harness and handy for curl."""
     start = time.perf_counter()
     with track_usage() as llm_usage:
         try:
-            state = await pipeline.ainvoke(_initial_state(request))
+            state = await pipeline.ainvoke(_initial_state(request, principal))
         except Exception as exc:
-            return _pipeline_error(exc, llm_usage)
+            return _pipeline_error(exc, llm_usage, diagnostics=principal.role == "admin")
     total_ms = round((time.perf_counter() - start) * 1000, 1)
 
     query_id = await asyncio.to_thread(
-        db.log_query, _db_record(request, state, total_ms)
+        partial(db.log_query, _db_record(request, state, total_ms, principal), access=principal)
     )
 
     if state.get("outcome") == "rejected_input":
@@ -274,21 +338,21 @@ async def query(request: QueryRequest):
         ],
         "timings": {**state.get("timings", {}), "total_ms": total_ms},
     }
-    if get_settings().expose_llm_diagnostics:
+    if principal.role == "admin":
         # Attempts per model and the full text of every failed attempt
         # (retried ones included), for the eval report.
         response["llm_usage"] = llm_usage
     return response
 
 
-@app.post("/query/stream", dependencies=[Depends(require_api_key)])
-async def query_stream(request: QueryRequest):
+@app.post("/query/stream")
+async def query_stream(request: QueryRequest, principal: Principal = Depends(get_principal)):
     async def event_stream():
         start = time.perf_counter()
         final: dict = {}
         try:
             async for update in pipeline.astream(
-                _initial_state(request), stream_mode="updates"
+                _initial_state(request, principal), stream_mode="updates"
             ):
                 for node, delta in update.items():
                     _merge_update(final, delta)
@@ -315,7 +379,8 @@ async def query_stream(request: QueryRequest):
             # Log BEFORE the done event so it can carry the query_id the
             # feedback buttons need to reference this exchange.
             query_id = await asyncio.to_thread(
-                db.log_query, _db_record(request, final, total_ms)
+                partial(db.log_query, _db_record(request, final, total_ms, principal),
+                        access=principal)
             )
             yield _sse(
                 {
@@ -334,15 +399,16 @@ async def query_stream(request: QueryRequest):
     return StreamingResponse(event_stream(), media_type="text/event-stream")
 
 
-@app.post("/feedback", dependencies=[Depends(require_api_key)])
-async def submit_feedback(request: FeedbackRequest):
+@app.post("/feedback")
+async def submit_feedback(request: FeedbackRequest, principal: Principal = Depends(get_principal)):
     """Thumbs up/down (plus optional comment) for a logged query.
 
     Upserts: one feedback row per query, so re-clicking or adding a comment
     updates the verdict instead of double-counting it in /admin/stats.
     """
     status = await asyncio.to_thread(
-        db.log_feedback, request.query_id, request.thumbs_up, request.comment
+        partial(db.log_feedback, request.query_id, request.thumbs_up, request.comment,
+                access=principal, user_id=principal.user_id)
     )
     if status == "unknown_query":
         raise HTTPException(status_code=404, detail=f"No query with id {request.query_id}.")
@@ -355,16 +421,25 @@ async def submit_feedback(request: FeedbackRequest):
     return {"status": "ok"}
 
 
-@app.get("/admin/logs", dependencies=[Depends(require_api_key)])
-async def admin_logs(limit: int = 20):
-    return {"logs": await asyncio.to_thread(db.fetch_logs, min(limit, 100))}
+@app.get("/admin/logs")
+async def admin_logs(limit: int = 20, principal: Principal = Depends(get_admin_principal)):
+    """The admin's own org's logs: RLS hides every other org's rows."""
+    return {"logs": await asyncio.to_thread(partial(db.fetch_logs, min(limit, 100),
+                                                    access=principal))}
 
 
-@app.get("/admin/stats", dependencies=[Depends(require_api_key)])
-async def admin_stats():
-    return await asyncio.to_thread(db.fetch_stats)
+@app.get("/admin/stats")
+async def admin_stats(principal: Principal = Depends(get_admin_principal)):
+    return await asyncio.to_thread(partial(db.fetch_stats, access=principal))
+
+
+@app.get("/me")
+async def me(body: dict = Depends(get_me)):
+    return body
 
 
 @app.get("/health")
 async def health():
-    return {"status": "ok", "chunks_indexed": get_store().count()}
+    # No chunk count: /health is unauthenticated, and under RLS a count is
+    # per caller anyway.
+    return {"status": "ok"}

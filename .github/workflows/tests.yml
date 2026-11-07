@@ -31,9 +31,12 @@ jobs:
           --health-timeout 3s
           --health-retries 20
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
-      - uses: actions/setup-python@v5
+      - name: Credential guard
+        run: bash scripts/check_no_keys.sh
+
+      - uses: actions/setup-python@v6
         with:
           python-version: "3.12.8"  # same as backend/Dockerfile and backend/.venv
           cache: pip
@@ -63,3 +66,22 @@ jobs:
           # Postgres tests must run here, not skip.
           REQUIRE_POSTGRES_TESTS: "1"
         run: python -m pytest tests -v
+
+  # Frontend: lint, type-check and build, with the same Node as frontend/Dockerfile.
+  frontend:
+    runs-on: ubuntu-24.04
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "26.13.0"  # same as frontend/Dockerfile (Node 26, the current LTS)
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run build

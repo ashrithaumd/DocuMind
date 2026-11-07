@@ -12,7 +12,7 @@ from db.models import Base
 
 
 def _migrate(url, **overrides) -> sa.Engine:
-    assert db_session.init_db(Settings(_env_file=None, database_url=url, **overrides))
+    db_session.migrate_database(Settings(_env_file=None, database_url=url, **overrides))
     return sa.create_engine(url)
 
 
@@ -48,10 +48,14 @@ def test_tsvector_uses_english_stemming_and_stop_words(pg_url):
     engine = _migrate(pg_url, embedding_provider="local")
 
     with engine.begin() as conn:
+        # A chunk needs its documents row and a clearance (migration 0006).
+        conn.execute(sa.text("INSERT INTO orgs VALUES ('o', 'O')"))
+        conn.execute(sa.text("INSERT INTO documents (doc_id, filename, org_id, clearance) "
+                             "VALUES ('d', 'f.pdf', 'o', 0)"))
         conn.execute(sa.text(
             "INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index, text, "
-            "embedding_model, embedding) VALUES ('d-0', 'd', 'f.pdf', 1, 0, "
-            "'Cooling pumps were running at 400 RPM', 'm', :v)"
+            "embedding_model, embedding, org_id, clearance) VALUES ('d-0', 'd', 'f.pdf', 1, 0, "
+            "'Cooling pumps were running at 400 RPM', 'm', :v, 'o', 0)"
         ), {"v": "[" + ",".join(["0.1"] * 384) + "]"})
         tsv = conn.execute(sa.text("SELECT tsv::text FROM chunks")).scalar()
     assert tsv == "'400':6 'cool':1 'pump':2 'rpm':7 'run':4"
@@ -63,10 +67,13 @@ def test_log_tables_still_match_the_models(pg_url):
 
     with engine.connect() as conn:
         diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
-    # The chunks table (and its indexes) is raw SQL in the store, not an ORM
+    # The chunks and access tables (and their indexes) are raw SQL in the store, not an ORM
     # model, so autogenerate sees it as "not in the models".
+    raw_sql_tables = {"chunks", "orgs", "teams", "users", "team_memberships", "documents"}
+
     def on_chunks(diff):
         obj = diff[1]
-        return getattr(obj, "name", None) == "chunks" or getattr(getattr(obj, "table", None), "name", None) == "chunks"
+        return (getattr(obj, "name", None) in raw_sql_tables
+                or getattr(getattr(obj, "table", None), "name", None) in raw_sql_tables)
 
     assert [d for d in diffs if not on_chunks(d)] == []

@@ -7,7 +7,7 @@ overrides the service hosts.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import model_validator
+from pydantic import Field, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -51,18 +51,24 @@ class Settings(BaseSettings):
     google_cloud_location: str = "us-central1"
 
     # --- Postgres: chunk store (pgvector + full-text) and query log ---
-    # Required: the chunks live here. Migrations run at startup.
+    # Required: the chunks live here. The app connects as the documind_app
+    # role, which row-level security applies to; the store refuses to start
+    # on a superuser, BYPASSRLS or table-owner connection.
     database_url: str | None = None
+    # The owner role, for the one-shot migrate step only (migrate.py): it
+    # runs the migrations and sets documind_app's password from DATABASE_URL.
+    # The backend refuses to start if this is set in its environment.
+    migration_database_url: str | None = None
 
-    # --- Auth ---
-    # Single shared API key checked via the X-API-Key header.
-    # Unset -> auth disabled (local dev convenience).
-    api_key: str | None = None
-    # Return raw provider error text and per-request LLM usage (attempts per
-    # model, every failed attempt's message) from /query. Off by default:
-    # clients get provider-neutral errors and the details stay in the server
-    # log. The eval harness's backend runs with it on to record quota ids.
-    expose_llm_diagnostics: bool = False
+    # --- Auth (auth.py) ---
+    # Firebase project whose ID tokens are accepted. The service account key
+    # (GOOGLE_APPLICATION_CREDENTIALS) is read by the Firebase SDK itself.
+    firebase_project_id: str | None = None
+    # Seconds of clock difference tolerated when checking a token's iat/exp.
+    # Firebase stamps iat with Google's clock; a server whose clock lags by
+    # even a second rejects a token used right after sign-in as "used too
+    # early" (seen live: this machine ran ~1.5 s behind). Firebase allows 0-60.
+    firebase_clock_skew_seconds: int = Field(default=5, ge=0, le=60)
 
     # --- Retrieval ---
     top_k: int = 6            # chunks handed to the LLM after fusion

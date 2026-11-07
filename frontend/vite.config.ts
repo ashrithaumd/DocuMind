@@ -5,6 +5,9 @@ import react from '@vitejs/plugin-react'
 // backend; in Docker nginx does the same. No baked-in backend URL either way.
 export default defineConfig({
   plugins: [react()],
+  // VITE_FIREBASE_* come from the repo-root .env, shared with docker-compose.
+  // Only VITE_-prefixed values reach the browser bundle.
+  envDir: '..',
   server: {
     proxy: {
       '/api': {

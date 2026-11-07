@@ -8,20 +8,38 @@ import pytest
 from config import Settings
 from db import session as db_session
 from ingestion.chunking import Chunk
-from ingestion.store import HybridStore
+from ingestion.store import Access, HybridStore, set_access
 from tests.helpers import FakeEmbeddings
 
+ORG = Access(org_id="o1", clearance=0, role="editor")
 
-def _settings(url, **overrides) -> Settings:
+
+@pytest.fixture
+def urls(pg_url, app_url):
+    return pg_url, app_url
+
+
+def _settings(urls, **overrides) -> Settings:
+    owner, app = urls
     # FakeEmbeddings produces 32-dim vectors.
-    return Settings(**{"_env_file": None, "database_url": url, "embedding_dimensions": 32,
-                       "top_k": 3, **overrides})
+    return Settings(**{"_env_file": None, "database_url": app, "migration_database_url": owner,
+                       "embedding_dimensions": 32, "top_k": 3, **overrides})
 
 
-def _store(url, embeddings=None, **overrides) -> HybridStore:
-    settings = _settings(url, **overrides)
-    assert db_session.init_db(settings)
-    return HybridStore(settings, embeddings or FakeEmbeddings())
+def _store(urls, embeddings=None, **overrides) -> HybridStore:
+    """A store scoped to org o1 (RLS: it sees and writes only o1's rows)."""
+    settings = _settings(urls, **overrides)
+    db_session.migrate_database(settings)
+    engine = sa.create_engine(urls[0])
+    with engine.begin() as conn:
+        conn.execute(sa.text("INSERT INTO orgs VALUES ('o1', 'Org 1') ON CONFLICT DO NOTHING"))
+    engine.dispose()
+    return HybridStore(settings, embeddings or FakeEmbeddings()).scoped(ORG)
+
+
+async def _add(store, chunks):
+    """One org-wide, clearance-0 document (org o1), like an upload."""
+    await store.add_document(chunks, team_id=None, clearance=0, uploaded_by=None)
 
 
 def _chunks(doc_id, texts, filename="a.pdf"):
@@ -32,10 +50,10 @@ def _chunks(doc_id, texts, filename="a.pdf"):
 PUMPS = [f"Pump {i} runs at {400 + i} RPM in module {i}." for i in range(6)]
 
 
-async def test_ingest_count_and_list_documents(pg_url):
-    store = _store(pg_url)
-    await store.add_chunks(_chunks("d1", PUMPS))
-    await store.add_chunks(_chunks("d2", ["The HR handbook covers vacation."], "hr.docx"))
+async def test_ingest_count_and_list_documents(urls):
+    store = _store(urls)
+    await _add(store, _chunks("d1", PUMPS))
+    await _add(store, _chunks("d2", ["The HR handbook covers vacation."], "hr.docx"))
 
     assert store.count() == 7
     docs = store.list_documents()
@@ -43,9 +61,9 @@ async def test_ingest_count_and_list_documents(pg_url):
         ("d2", "hr.docx", 1), ("d1", "a.pdf", 6)]  # newest first
 
 
-async def test_search_is_top_k_of_the_fused_ranking_with_both_legs(pg_url):
-    store = _store(pg_url)
-    await store.add_chunks(_chunks("d1", PUMPS))
+async def test_search_is_top_k_of_the_fused_ranking_with_both_legs(urls):
+    store = _store(urls)
+    await _add(store, _chunks("d1", PUMPS))
     query = "Which pump runs at 402 RPM?"
     vector = await store.embed_query(query)
 
@@ -59,9 +77,9 @@ async def test_search_is_top_k_of_the_fused_ranking_with_both_legs(pg_url):
     assert all(c.similarity is None or -1.0 <= c.similarity <= 1.0 for c in ranking)
 
 
-async def test_sparse_leg_matches_any_shared_term_with_english_stemming(pg_url):
-    store = _store(pg_url)
-    await store.add_chunks(_chunks("d1", [
+async def test_sparse_leg_matches_any_shared_term_with_english_stemming(urls):
+    store = _store(urls)
+    await _add(store, _chunks("d1", [
         "Cooling pumps were running all night.",
         "The greenhouse uses carbon dioxide flooding.",
     ]))
@@ -74,27 +92,30 @@ async def test_sparse_leg_matches_any_shared_term_with_english_stemming(pg_url):
     assert sparse == {"d1-0000": 1}
 
 
-async def test_scoping_restricts_both_legs(pg_url):
-    store = _store(pg_url)
-    await store.add_chunks(_chunks("d1", PUMPS))
-    await store.add_chunks(_chunks("d2", ["Pump maintenance happens monthly."]))
+async def test_scoping_restricts_both_legs(urls):
+    store = _store(urls)
+    await _add(store, _chunks("d1", PUMPS))
+    await _add(store, _chunks("d2", ["Pump maintenance happens monthly."]))
 
     ranking = await store.fused_ranking("pump", await store.embed_query("pump"), doc_ids=["d2"])
 
     assert {c.chunk_id for c in ranking} == {"d2-0000"}
 
 
-async def test_filtered_hnsw_search_uses_iterative_scans(pg_url):
+async def test_filtered_hnsw_search_uses_iterative_scans(urls):
     """With the HNSW index forced, a filter that discards most candidates
     would leave the dense leg short; iterative scans keep it full. (The
-    doc_id index is dropped here: for a filter this selective the planner
-    rightly prefers it, which is not the case being tested.)"""
-    store = _store(pg_url, rrf_candidates=3)
-    await store.add_chunks(_chunks("big", [f"Filler passage number {i}." for i in range(200)]))
-    await store.add_chunks(_chunks("small", ["Alpha.", "Beta.", "Gamma."]))
-    engine = sa.create_engine(pg_url, isolation_level="AUTOCOMMIT")
+    doc_id and org_id indexes are dropped here: with seq scans off the
+    planner prefers either over HNSW, which is not the case being tested.
+    The RLS policy's org filter is checked on each HNSW candidate like the
+    doc_id filter.)"""
+    store = _store(urls, rrf_candidates=3)
+    await _add(store, _chunks("big", [f"Filler passage number {i}." for i in range(200)]))
+    await _add(store, _chunks("small", ["Alpha.", "Beta.", "Gamma."]))
+    engine = sa.create_engine(urls[0], isolation_level="AUTOCOMMIT")
     with engine.connect() as conn:
         conn.execute(sa.text("DROP INDEX ix_chunks_doc_id"))
+        conn.execute(sa.text("DROP INDEX ix_chunks_org_id"))
         conn.execute(sa.text("ANALYZE chunks"))
         conn.execute(sa.text(f'ALTER DATABASE "{engine.url.database}" SET enable_seqscan = off'))
         conn.execute(sa.text(f'ALTER DATABASE "{engine.url.database}" SET hnsw.ef_search = 10'))
@@ -103,6 +124,8 @@ async def test_filtered_hnsw_search_uses_iterative_scans(pg_url):
     vector = await store.embed_query("Filler passage number 7.")
 
     with store._engine.connect() as conn:
+        # One transaction under org o1's access, so the policy applies as in the store.
+        set_access(conn, ORG)
         plan = "\n".join(conn.execute(sa.text(
             "EXPLAIN SELECT chunk_id FROM chunks WHERE doc_id = 'small' "
             "ORDER BY embedding <=> CAST(:v AS vector) LIMIT 3"
@@ -124,25 +147,34 @@ async def test_filtered_hnsw_search_uses_iterative_scans(pg_url):
         "small-0000", "small-0001", "small-0002"]
 
 
-async def test_store_refuses_a_different_dimension(pg_url):
-    settings = _settings(pg_url, embedding_dimensions=16)
-    assert db_session.init_db(settings)
+async def test_store_refuses_a_different_dimension(urls):
+    settings = _settings(urls, embedding_dimensions=16)
+    db_session.migrate_database(settings)
 
     with pytest.raises(RuntimeError, match=r"vector\(16\).*vector\(32\)"):
         HybridStore(settings, FakeEmbeddings())
 
 
-async def test_store_refuses_vectors_from_another_model(pg_url):
-    store = _store(pg_url)
-    await store.add_chunks(_chunks("d1", PUMPS))
+async def test_migrate_step_refuses_vectors_from_another_model(urls):
+    # Checked as the owner, across every org's chunks (RLS would hide them
+    # from the app role).
+    store = _store(urls, embedding_model="fake-embeddings")
+    await _add(store, _chunks("d1", PUMPS))
 
-    class OtherModel(FakeEmbeddings):
-        model = "other-model"
-
-    with pytest.raises(RuntimeError, match="fake-embeddings"):
-        HybridStore(_settings(pg_url), OtherModel())
+    with pytest.raises(RuntimeError, match=r"\['fake-embeddings'\].*'other-model'"):
+        db_session.migrate_database(_settings(urls, embedding_model="other-model"))
+    db_session.migrate_database(_settings(urls, embedding_model="fake-embeddings"))  # same model: fine
 
 
-def test_store_needs_the_migrations(pg_url):
+def test_store_needs_the_migrations(urls):
+    # As the owner: documind_app doesn't exist before the first migration.
     with pytest.raises(RuntimeError, match="run the migrations"):
-        HybridStore(_settings(pg_url), FakeEmbeddings())
+        HybridStore(_settings((urls[0], urls[0])), FakeEmbeddings())
+
+
+def test_store_refuses_a_connection_that_bypasses_rls(urls):
+    settings = _settings(urls)
+    db_session.migrate_database(settings)
+    as_owner = settings.model_copy(update={"database_url": urls[0]})  # a superuser here
+    with pytest.raises(RuntimeError, match="bypasses row-level security"):
+        HybridStore(as_owner, FakeEmbeddings())

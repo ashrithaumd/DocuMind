@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { API_BASE, type Citation, type StageEvent, type StreamEvent } from "./api";
+import { apiFetch, type Citation, type StageEvent, type StreamEvent } from "./api";
 
 interface Message {
   role: "user" | "assistant";
@@ -20,7 +20,7 @@ function FeedbackControl({ queryId }: { queryId: number }) {
   // Fire-and-forget: feedback must never disrupt the chat, so errors are
   // swallowed (the backend logs its side of any failure).
   function send(thumbsUp: boolean, text?: string) {
-    fetch(`${API_BASE}/feedback`, {
+    apiFetch("/feedback", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -118,7 +118,7 @@ export default function Chat({ docIds }: Props) {
     ]);
 
     try {
-      const res = await fetch(`${API_BASE}/query/stream`, {
+      const res = await apiFetch("/query/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({

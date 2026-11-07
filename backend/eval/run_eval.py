@@ -22,10 +22,15 @@ or answered and fully scored); errored, not-run and partly scored questions
 are run again. The last record per question wins.
 
 Usage:
-    1. Start the stack (docker compose up, or uvicorn locally) with
-       EXPOSE_LLM_DIAGNOSTICS=true, so /query returns llm_usage and full
-       error text for the report. It is off by default for normal clients.
-    2. Upload the sample document once:  see --ingest below.
+    1. Start the stack (docker compose up, or uvicorn locally), and make the
+       eval account an admin of the eval org once:
+       scripts/setup_eval_admin.py --database-url OWNER_URL.
+       The harness signs in as EVAL_ADMIN_EMAIL / EVAL_ADMIN_PASSWORD
+       (repo-root .env) through the Firebase REST API and refreshes the token
+       as needed; /query returns llm_usage and full error text for the report
+       only to admins.
+    2. Upload the sample document once:  see --ingest below (it goes into
+       the eval org, at --clearance).
     3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR] [--resume]
 
 Outputs results.jsonl, report.json and report.md (default: eval/).
@@ -41,9 +46,10 @@ import sys
 from pathlib import Path
 
 import httpx
-from dotenv import load_dotenv
+from dotenv import dotenv_values, load_dotenv
 
 EVAL_DIR = Path(__file__).parent
+REPO_ROOT = EVAL_DIR.parents[1]
 
 # Judge per provider. Overridable with JUDGE_MODEL. Defaults:
 #   gemini:    gemini-3.1-flash-lite — free tier, a stable (non-preview) ID,
@@ -88,6 +94,20 @@ def quota_hits(text: str) -> list[str]:
 
 
 # --- querying the live pipeline ------------------------------------------------
+
+
+def eval_admin_auth():
+    """Sign-in as the eval admin for every call (eval/firebase_auth.py),
+    from the repo-root .env (or the environment)."""
+    from firebase_auth import FirebaseAuth
+
+    env = {**dotenv_values(REPO_ROOT / ".env"), **{k: v for k, v in os.environ.items() if v}}
+    names = ("VITE_FIREBASE_API_KEY", "EVAL_ADMIN_EMAIL", "EVAL_ADMIN_PASSWORD")
+    missing = [n for n in names if not env.get(n)]
+    if missing:
+        raise SystemExit(f"Set {', '.join(missing)} in the repo-root .env to sign the harness in.")
+    return FirebaseAuth(env["VITE_FIREBASE_API_KEY"], env["EVAL_ADMIN_EMAIL"],
+                        env["EVAL_ADMIN_PASSWORD"])
 
 
 def call_api(client: httpx.Client, api: str, question: str) -> dict:
@@ -178,9 +198,9 @@ def run_questions(client: httpx.Client, api: str, pairs: list[dict], score=None,
             else:
                 if "llm_usage" not in result and not warned_no_diagnostics:
                     warned_no_diagnostics = True
-                    print("WARNING: /query returned no llm_usage. Restart the backend with "
-                          "EXPOSE_LLM_DIAGNOSTICS=true, or the report's app call counts "
-                          "and quota limits will be empty.", flush=True)
+                    print("WARNING: /query returned no llm_usage: the harness isn't signed "
+                          "in as an admin, so the report's app call counts and quota "
+                          "limits will be empty.", flush=True)
                 sample.update(
                     outcome=result["outcome"],
                     response=result["answer"],
@@ -527,7 +547,6 @@ def main() -> int:
     parser = argparse.ArgumentParser(description="Run the RAGAS eval against a live API.")
     parser.add_argument("--api", default="http://localhost:8000", help="Backend base URL")
     parser.add_argument("--dataset", default=str(EVAL_DIR / "dataset.json"))
-    parser.add_argument("--api-key", default=None, help="X-API-Key if the gate is enabled")
     parser.add_argument(
         "--out-dir", default=str(EVAL_DIR),
         help="Where report.json / report.md are written (default: eval/)",
@@ -539,6 +558,10 @@ def main() -> int:
     parser.add_argument(
         "--resume", action="store_true",
         help=f"Continue from OUT_DIR/{RESULTS_FILE}, skipping finished questions",
+    )
+    parser.add_argument(
+        "--clearance", type=int, default=0,
+        help="Clearance of the --ingest upload (the eval admin's must be at least this)",
     )
     args = parser.parse_args()
 
@@ -556,8 +579,7 @@ def main() -> int:
     load_dotenv()  # the RAGAS judge needs the provider key (see build_judge)
 
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
-    headers = {"X-API-Key": args.api_key} if args.api_key else {}
-    client = httpx.Client(headers=headers)
+    client = httpx.Client(auth=eval_admin_auth())
 
     if args.ingest:
         pdf_path = EVAL_DIR / dataset["document"]
@@ -565,6 +587,7 @@ def main() -> int:
             response = client.post(
                 f"{args.api}/upload",
                 files={"file": (pdf_path.name, fh, "application/pdf")},
+                data={"clearance": str(args.clearance)},  # org-wide, in the eval org
                 timeout=300,
             )
         response.raise_for_status()

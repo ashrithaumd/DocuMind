@@ -134,3 +134,32 @@ def make_docx(paragraphs: list[str]) -> bytes:
         document.add_paragraph(p)
     document.save(buf)
     return buf.getvalue()
+
+
+class FakeTokenChecker:
+    """Stands in for auth.FirebaseTokenChecker: token "token:<uid>" belongs to
+    <uid>; anything else is invalid. revoke(token) mimics Firebase revoking
+    it: like the real thing, only check_revoked=True notices. No emulator, no
+    network."""
+
+    def __init__(self):
+        self.revoked: set[str] = set()
+        self.ready_checks = 0
+
+    def check_ready(self) -> None:
+        self.ready_checks += 1
+        self.revocation_checks = 0
+
+    def revoke(self, token: str) -> None:
+        self.revoked.add(token)
+
+    def verify(self, token: str, check_revoked: bool = False) -> str:
+        from auth import InvalidToken
+
+        if not token.startswith("token:"):
+            raise InvalidToken("not a fake token")
+        if check_revoked:
+            self.revocation_checks += 1
+            if token in self.revoked:
+                raise InvalidToken("revoked")
+        return token.removeprefix("token:")

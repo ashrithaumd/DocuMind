@@ -30,3 +30,10 @@ def get_embeddings() -> EmbeddingProvider:
 @lru_cache
 def get_store() -> HybridStore:
     return HybridStore(get_settings(), get_embeddings())
+
+
+@lru_cache
+def get_token_checker():
+    from auth import FirebaseTokenChecker  # auth imports this module
+
+    return FirebaseTokenChecker(get_settings())

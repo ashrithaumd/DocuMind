@@ -3,6 +3,8 @@ upload each supported format, verify chunks land in the index, verify
 /documents ordering, and verify API-level rejections."""
 from tests.helpers import make_docx, make_pdf
 
+ORG_WIDE = {"clearance": "0"}  # the upload form's access fields: org-wide, lowest level
+
 
 def test_pdf_docx_txt_ingest_and_are_listed_newest_first(client):
     uploads = [
@@ -15,16 +17,15 @@ def test_pdf_docx_txt_ingest_and_are_listed_newest_first(client):
 
     doc_ids = []
     for name, data, mime in uploads:
-        response = client.post("/upload", files={"file": (name, data, mime)})
+        response = client.post("/upload", files={"file": (name, data, mime)}, data=ORG_WIDE)
         assert response.status_code == 200, response.text
         body = response.json()
         assert body["filename"] == name
         assert body["chunks_created"] >= 1
         doc_ids.append(body["doc_id"])
 
-    # Index actually grew (real chunks table, not a mock).
-    health = client.get("/health").json()
-    assert health["chunks_indexed"] >= 3
+    # /health is open, so it no longer reports a corpus size.
+    assert client.get("/health").json() == {"status": "ok"}
 
     # /documents: newest first, so the reverse of upload order.
     documents = client.get("/documents").json()["documents"]
@@ -35,7 +36,7 @@ def test_pdf_docx_txt_ingest_and_are_listed_newest_first(client):
 
 def test_unsupported_type_rejected_with_400(client):
     response = client.post(
-        "/upload", files={"file": ("data.csv", b"a,b\n1,2", "text/csv")}
+        "/upload", files={"file": ("data.csv", b"a,b\n1,2", "text/csv")}, data=ORG_WIDE
     )
     assert response.status_code == 400
     assert "Unsupported file type" in response.json()["detail"]
@@ -45,7 +46,7 @@ def test_unsupported_type_rejected_with_400(client):
 def test_scanned_pdf_still_rejected(client):
     # A PDF with no extractable text (the pre-existing OCR hard-reject).
     response = client.post(
-        "/upload", files={"file": ("scan.pdf", make_pdf("tiny"), "application/pdf")}
+        "/upload", files={"file": ("scan.pdf", make_pdf("tiny"), "application/pdf")}, data=ORG_WIDE
     )
     assert response.status_code == 400
     assert "scanned or image-only" in response.json()["detail"]
@@ -56,6 +57,7 @@ def test_empty_docx_rejected(client):
         "/upload",
         files={"file": ("empty.docx", make_docx([]),
                         "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
+        data=ORG_WIDE,
     )
     assert response.status_code == 400
     assert "No extractable text" in response.json()["detail"]

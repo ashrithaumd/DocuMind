@@ -1,6 +1,8 @@
 # DocuMind — full local stack. `docker compose up --build` brings up:
 #   frontend  (nginx-served Vite build, proxies /api -> backend)
-#   backend   (FastAPI + LangGraph pipeline; runs DB migrations at startup)
+#   migrate   (one-shot: migrations, documind_app's password, embedding-model
+#              check, as the owner; the backend waits for it to succeed)
+#   backend   (FastAPI + LangGraph pipeline; connects only as documind_app)
 #   postgres  (pgvector: chunk store with vector + full-text search, and the
 #              query/audit log; persisted in a named volume)
 #
@@ -8,12 +10,36 @@
 
 services:
   frontend:
-    build: ./frontend
+    build:
+      context: ./frontend
+      # The Firebase web config for the sign-in screen (public values).
+      args:
+        VITE_FIREBASE_API_KEY: ${VITE_FIREBASE_API_KEY:-}
+        VITE_FIREBASE_AUTH_DOMAIN: ${VITE_FIREBASE_AUTH_DOMAIN:-}
+        VITE_FIREBASE_PROJECT_ID: ${VITE_FIREBASE_PROJECT_ID:-}
+        VITE_FIREBASE_APP_ID: ${VITE_FIREBASE_APP_ID:-}
     ports:
       # Override with FRONTEND_PORT in .env if 3000 is taken on your machine.
       - "${FRONTEND_PORT:-3000}:80"
     depends_on:
       - backend
+
+  migrate:
+    build: ./backend
+    command: ["python", "migrate.py"]
+    environment:
+      # The owner's credentials live only here, never in the backend.
+      MIGRATION_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
+      # Read for documind_app's password, which this step sets.
+      DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
+      # The vector column's size and the model check follow these, so they
+      # must match the backend's.
+      EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
+      EMBEDDING_MODEL: ${EMBEDDING_MODEL:-}
+      EMBEDDING_DIMENSIONS: ${EMBEDDING_DIMENSIONS:-0}
+    depends_on:
+      postgres:
+        condition: service_healthy
 
   backend:
     build: ./backend
@@ -33,24 +59,32 @@ services:
       EMBEDDING_USE_VERTEXAI: ${EMBEDDING_USE_VERTEXAI:-false}
       GOOGLE_CLOUD_PROJECT: ${GOOGLE_CLOUD_PROJECT:-}
       GOOGLE_CLOUD_LOCATION: ${GOOGLE_CLOUD_LOCATION:-us-central1}
-      API_KEY: ${API_KEY:-}
-      EXPOSE_LLM_DIAGNOSTICS: ${EXPOSE_LLM_DIAGNOSTICS:-false}
-      DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:-documind}@postgres:5432/${POSTGRES_DB:-documind}
+      FIREBASE_PROJECT_ID: ${FIREBASE_PROJECT_ID:?Set FIREBASE_PROJECT_ID in .env}
+      # The Firebase service account key, mounted read-only below from the
+      # host path in .env; never copied into the image or the repo.
+      GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-key.json
+      # Only the documind_app role (row-level security applies to it). The
+      # backend refuses to start if MIGRATION_DATABASE_URL is set.
+      DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
     volumes:
+      - type: bind
+        source: ${GOOGLE_APPLICATION_CREDENTIALS:?Set GOOGLE_APPLICATION_CREDENTIALS in .env to the key file on this machine}
+        target: /run/secrets/firebase-key.json
+        read_only: true
       # Local embedding model cache (~90 MB, only with EMBEDDING_PROVIDER=local;
       # downloaded from HuggingFace on first start) — persisted so
       # rebuilds/restarts don't re-download it.
       - hf_cache:/root/.cache/huggingface
     depends_on:
-      postgres:
-        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
 
   postgres:
     # Postgres 16 with pgvector 0.8.7 (iterative index scans need >= 0.8).
     image: pgvector/pgvector:0.8.7-pg16
     environment:
       POSTGRES_USER: ${POSTGRES_USER:-documind}
-      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-documind}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
       POSTGRES_DB: ${POSTGRES_DB:-documind}
     volumes:
       - postgres_data:/var/lib/postgresql/data

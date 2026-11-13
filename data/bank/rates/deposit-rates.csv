@@ -1,0 +1,15 @@
+effective_date,product,term_months,balance_min,balance_max,interest_rate_pct,apy_pct,minimum_deposit
+2025-07-01,Everyday Checking,,0.00,,0.01,0.01,25.00
+2025-07-01,High-Yield Savings,,0.00,9999.99,3.39,3.45,0.00
+2025-07-01,High-Yield Savings,,10000.00,49999.99,3.54,3.60,0.00
+2025-07-01,High-Yield Savings,,50000.00,,3.68,3.75,0.00
+2025-07-01,Certificate of Deposit,6,500.00,,3.97,4.05,500.00
+2025-07-01,Certificate of Deposit,12,500.00,,4.07,4.15,500.00
+2025-07-01,Certificate of Deposit,24,500.00,,3.78,3.85,500.00
+2026-02-01,Everyday Checking,,0.00,,0.01,0.01,25.00
+2026-02-01,High-Yield Savings,,0.00,9999.99,3.05,3.10,0.00
+2026-02-01,High-Yield Savings,,10000.00,49999.99,3.20,3.25,0.00
+2026-02-01,High-Yield Savings,,50000.00,,3.34,3.40,0.00
+2026-02-01,Certificate of Deposit,6,500.00,,3.68,3.75,500.00
+2026-02-01,Certificate of Deposit,12,500.00,,3.83,3.90,500.00
+2026-02-01,Certificate of Deposit,24,500.00,,3.54,3.60,500.00

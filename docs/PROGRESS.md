@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 5 of 22** (budget pending your choice of 20 or 22; see the plan).
+**Commits: 6 of 22** (budget pending your choice of 20 or 22; see the plan).
 
 ## Phase 0: cleanup and rename (done)
 
@@ -41,7 +41,7 @@ enterprise build, its eval baselines and decisions) is in git history: see
 | # | Commit | What |
 |---|---|---|
 | 1 | `223f0ae` | Migration 0009 (customers, accounts, cards, transactions, fees, holdings, securities, prices), per-customer RLS via `app.customer_id`, `users.customer_id`, leakage tests, a Neon-style owner test |
-| 2 | this commit | Seeded synthetic generator and its loader (`backend/bank/synthetic.py`); the schema test learns the new tables (CI failure on commit 1) |
+| 2 | `acb6ae4` | Seeded synthetic generator and its loader (`backend/bank/synthetic.py`); the schema test learns the new tables (CI failure on commit 1) |
 
 ### Notes
 
@@ -66,3 +66,32 @@ enterprise build, its eval baselines and decisions) is in git history: see
   BYPASSRLS isn't limited by the policy) and upserting the customer row.
   Tested as the superuser and as an owner without BYPASSRLS.
 - **Not run locally** (no Postgres here); CI runs the Postgres tests.
+
+## Phase 2: bank corpus and sources (drafts, pending your review)
+
+| # | Commit | What |
+|---|---|---|
+| 1 | this commit | `data/bank/`: fee schedules 2025 and 2026, overdraft policies 2025 and 2026, dispute policy, account comparison, deposit agreement, rate tables (CSV and XLSX), the bank's OpenAPI spec, a staff-only fraud-rules memo with a canary; `manifest.yaml`; `data/SOURCES.md` |
+
+### Notes
+
+- **All drafts.** Every document says "DRAFT, pending review" and has
+  `status: draft` in the manifest. Written for FinPilot; the structure
+  follows the kinds of disclosure the CFPB publishes model forms for, with
+  no text copied.
+- **Numbers agree with the generator.** A unit test checks every fee row in
+  both schedules against `FEE_SCHEDULES`; APYs and rates agree under daily
+  compounding; card APRs equal prime plus the stated margins.
+- **The canary** (`internal/fraud-rules-memo.md`, clearance 2) appears in no
+  other file; a test checks the repo.
+- **XLSX** is built from the CSVs by `data/bank/tools/build_rate_sheet.py`
+  (openpyxl, installed in the local venv only; Phase 3 adds it to the
+  requirements when it parses spreadsheets). The workbook has title rows
+  above its headers on purpose.
+- **Licences** (`data/SOURCES.md`): TabFormer (Apache-2.0 repo, no
+  data-specific terms) and Berka (no licence found) are not used; Alpha
+  Vantage's free key is personal and non-commercial only; FRED needs its
+  notice and excludes copyrighted series; SEC needs a User-Agent with a
+  contact, max 10 requests/second; CFPB content is public domain; FDIC's own
+  pages make no public-domain statement (BankFind is listed as public
+  domain); investor.gov's policies page couldn't be read (403).

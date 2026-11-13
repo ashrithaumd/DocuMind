@@ -6,7 +6,7 @@ import pytest
 import sqlalchemy as sa
 from alembic import command
 from alembic.config import Config
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
 from config import Settings
 from db.session import ALEMBIC_INI
@@ -166,3 +166,48 @@ def test_0008_moves_the_grants_to_finpilot_app_and_back(pg_url, at):
     assert _can_read_chunks(engine, "documind_app")
     assert not _can_read_chunks(engine, "finpilot_app")
     engine.dispose()
+
+
+# --- a Neon-style owner -------------------------------------------------------------
+
+NEON_LIKE_OWNER = "neon_like_owner"
+
+
+def test_a_non_superuser_owner_migrates_and_stays_under_customer_rls(pg_url, at):
+    """Neon has no superuser: its owner role has CREATEROLE and CREATEDB (and
+    BYPASSRLS on newer projects). Without BYPASSRLS, the strictest case, it
+    must still run every migration, and FORCE ROW LEVEL SECURITY must apply
+    to it: customer rows go in only inside that customer's context."""
+    admin = sa.create_engine(pg_url)
+    database = admin.url.database
+    with admin.begin() as conn:
+        # Neon allows CREATE EXTENSION vector to its owner; plain Postgres
+        # needs a superuser for it, so the server's admin does it first.
+        conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # shortcut: the role is cluster-wide and outlives the test database;
+        # fine on CI's throwaway server, drop it by hand on a shared one.
+        if not conn.execute(sa.text("SELECT 1 FROM pg_roles WHERE rolname = :r"),
+                            {"r": NEON_LIKE_OWNER}).scalar():
+            conn.execute(sa.text(f"CREATE ROLE {NEON_LIKE_OWNER} LOGIN PASSWORD 'neon-like' "
+                                 "NOSUPERUSER NOBYPASSRLS CREATEROLE CREATEDB"))
+        conn.execute(sa.text(f'ALTER DATABASE "{database}" OWNER TO {NEON_LIKE_OWNER}'))
+        conn.execute(sa.text(f"GRANT ALL ON SCHEMA public TO {NEON_LIKE_OWNER}"))
+    admin.dispose()
+
+    owner = sa.create_engine(sa.engine.make_url(pg_url).set(
+        username=NEON_LIKE_OWNER, password="neon-like"))
+    at(owner, "head")
+    with owner.begin() as conn:
+        assert conn.execute(sa.text("SELECT rolsuper OR rolbypassrls FROM pg_roles "
+                                    "WHERE rolname = current_user")).scalar() is False
+        conn.execute(sa.text("INSERT INTO orgs VALUES ('bank', 'Bank')"))
+
+    insert = sa.text("INSERT INTO customers VALUES ('c1', 'bank', 'C One', 'retail', '2025-01-01')")
+    with pytest.raises(ProgrammingError, match="row-level security"), owner.begin() as conn:
+        conn.execute(insert)
+    with owner.begin() as conn:
+        conn.execute(sa.text("SELECT set_config('app.customer_id', 'c1', true)"))
+        conn.execute(insert)
+    with owner.connect() as conn:
+        assert conn.execute(sa.text("SELECT count(*) FROM customers")).scalar() == 0
+    owner.dispose()

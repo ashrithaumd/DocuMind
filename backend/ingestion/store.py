@@ -255,6 +255,7 @@ class HybridStore:
         with self._engine.connect() as conn:
             row = conn.execute(sa.text("""
                 SELECT u.user_id, u.firebase_uid, u.org_id, u.role, u.clearance, u.active,
+                       u.customer_id,
                        coalesce(array_agg(m.team_id ORDER BY m.team_id)
                                 FILTER (WHERE m.team_id IS NOT NULL), '{}') AS team_ids
                 FROM users u LEFT JOIN team_memberships m ON m.user_id = u.user_id

@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 3 of 22** (budget pending your choice of 20 or 22; see the plan).
+**Commits: 4 of 22** (budget pending your choice of 20 or 22; see the plan).
 
 ## Phase 0: cleanup and rename (done)
 
@@ -13,7 +13,7 @@ enterprise build, its eval baselines and decisions) is in git history: see
 |---|---|---|
 | 1 | `0fccfd7` | Remove upload and the access-change API; rename DocuMind to FinPilot; migration 0008 moves the app role to `finpilot_app` |
 | spare 1 | `00fbfda` | Integration tests loaded documents through `/upload`; they now use the store (CI caught it) |
-| 2 | this commit | Plan, embedding pacing from `phase3-corpus`, `docs/baseline/` deleted, fresh progress log, README |
+| 2 | `59f9659` | Plan, embedding pacing from `phase3-corpus`, `docs/baseline/` deleted, fresh progress log, README |
 
 ### Notes
 
@@ -35,3 +35,24 @@ enterprise build, its eval baselines and decisions) is in git history: see
   no local Postgres, no Gemini calls on this machine. Light tests locally
   (backend tests without Postgres, frontend lint and build); GitHub CI runs
   the full Postgres suite on every push.
+
+## Phase 1: customer data (in progress)
+
+| # | Commit | What |
+|---|---|---|
+| 1 | this commit | Migration 0009 (customers, accounts, cards, transactions, fees, holdings, securities, prices), per-customer RLS via `app.customer_id`, `users.customer_id`, leakage tests, a Neon-style owner test |
+| 2 | next | Seeded synthetic generator and its loader |
+
+### Notes
+
+- **Ownership can't diverge.** Child rows repeat `customer_id` and reference
+  `(account_id, customer_id)` (and `(card_id, customer_id)`,
+  `(txn_id, customer_id)`), so a transaction can't sit on another
+  customer's account or card.
+- **Staff see no customer data.** Their `customer_id` is empty, which no row
+  matches. A support view, if ever needed, is a separate, audited path.
+- **Neon owner.** CI runs every migration as a role with `CREATEROLE` and
+  `CREATEDB` but neither superuser nor `BYPASSRLS` (stricter than Neon's
+  owner), and checks that FORCE RLS applies to it: customer rows go in only
+  inside that customer's context. The loader (next commit) writes that way.
+- **Not run locally** (no Postgres here); CI runs these tests.

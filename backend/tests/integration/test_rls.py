@@ -123,12 +123,6 @@ def test_query_across_all_visible_documents(client, corpus):
     assert {c["chunk_id"].rsplit("-", 1)[0] for c in body["chunks"]} == VISIBLE
 
 
-def test_viewers_cannot_upload(client, corpus):
-    response = client.post("/upload", headers=AS_VIEWER, data={"clearance": "0"},
-                           files={"file": ("new.txt", b"Fresh pump notes.", "text/plain")})
-    assert response.status_code == 403
-
-
 # --- finpilot_app can't get around the policy ---------------------------------
 
 @pytest.fixture

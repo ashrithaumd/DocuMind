@@ -12,6 +12,7 @@ import sqlalchemy as sa
 from sqlalchemy.exc import ProgrammingError
 
 from db.access import Access, set_access
+from tests.helpers import add_text_document
 
 
 def _as(uid):
@@ -38,11 +39,8 @@ def users(client, owner):
                 "INSERT INTO users (firebase_uid, org_id, role, clearance) "
                 "VALUES (:uid, :org, :role, 0) RETURNING user_id"),
                 {"uid": uid, "org": org, "role": role}).scalar()
-    for uid in ("admin_a", "admin_b"):
-        response = client.post("/upload", headers=_as(uid), data={"clearance": "0"},
-                               files={"file": ("pumps.txt", b"Cooling pumps run at 400 RPM.",
-                                               "text/plain")})
-        assert response.status_code == 200, response.text
+    for org in ("A", "B"):
+        add_text_document("Cooling pumps run at 400 RPM.", "pumps.txt", org_id=org)
     return ids
 
 

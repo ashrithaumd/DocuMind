@@ -13,10 +13,7 @@ PROTECTED = [
     ("get", "/documents", {}),
     ("post", "/query", {"json": {"question": "hi"}}),
     ("post", "/query/stream", {"json": {"question": "hi"}}),
-    ("post", "/upload", {"files": {"file": ("a.txt", b"hello", "text/plain")},
-                         "data": {"clearance": "0"}}),
     ("post", "/feedback", {"json": {"query_id": 1, "thumbs_up": True}}),
-    ("patch", "/documents/{doc_id}/access", {"json": {"clearance": 0}}),
     ("get", "/admin/logs", {}),
     ("get", "/admin/stats", {}),
 ]

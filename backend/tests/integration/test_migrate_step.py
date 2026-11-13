@@ -41,7 +41,7 @@ def test_migrate_step_migrates_and_lets_the_app_role_log_in(pg_url, app_url):
 
     engine = sa.create_engine(app_url)  # the password it set works
     with engine.connect() as conn:
-        assert conn.execute(sa.text("SELECT current_user")).scalar() == "documind_app"
+        assert conn.execute(sa.text("SELECT current_user")).scalar() == "finpilot_app"
         assert conn.execute(sa.text("SELECT to_regclass('chunks') IS NOT NULL")).scalar()
     engine.dispose()
 

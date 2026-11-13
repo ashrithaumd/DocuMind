@@ -167,7 +167,7 @@ async def test_migrate_step_refuses_vectors_from_another_model(urls):
 
 
 def test_store_needs_the_migrations(urls):
-    # As the owner: documind_app doesn't exist before the first migration.
+    # As the owner: finpilot_app doesn't exist before the first migration.
     with pytest.raises(RuntimeError, match="run the migrations"):
         HybridStore(_settings((urls[0], urls[0])), FakeEmbeddings())
 

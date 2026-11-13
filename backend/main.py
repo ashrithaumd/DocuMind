@@ -1,14 +1,10 @@
-"""DocuMind API.
+"""FinPilot API.
 
 Endpoints:
-    POST /upload        — validate + ingest a PDF/DOCX/TXT (editors/admins; the
-                          form sets its clearance and optional team)
-    GET  /documents     — uploaded documents, newest first
+    GET  /documents     — documents the caller can see, newest first
     POST /query         — run the full pipeline, return one JSON response
     POST /query/stream  — same pipeline over SSE: stage events, then the
                           verified answer, citations, and outcome
-    PATCH /documents/{doc_id}/access — change a document's team/clearance
-                          (editors/admins), with every chunk at once
     GET  /admin/logs    — recent query logs of the admin's org (admins only)
     GET  /admin/stats   — the same org's outcome counts + latency percentiles
     GET  /me            — who the token belongs to and whether they're set up
@@ -32,24 +28,21 @@ import time
 from contextlib import asynccontextmanager
 from functools import partial
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from fastapi import Depends, FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from auth import Principal, get_admin_principal, get_me, get_principal
 from config import get_settings
-from db.access import WRITER_ROLES
 from db import session as db
 import deps
 from deps import get_store
 from graph.pipeline import pipeline
-from ingestion.chunking import chunk_pages
-from ingestion.extract import IngestionError, validate_and_extract
 from llm import classify_error, track_usage
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
-logger = logging.getLogger("documind")
+logger = logging.getLogger("finpilot")
 
 
 @asynccontextmanager
@@ -60,7 +53,7 @@ async def lifespan(app: FastAPI):
         # never to the serving process: with them, one bug could undo RLS.
         raise RuntimeError("MIGRATION_DATABASE_URL is set in the backend's environment. "
                            "Run migrations with `python migrate.py` (the migrate service) and "
-                           "give the backend only DATABASE_URL (the documind_app role).")
+                           "give the backend only DATABASE_URL (the finpilot_app role).")
     # Fail fast, with what to fix, rather than a 500 on the first sign-in.
     # Checked before the database: a config error shouldn't wait on Postgres.
     deps.get_token_checker().check_ready()
@@ -74,7 +67,7 @@ async def lifespan(app: FastAPI):
     yield
 
 
-app = FastAPI(title="DocuMind API", lifespan=lifespan)
+app = FastAPI(title="FinPilot API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
@@ -87,14 +80,9 @@ app.add_middleware(
 
 class QueryRequest(BaseModel):
     question: str
-    # Documents to query. Omitted/empty -> the single most recent upload
+    # Documents to query. Omitted/empty -> the single most recent document
     # (deliberately NOT the whole corpus, to avoid cross-document bleed).
     doc_ids: list[str] | None = None
-
-
-class AccessChange(BaseModel):
-    clearance: int = Field(ge=0)
-    team_id: str | None = None  # None = org-wide
 
 
 class FeedbackRequest(BaseModel):
@@ -194,89 +182,11 @@ def _stage_detail(node: str, delta: dict) -> dict:
 # --- endpoints -----------------------------------------------------------------
 
 
-@app.post("/upload")
-async def upload_document(file: UploadFile = File(...),
-                          # Required: who may read it is always an explicit choice.
-                          clearance: int = Form(..., ge=0),
-                          # Empty = org-wide; otherwise one of the uploader's teams.
-                          team_id: str | None = Form(None),
-                          principal: Principal = Depends(get_principal)):
-    # Checked before any work. RLS enforces the team and clearance rules
-    # again in the database; these give a clear 403 instead of a 500.
-    team_id = team_id or None
-    _check_can_grant(principal, team_id, clearance)
-    settings = get_settings()
-    file_bytes = await file.read()
-    filename = file.filename or ""
-
-    try:
-        pages, warnings = validate_and_extract(file_bytes, filename, settings)
-    except IngestionError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    chunks = chunk_pages(pages, filename, settings)
-    try:
-        await get_store().scoped(principal).add_document(
-            chunks, team_id=team_id, clearance=clearance, uploaded_by=principal.user_id)
-    except Exception as exc:
-        logger.exception("Embedding/indexing failed during ingestion")
-        kind = classify_error(exc)
-        if kind:
-            # Embedding provider capacity (quota, overload, timeout): retry later.
-            raise HTTPException(
-                status_code=503, detail=f"Embedding provider unavailable ({kind}); try again later."
-            ) from exc
-        raise HTTPException(
-            status_code=500,
-            detail="Embedding or indexing failed server-side — see backend logs.",
-        ) from exc
-    logger.info("Ingested %s: %d pages, %d chunks", filename, len(pages), len(chunks))
-
-    return {
-        "filename": filename,
-        "doc_id": chunks[0].doc_id,
-        "pages": len(pages),
-        "chunks_created": len(chunks),
-        "team_id": team_id,
-        "clearance": clearance,
-        "warnings": warnings,
-    }
-
-
-def _check_can_grant(principal: Principal, team_id: str | None, clearance: int) -> None:
-    """Uploads and access changes: editors and admins only, never into a team
-    they're not in or above their own clearance. RLS enforces the team and
-    clearance rules again in the database, and the store the role; these
-    give a clear 403 first."""
-    if principal.role not in WRITER_ROLES:
-        raise HTTPException(status_code=403, detail="Only editors and admins can do that.")
-    if team_id is not None and team_id not in principal.team_ids:
-        raise HTTPException(status_code=403, detail=f"You're not in team '{team_id}'.")
-    if clearance > principal.clearance:
-        raise HTTPException(status_code=403,
-                            detail=f"Clearance {clearance} is above your own ({principal.clearance}).")
-
-
 @app.get("/documents")
 async def list_documents(principal: Principal = Depends(get_principal)):
     """Documents the caller can see, newest first. The first entry is the
     default query scope."""
     return {"documents": get_store().scoped(principal).list_documents()}
-
-
-@app.patch("/documents/{doc_id}/access")
-async def change_document_access(doc_id: str, change: AccessChange,
-                                 principal: Principal = Depends(get_principal)):
-    """Move a document to another team (or org-wide) and/or clearance; its
-    chunks follow in the same statement. 404 if the caller can't see it."""
-    team_id = change.team_id or None
-    _check_can_grant(principal, team_id, change.clearance)
-    try:
-        await asyncio.to_thread(get_store().scoped(principal).set_document_access,
-                                doc_id, team_id=team_id, clearance=change.clearance)
-    except LookupError as exc:
-        raise HTTPException(status_code=404, detail=f"No document {doc_id}.") from exc
-    return {"doc_id": doc_id, "team_id": team_id, "clearance": change.clearance}
 
 
 def _pipeline_error(exc: Exception, llm_usage: dict, diagnostics: bool) -> JSONResponse:

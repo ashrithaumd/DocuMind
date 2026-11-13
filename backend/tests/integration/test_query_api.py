@@ -47,7 +47,7 @@ def test_small_talk_skips_pipeline_entirely(client, app_env):
     body = response.json()
     assert body["outcome"] == "small_talk"
     assert body["route"] == "routed_direct"
-    assert "DocuMind" in body["answer"]
+    assert "FinPilot" in body["answer"]
     assert body["chunks"] == [] and body["citations"] == []
 
     # The whole point: zero LLM traffic on this path.
@@ -83,7 +83,7 @@ def test_empty_corpus_refusal_mentions_upload(client, app_env):
     app_env.relevant = False
     body = client.post("/query", json={"question": "What does the doc say?"}).json()
     assert body["outcome"] == "refused_no_context"
-    assert "No documents have been uploaded yet" in body["answer"]
+    assert "No documents have been loaded yet" in body["answer"]
 
 
 # --- normal generate + groundedness path ----------------------------------------

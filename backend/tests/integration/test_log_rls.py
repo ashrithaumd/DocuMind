@@ -114,7 +114,7 @@ def test_another_orgs_admin_cannot_give_or_overwrite_feedback(client, users, own
         assert conn.execute(sa.text("SELECT thumbs_up, comment FROM feedback")).one() == (True, None)
 
 
-# --- the database itself, as documind_app ---------------------------------------
+# --- the database itself, as finpilot_app ---------------------------------------
 
 @pytest.fixture
 def app_conn(users, app_url):

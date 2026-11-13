@@ -50,7 +50,7 @@ class TokenChecker(Protocol):
 
 
 class FirebaseTokenChecker:
-    APP_NAME = "documind"
+    APP_NAME = "finpilot"
 
     def __init__(self, settings: Settings):
         import firebase_admin

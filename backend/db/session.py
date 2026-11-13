@@ -7,9 +7,9 @@ call is individually guarded, so a failed log write never fails a query.
 Two separate steps, so the app process never holds owner credentials:
   - migrate_database(): the one-shot migrate step (backend/migrate.py; the
     `migrate` service in docker-compose, a Cloud Run job in Phase 9). As the
-    owner (MIGRATION_DATABASE_URL): Alembic to head, documind_app's password
+    owner (MIGRATION_DATABASE_URL): Alembic to head, finpilot_app's password
     from DATABASE_URL, and the embedding-model check across every org.
-  - init_db(): the app's startup. Connects as documind_app (DATABASE_URL)
+  - init_db(): the app's startup. Connects as finpilot_app (DATABASE_URL)
     for the query log; migrates nothing.
 """
 import logging
@@ -29,7 +29,7 @@ from db.models import Base, Feedback, QueryLog
 logger = logging.getLogger(__name__)
 
 ALEMBIC_INI = Path(__file__).resolve().parents[1] / "alembic.ini"
-APP_ROLE = "documind_app"  # created by migration 0004
+APP_ROLE = "finpilot_app"  # created by migration 0004
 # The revision matching the schema create_all built before Alembic.
 BASELINE_REVISION = "0001"
 BASELINE_TABLES = ("query_logs", "feedback")
@@ -53,7 +53,7 @@ def migrate_database(settings: Settings) -> None:
 
 
 def init_db(settings: Settings) -> bool:
-    """The app's query-log connection (DATABASE_URL, documind_app). The schema
+    """The app's query-log connection (DATABASE_URL, finpilot_app). The schema
     must already be migrated (migrate_database). Returns True if logging is
     active."""
     global _session_factory
@@ -116,7 +116,7 @@ def _check_embedding_models(conn, settings: Settings) -> None:
 
 
 def _sync_app_role_password(conn, settings: Settings) -> None:
-    """Give documind_app the password in DATABASE_URL, so one setting holds
+    """Give finpilot_app the password in DATABASE_URL, so one setting holds
     it. Only when migrating as a different (owner) role, on Postgres."""
     if conn.dialect.name != "postgresql" or not settings.migration_database_url:
         return

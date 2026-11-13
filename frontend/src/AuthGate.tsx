@@ -10,7 +10,7 @@ import { apiFetch, setForbiddenHandler, type Me } from "./api";
 
 // What each /me reason means for the person looking at the screen.
 const NOT_SET_UP: Record<string, string> = {
-  unknown_user: "Your account isn't registered in DocuMind yet. Ask an admin to add you.",
+  unknown_user: "Your account isn't registered in FinPilot yet. Ask an admin to add you.",
   no_org: "Your account isn't assigned to an organization yet. Ask an admin to add you to one.",
   inactive: "Your account has been deactivated. Ask an admin if you think that's a mistake.",
 };
@@ -88,7 +88,7 @@ export default function AuthGate({ children }: Props) {
   if (!current) return <Screen title="Loading…" />;
   if (current.error || !current.me) {
     return (
-      <Screen title="Can't reach DocuMind" onSignOut={doSignOut} email={user.email}>
+      <Screen title="Can't reach FinPilot" onSignOut={doSignOut} email={user.email}>
         {current.error}
       </Screen>
     );
@@ -96,7 +96,7 @@ export default function AuthGate({ children }: Props) {
   if (!current.me.set_up) {
     return (
       <Screen title="Not set up yet" onSignOut={doSignOut} email={user.email}>
-        <p>{NOT_SET_UP[current.me.reason ?? ""] ?? "Your account can't use DocuMind yet."}</p>
+        <p>{NOT_SET_UP[current.me.reason ?? ""] ?? "Your account can't use FinPilot yet."}</p>
         <p className="auth-reason">Reason: {current.me.reason}</p>
       </Screen>
     );
@@ -126,7 +126,7 @@ function SignIn() {
   }
 
   return (
-    <Screen title="Sign in to DocuMind">
+    <Screen title="Sign in to FinPilot">
       <form className="auth-form" onSubmit={submit}>
         <label>
           Email

@@ -87,7 +87,7 @@ const isRefusal = (outcome?: string) =>
   !!outcome && outcome !== "answered" && outcome !== "small_talk";
 
 interface Props {
-  docIds: string[]; // empty = backend default (newest upload)
+  docIds: string[]; // empty = backend default (newest document)
 }
 
 export default function Chat({ docIds }: Props) {
@@ -190,7 +190,7 @@ export default function Chat({ docIds }: Props) {
 
   return (
     <div className="chat-panel">
-      <h2>Ask DocuMind</h2>
+      <h2>Ask FinPilot</h2>
       <p className="subtitle">
         Answers come only from your documents — with citations, or an honest refusal.
       </p>
@@ -198,7 +198,7 @@ export default function Chat({ docIds }: Props) {
       <div className="message-list">
         {messages.length === 0 && (
           <p className="empty-state">
-            Upload a document (PDF, DOCX, or TXT), then ask anything about it.
+            Ask anything about the documents on the left.
           </p>
         )}
 
@@ -206,7 +206,7 @@ export default function Chat({ docIds }: Props) {
           <div key={i} className={`message ${msg.role}`}>
             <div className={`bubble${isRefusal(msg.outcome) ? " refusal" : ""}`}>
               <span className="role-label">
-                {msg.role === "user" ? "You" : "DocuMind"}
+                {msg.role === "user" ? "You" : "FinPilot"}
               </span>
 
               {msg.role === "assistant" && msg.stages.length > 0 && (

@@ -37,8 +37,7 @@ no rows. The store refuses to start on a connection that could bypass RLS.
 
 The documents table is the source of truth for access. add_document writes
 the documents row and its chunks in one transaction, the chunks copying org,
-team and clearance from that row in SQL; set_document_access changes a
-document and all its chunks in one statement. Nothing else writes access.
+team and clearance from that row in SQL. Nothing else writes access.
 """
 import asyncio
 import copy
@@ -175,8 +174,8 @@ class HybridStore:
         return scoped
 
     def _require_writer(self) -> None:
-        """Writes (uploads, access changes) are for editors and admins only,
-        whoever calls the store; the API checks first for a clear 403."""
+        """Writes (the corpus loader) are for editors and admins only,
+        whoever calls the store."""
         if self._access is None:
             raise RuntimeError("Writes need a scoped store (store.scoped(access)).")
         if getattr(self._access, "role", None) not in WRITER_ROLES:
@@ -201,7 +200,7 @@ class HybridStore:
         if row["rolsuper"] or row["rolbypassrls"] or row["owns"]:
             raise RuntimeError(
                 f"DATABASE_URL connects as '{row['name']}', which bypasses row-level security "
-                "(superuser, BYPASSRLS or table owner). Point DATABASE_URL at the documind_app "
+                "(superuser, BYPASSRLS or table owner). Point DATABASE_URL at the finpilot_app "
                 "role and MIGRATION_DATABASE_URL at the owner."
             )
 
@@ -272,7 +271,7 @@ class HybridStore:
         or org-wide when None, `clearance`) and its chunks, in one
         transaction. The chunks copy org, team and clearance from that row in
         SQL, so they can't differ from it. RLS refuses a team the caller isn't
-        in or a clearance above theirs (the API checks first, for a clear 403)."""
+        in or a clearance above theirs."""
         if not chunks:
             raise ValueError("add_document needs at least one chunk")
         self._require_writer()
@@ -309,30 +308,6 @@ class HybridStore:
                     raise RuntimeError(f"Inserted {inserted} of {len(rows)} chunks for {doc_id}")
 
         await asyncio.to_thread(insert)
-
-    def set_document_access(self, doc_id: str, *, team_id: str | None, clearance: int) -> None:
-        """Change a document's team and clearance, and every one of its
-        chunks, in one statement: no reader ever sees the chunks out of step
-        with the document. The org stays the same. Runs under RLS as the
-        caller: they must see the document now and be able to see it after
-        (their own team, at most their clearance). Raises LookupError if the
-        caller can't see the document, PermissionError for a viewer."""
-        self._require_writer()
-        with self._begin() as conn:
-            changed = conn.execute(sa.text("""
-                WITH d AS (
-                    UPDATE documents SET team_id = :team_id, clearance = :clearance
-                    WHERE doc_id = :doc_id
-                    RETURNING doc_id, org_id, team_id, clearance
-                ), c AS (
-                    UPDATE chunks SET org_id = d.org_id, team_id = d.team_id, clearance = d.clearance
-                    FROM d WHERE chunks.doc_id = d.doc_id
-                    RETURNING 1
-                )
-                SELECT (SELECT count(*) FROM d) AS documents, (SELECT count(*) FROM c) AS chunks
-            """), {"doc_id": doc_id, "team_id": team_id, "clearance": clearance}).one()
-        if changed.documents != 1:
-            raise LookupError(f"No document {doc_id} visible to this caller")
 
     # --- retrieval ----------------------------------------------------------
 

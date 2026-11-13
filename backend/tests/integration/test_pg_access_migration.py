@@ -148,3 +148,21 @@ def test_downgrade_restores_0002_and_keeps_chunks(head, at):
         assert conn.execute(sa.text("SELECT count(*) FROM chunks")).scalar() == 1
     at(head, "head")  # and it upgrades again
     assert NEW_TABLES <= _tables(head)
+
+
+def _can_read_chunks(engine, role) -> bool:
+    with engine.connect() as conn:
+        return conn.execute(sa.text("SELECT has_table_privilege(:r, 'chunks', 'SELECT')"),
+                            {"r": role}).scalar()
+
+
+def test_0008_moves_the_grants_to_finpilot_app_and_back(pg_url, at):
+    engine = sa.create_engine(pg_url)
+    at(engine, "head")
+    assert _can_read_chunks(engine, "finpilot_app")
+    assert not _can_read_chunks(engine, "documind_app")
+
+    at(engine, "0007", downgrade=True)
+    assert _can_read_chunks(engine, "documind_app")
+    assert not _can_read_chunks(engine, "finpilot_app")
+    engine.dispose()

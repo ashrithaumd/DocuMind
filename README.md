@@ -1,4 +1,4 @@
-# DocuMind
+# FinPilot
 
 Ask questions about your documents (PDF, DOCX, TXT). Answers cite the source, and when the document doesn't contain the answer, you get a refusal instead of a guess.
 
@@ -167,7 +167,7 @@ npm install
 npm run dev                     # Vite proxies /api to localhost:8000
 ```
 
-Outside Docker the backend still needs Postgres with pgvector, because the chunks live there: set `DATABASE_URL` to the `documind_app` role (e.g. `postgresql+psycopg2://documind_app:change-me-too@localhost:5432/documind`) run `docker compose up postgres`, then run the migrate step once with the owner's URL given only to it: `MIGRATION_DATABASE_URL=postgresql+psycopg2://documind:change-me@localhost:5432/documind python migrate.py` (from `backend/`). The backend connects only as `documind_app`, which row-level security applies to; it refuses to start on a superuser or table-owner connection, or with `MIGRATION_DATABASE_URL` set. In Docker, the one-shot `migrate` service does this before the backend starts.
+Outside Docker the backend still needs Postgres with pgvector, because the chunks live there: set `DATABASE_URL` to the `finpilot_app` role (e.g. `postgresql+psycopg2://finpilot_app:change-me-too@localhost:5432/finpilot`) run `docker compose up postgres`, then run the migrate step once with the owner's URL given only to it: `MIGRATION_DATABASE_URL=postgresql+psycopg2://finpilot:change-me@localhost:5432/finpilot python migrate.py` (from `backend/`). The backend connects only as `finpilot_app`, which row-level security applies to; it refuses to start on a superuser or table-owner connection, or with `MIGRATION_DATABASE_URL` set. In Docker, the one-shot `migrate` service does this before the backend starts.
 
 ## Authentication and access control
 
@@ -175,9 +175,9 @@ Outside Docker the backend still needs Postgres with pgvector, because the chunk
 
 - **Deny by default.** No valid token: 401. A valid token whose user has no row, no org, or `active=false`: 403 on everything except `GET /me`, which always answers and says why (`unknown_user`, `no_org`, `inactive`). `/health` is open and reports nothing about the data.
 - **Roles.** Viewers ask questions and give feedback. Editors and admins also upload and change a document's access (`PATCH /documents/{doc_id}/access`), never into a team they're not in or above their own clearance. `/admin/*` is admin-only, also checks with Firebase that the token wasn't revoked, and shows only the admin's own org. LLM diagnostics (per-model request counts, token usage, raw provider errors) are returned only to admins.
-- **Row-level security does the filtering, not Python.** The app connects as `documind_app`, a role that isn't the table owner, isn't a superuser and can't bypass RLS; the backend refuses to start otherwise. Every transaction first sets `app.org_id`, `app.clearance` and `app.team_ids` for that transaction only (`set_config(..., true)`), from the user just loaded. `chunks` and `documents` (and the query and feedback logs, by org) are under `FORCE ROW LEVEL SECURITY` with one policy: same org, clearance at or below the user's, and the team empty (org-wide) or one of the user's. Both retrieval legs (the HNSW vector search with iterative scans, and the full-text search) run under it. A transaction with no context sees no rows.
+- **Row-level security does the filtering, not Python.** The app connects as `finpilot_app`, a role that isn't the table owner, isn't a superuser and can't bypass RLS; the backend refuses to start otherwise. Every transaction first sets `app.org_id`, `app.clearance` and `app.team_ids` for that transaction only (`set_config(..., true)`), from the user just loaded. `chunks` and `documents` (and the query and feedback logs, by org) are under `FORCE ROW LEVEL SECURITY` with one policy: same org, clearance at or below the user's, and the team empty (org-wide) or one of the user's. Both retrieval legs (the HNSW vector search with iterative scans, and the full-text search) run under it. A transaction with no context sees no rows.
 - **The `documents` table is the source of truth for access.** An upload writes the document's org, team and clearance (required, no default) and its chunks in one transaction, the chunks copying those values from the document row. An access change updates the document and every chunk in one statement, so they can't drift apart.
-- **Owner credentials never reach the app.** Migrations, setting `documind_app`'s password and the embedding-model check run as a separate one-shot step (`backend/migrate.py`; the `migrate` service in docker-compose, which the backend waits for). The backend gets only `DATABASE_URL` and refuses to start if `MIGRATION_DATABASE_URL` is in its environment.
+- **Owner credentials never reach the app.** Migrations, setting `finpilot_app`'s password and the embedding-model check run as a separate one-shot step (`backend/migrate.py`; the `migrate` service in docker-compose, which the backend waits for). The backend gets only `DATABASE_URL` and refuses to start if `MIGRATION_DATABASE_URL` is in its environment.
 
 ### Setting up the first admin
 

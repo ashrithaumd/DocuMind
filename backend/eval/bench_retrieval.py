@@ -43,7 +43,7 @@ are not evidence about retrieval quality.
 
 The index is built from eval/sample.pdf with the app's own extraction and
 chunking, in Postgres (pgvector + full-text search) at --database-url
-(default DATABASE_URL, the documind_app role), migrated first as the owner
+(default DATABASE_URL, the finpilot_app role), migrated first as the owner
 (--migration-database-url, default MIGRATION_DATABASE_URL). Searches run
 under row-level security as a 'bench' org, like a real request, so the
 policy's cost is in the numbers. Use an empty database per
@@ -219,7 +219,7 @@ async def main() -> int:
     parser.add_argument("--warmup", type=int, default=1, help="Discarded searches per question")
     parser.add_argument("--embed-reps", type=int, default=3, help="Timed embed calls per question")
     parser.add_argument("--database-url", default=None,
-                        help="App (documind_app) Postgres URL (default: DATABASE_URL)")
+                        help="App (finpilot_app) Postgres URL (default: DATABASE_URL)")
     parser.add_argument("--migration-database-url", default=None,
                         help="Owner Postgres URL for migrations (default: MIGRATION_DATABASE_URL)")
     parser.add_argument("--out", default=None, help="Write the results as JSON here")

@@ -80,7 +80,7 @@ body {
   overflow: hidden;
 }
 
-/* ── Upload panel ──────────────────────────────────────────────── */
+/* ── Side panel ──────────────────────────────────────────────── */
 .upload-panel {
   width: 280px;
   flex-shrink: 0;
@@ -105,24 +105,6 @@ body {
   margin: -8px 0 0;
 }
 
-.file-drop {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  border: 2px dashed var(--border);
-  border-radius: var(--radius);
-  padding: 20px 12px;
-  cursor: pointer;
-  text-align: center;
-  font-size: 13px;
-  color: var(--muted);
-  transition: border-color 0.15s;
-}
-.file-drop:hover { border-color: var(--accent); color: var(--text); }
-
-.file-icon { font-size: 28px; }
-
 .upload-btn {
   width: 100%;
   padding: 10px;
@@ -137,15 +119,6 @@ body {
 }
 .upload-btn:hover:not(:disabled) { background: var(--accent-hover); }
 .upload-btn:disabled { opacity: 0.45; cursor: not-allowed; }
-
-.upload-success {
-  font-size: 13px;
-  color: var(--success);
-  line-height: 1.5;
-  background: rgba(52, 211, 153, 0.08);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-}
 
 .upload-error {
   font-size: 13px;
@@ -452,16 +425,6 @@ body {
   padding: 0 5px;
 }
 
-/* ── Upload warnings (partial extraction) ──────────────────────── */
-.upload-warning {
-  font-size: 13px;
-  color: #fbbf24;
-  background: rgba(251, 191, 36, 0.08);
-  border-radius: var(--radius);
-  padding: 10px 12px;
-  line-height: 1.5;
-}
-
 /* ── Sign-in and account screens ───────────────────────────────── */
 .auth-screen {
   display: flex;
@@ -482,14 +445,14 @@ body {
 
 .auth-card h1 { margin: 0 0 16px; font-size: 20px; color: var(--accent); }
 .auth-form { display: flex; flex-direction: column; gap: 14px; }
-.auth-form label, .access-fields label {
+.auth-form label {
   display: flex;
   flex-direction: column;
   gap: 6px;
   font-size: 13px;
   color: var(--muted);
 }
-.auth-form input, .access-fields select {
+.auth-form input {
   padding: 9px 11px;
   border: 1px solid var(--border);
   border-radius: 8px;
@@ -498,8 +461,6 @@ body {
   font: inherit;
 }
 .auth-reason, .auth-signed-in { color: var(--muted); font-size: 13px; }
-.access-fields { display: flex; gap: 12px; margin: 12px 0; }
-.access-fields label { flex: 1; }
 
 .user-badge { margin-left: auto; color: var(--muted); font-size: 13px; }
 .link-btn {

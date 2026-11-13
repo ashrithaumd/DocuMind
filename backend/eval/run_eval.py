@@ -1,6 +1,6 @@
 """RAGAS evaluation harness.
 
-Runs the hand-written QA set (dataset.json) against a LIVE DocuMind API — the
+Runs the hand-written QA set (dataset.json) against a LIVE FinPilot API — the
 same code path users hit, not a parallel re-implementation — then scores the
 results with RAGAS:
 
@@ -29,9 +29,9 @@ Usage:
        (repo-root .env) through the Firebase REST API and refreshes the token
        as needed; /query returns llm_usage and full error text for the report
        only to admins.
-    2. Upload the sample document once:  see --ingest below (it goes into
-       the eval org, at --clearance).
-    3. python eval/run_eval.py [--api http://localhost:8000] [--ingest] [--out-dir DIR] [--resume]
+    2. Load the documents the dataset asks about into the eval org (there is
+       no upload API; the corpus loader writes documents).
+    3. python eval/run_eval.py [--api http://localhost:8000] [--out-dir DIR] [--resume]
 
 Outputs results.jsonl, report.json and report.md (default: eval/).
 """
@@ -478,7 +478,7 @@ def write_reports(out_dir: Path, dataset: dict, dataset_name: str, samples: list
     )
 
     lines = [
-        "# DocuMind RAGAS Evaluation Report",
+        "# FinPilot RAGAS Evaluation Report",
         "",
         f"Dataset: `{dataset_name}` over `{dataset['document']}` — {summary['questions']} questions: "
         f"{summary['answered']} answered, {summary['refused']} refused, "
@@ -552,16 +552,8 @@ def main() -> int:
         help="Where report.json / report.md are written (default: eval/)",
     )
     parser.add_argument(
-        "--ingest", action="store_true",
-        help="Upload eval/sample.pdf to the API before querying",
-    )
-    parser.add_argument(
         "--resume", action="store_true",
         help=f"Continue from OUT_DIR/{RESULTS_FILE}, skipping finished questions",
-    )
-    parser.add_argument(
-        "--clearance", type=int, default=0,
-        help="Clearance of the --ingest upload (the eval admin's must be at least this)",
     )
     args = parser.parse_args()
 
@@ -581,18 +573,6 @@ def main() -> int:
     dataset = json.loads(Path(args.dataset).read_text(encoding="utf-8"))
     client = httpx.Client(auth=eval_admin_auth())
 
-    if args.ingest:
-        pdf_path = EVAL_DIR / dataset["document"]
-        with pdf_path.open("rb") as fh:
-            response = client.post(
-                f"{args.api}/upload",
-                files={"file": (pdf_path.name, fh, "application/pdf")},
-                data={"clearance": str(args.clearance)},  # org-wide, in the eval org
-                timeout=300,
-            )
-        response.raise_for_status()
-        print(f"Ingested {pdf_path.name}: {response.json()}")
-
     judging: dict = {}
 
     def score(sample: dict) -> str | None:
@@ -609,7 +589,7 @@ def main() -> int:
 
     answered = [s for s in samples if s["outcome"] == "answered"]
     if not answered:
-        print("Nothing answered, nothing to score — did you forget --ingest?")
+        print("Nothing answered, nothing to score — are the documents loaded?")
     calls = call_accounting(samples)
 
     summary = summarize(samples, stop_reasons)

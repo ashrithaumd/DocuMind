@@ -1,6 +1,6 @@
 """Create the eval org and make EVAL_ADMIN_EMAIL an admin in it. Idempotent.
 
-Runs as the owner role, like the migrate step: the app role (documind_app)
+Runs as the owner role, like the migrate step: the app role (finpilot_app)
 can only read the user tables, so it can't create an admin. Also how the
 first admin of a fresh database is created.
 

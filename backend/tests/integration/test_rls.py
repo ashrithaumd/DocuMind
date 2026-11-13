@@ -1,5 +1,5 @@
 """Row-level security on chunks and documents (migration 0004), on real
-Postgres, with the app connected as documind_app.
+Postgres, with the app connected as finpilot_app.
 
 The corpus, seeded by the owner (5 documents, every chunk mentions pumps so
 both retrieval legs match all of them):
@@ -129,7 +129,7 @@ def test_viewers_cannot_upload(client, corpus):
     assert response.status_code == 403
 
 
-# --- documind_app can't get around the policy ---------------------------------
+# --- finpilot_app can't get around the policy ---------------------------------
 
 @pytest.fixture
 def app_conn(corpus, app_url):
@@ -255,7 +255,7 @@ def test_app_role_password_with_quotes_and_percent_signs_is_set_safely(pg_url, a
                                              migration_database_url=pg_url, embedding_dimensions=32))
         engine = sa.create_engine(url)
         with engine.connect() as conn:
-            assert conn.execute(sa.text("SELECT current_user")).scalar() == "documind_app"
+            assert conn.execute(sa.text("SELECT current_user")).scalar() == "finpilot_app"
         engine.dispose()
     finally:  # restore the password the rest of the suite uses
         db_session.migrate_database(Settings(_env_file=None, database_url=app_url,

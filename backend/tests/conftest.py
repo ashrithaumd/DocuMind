@@ -15,7 +15,7 @@ viewer instead (see test_rls.py), never through that default admin.
 
 Postgres roles: migrations run as the TEST_POSTGRES_URL user (the owner,
 pg_url), as their own step before the app starts, like the migrate service;
-the app connects as documind_app (app_url), so RLS applies to it, and never
+the app connects as finpilot_app (app_url), so RLS applies to it, and never
 sees MIGRATION_DATABASE_URL.
 """
 import pytest
@@ -28,9 +28,9 @@ from tests.helpers import FakeEmbeddings, FakeLLM, FakeTokenChecker
 
 TEST_ORG = "org-test"
 TEST_UID = "uid-test"
-# documind_app is cluster-wide; every test database's migration sets this
+# finpilot_app is cluster-wide; every test database's migration sets this
 # password on it (db.session._sync_app_role_password).
-APP_ROLE_PASSWORD = "documind-app-test"
+APP_ROLE_PASSWORD = "finpilot-app-test"
 
 
 @pytest.fixture
@@ -109,11 +109,11 @@ def client(app_env, pg_url):
 
 @pytest.fixture
 def app_url(pg_url):
-    """pg_url's database, as the documind_app role (exists once migrated)."""
+    """pg_url's database, as the finpilot_app role (exists once migrated)."""
     import sqlalchemy as sa
 
     return sa.engine.make_url(pg_url).set(
-        username="documind_app", password=APP_ROLE_PASSWORD).render_as_string(hide_password=False)
+        username="finpilot_app", password=APP_ROLE_PASSWORD).render_as_string(hide_password=False)
 
 
 @pytest.fixture
@@ -131,7 +131,7 @@ def pg_url():
         if os.environ.get("REQUIRE_POSTGRES_TESTS"):  # CI: a skip would hide the tests
             pytest.fail("REQUIRE_POSTGRES_TESTS is set but TEST_POSTGRES_URL is not")
         pytest.skip("TEST_POSTGRES_URL not set (needs a pgvector Postgres)")
-    name = f"documind_test_{uuid.uuid4().hex[:12]}"
+    name = f"finpilot_test_{uuid.uuid4().hex[:12]}"
     admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
         conn.execute(sa.text(f'CREATE DATABASE "{name}"'))

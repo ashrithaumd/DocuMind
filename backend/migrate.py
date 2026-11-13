@@ -1,7 +1,7 @@
 """The one-shot migrate step: run it before the backend starts.
 
 As the owner role (MIGRATION_DATABASE_URL): migrate the schema to head, set
-documind_app's password from DATABASE_URL, and check that the stored vectors
+finpilot_app's password from DATABASE_URL, and check that the stored vectors
 come from the configured embedding model. Exits non-zero on any failure.
 
 docker-compose runs it as the `migrate` service, which the backend waits for
@@ -23,7 +23,7 @@ def main() -> int:
     settings = get_settings()
     if not settings.migration_database_url or not settings.database_url:
         print("migrate.py needs MIGRATION_DATABASE_URL (the owner) and DATABASE_URL "
-              "(documind_app, for its password).", file=sys.stderr)
+              "(finpilot_app, for its password).", file=sys.stderr)
         return 2
     migrate_database(settings)
     print("Migrations done.")

@@ -4,12 +4,8 @@ impossible, clearance has no default, a chunk needs its documents row, and
 downgrade restores the 0002 schema without touching chunk data."""
 import pytest
 import sqlalchemy as sa
-from alembic import command
-from alembic.config import Config
 from sqlalchemy.exc import IntegrityError, ProgrammingError
 
-from config import Settings
-from db.session import ALEMBIC_INI
 
 NEW_TABLES = {"orgs", "teams", "users", "team_memberships", "documents"}
 VEC = "[" + ",".join(["0.1"] * 384) + "]"
@@ -17,20 +13,6 @@ NOT_NULL_VIOLATION, FOREIGN_KEY_VIOLATION = "23502", "23503"
 
 CHUNK_COLUMNS = ("chunk_id, doc_id, filename, page_number, chunk_index, text, "
                  "embedding_model, embedding")
-
-
-@pytest.fixture
-def at():
-    """Run alembic on an engine to a given revision."""
-    def run(engine, revision, downgrade=False):
-        settings = Settings(_env_file=None, database_url=engine.url.render_as_string(hide_password=False),
-                            embedding_provider="local")
-        config = Config(str(ALEMBIC_INI))
-        with engine.begin() as conn:
-            config.attributes["connection"] = conn
-            config.attributes["settings"] = settings
-            (command.downgrade if downgrade else command.upgrade)(config, revision)
-    return run
 
 
 @pytest.fixture
@@ -170,32 +152,12 @@ def test_0008_moves_the_grants_to_finpilot_app_and_back(pg_url, at):
 
 # --- a Neon-style owner -------------------------------------------------------------
 
-NEON_LIKE_OWNER = "neon_like_owner"
-
-
-def test_a_non_superuser_owner_migrates_and_stays_under_customer_rls(pg_url, at):
+def test_a_non_superuser_owner_migrates_and_stays_under_customer_rls(neon_like_owner_url, at):
     """Neon has no superuser: its owner role has CREATEROLE and CREATEDB (and
     BYPASSRLS on newer projects). Without BYPASSRLS, the strictest case, it
     must still run every migration, and FORCE ROW LEVEL SECURITY must apply
     to it: customer rows go in only inside that customer's context."""
-    admin = sa.create_engine(pg_url)
-    database = admin.url.database
-    with admin.begin() as conn:
-        # Neon allows CREATE EXTENSION vector to its owner; plain Postgres
-        # needs a superuser for it, so the server's admin does it first.
-        conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
-        # shortcut: the role is cluster-wide and outlives the test database;
-        # fine on CI's throwaway server, drop it by hand on a shared one.
-        if not conn.execute(sa.text("SELECT 1 FROM pg_roles WHERE rolname = :r"),
-                            {"r": NEON_LIKE_OWNER}).scalar():
-            conn.execute(sa.text(f"CREATE ROLE {NEON_LIKE_OWNER} LOGIN PASSWORD 'neon-like' "
-                                 "NOSUPERUSER NOBYPASSRLS CREATEROLE CREATEDB"))
-        conn.execute(sa.text(f'ALTER DATABASE "{database}" OWNER TO {NEON_LIKE_OWNER}'))
-        conn.execute(sa.text(f"GRANT ALL ON SCHEMA public TO {NEON_LIKE_OWNER}"))
-    admin.dispose()
-
-    owner = sa.create_engine(sa.engine.make_url(pg_url).set(
-        username=NEON_LIKE_OWNER, password="neon-like"))
+    owner = sa.create_engine(neon_like_owner_url)
     at(owner, "head")
     with owner.begin() as conn:
         assert conn.execute(sa.text("SELECT rolsuper OR rolbypassrls FROM pg_roles "

@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 4 of 22** (budget pending your choice of 20 or 22; see the plan).
+**Commits: 5 of 22** (budget pending your choice of 20 or 22; see the plan).
 
 ## Phase 0: cleanup and rename (done)
 
@@ -36,12 +36,12 @@ enterprise build, its eval baselines and decisions) is in git history: see
   (backend tests without Postgres, frontend lint and build); GitHub CI runs
   the full Postgres suite on every push.
 
-## Phase 1: customer data (in progress)
+## Phase 1: customer data (done; PR #1 waits for you)
 
 | # | Commit | What |
 |---|---|---|
-| 1 | this commit | Migration 0009 (customers, accounts, cards, transactions, fees, holdings, securities, prices), per-customer RLS via `app.customer_id`, `users.customer_id`, leakage tests, a Neon-style owner test |
-| 2 | next | Seeded synthetic generator and its loader |
+| 1 | `223f0ae` | Migration 0009 (customers, accounts, cards, transactions, fees, holdings, securities, prices), per-customer RLS via `app.customer_id`, `users.customer_id`, leakage tests, a Neon-style owner test |
+| 2 | this commit | Seeded synthetic generator and its loader (`backend/bank/synthetic.py`); the schema test learns the new tables (CI failure on commit 1) |
 
 ### Notes
 
@@ -55,4 +55,14 @@ enterprise build, its eval baselines and decisions) is in git history: see
   `CREATEDB` but neither superuser nor `BYPASSRLS` (stricter than Neon's
   owner), and checks that FORCE RLS applies to it: customer rows go in only
   inside that customer's context. The loader (next commit) writes that way.
-- **Not run locally** (no Postgres here); CI runs these tests.
+- **The generator** (seed 7, 50 customers): 12 months from 2025-07-01,
+  about 24,000 transactions, 790 fees, 19 holdings, in under a second. The
+  fee schedule changes on 2026-02-01 (overdraft $34 → $15, NSF fee
+  dropped, a $50 overdraft cushion); every fee matches the schedule in force
+  on its date, and the same numbers go into the bank's fee-schedule
+  documents. Each customer has one canary transaction.
+- **The loader** writes each customer in one transaction bound to that
+  customer, deleting with an explicit `customer_id` filter (an owner with
+  BYPASSRLS isn't limited by the policy) and upserting the customer row.
+  Tested as the superuser and as an owner without BYPASSRLS.
+- **Not run locally** (no Postgres here); CI runs the Postgres tests.

@@ -141,3 +141,50 @@ def pg_url():
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         admin.dispose()
+
+
+NEON_LIKE_OWNER = "neon_like_owner"
+
+
+@pytest.fixture
+def neon_like_owner_url(pg_url):
+    """pg_url's database, owned by a role like Neon's owner but stricter: not
+    a superuser, no BYPASSRLS, with CREATEROLE and CREATEDB. Not migrated."""
+    import sqlalchemy as sa
+
+    admin = sa.create_engine(pg_url)
+    with admin.begin() as conn:
+        # Neon lets its owner CREATE EXTENSION vector; plain Postgres needs a
+        # superuser, so the server's admin does it first.
+        conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # shortcut: the role is cluster-wide and outlives the test database;
+        # fine on CI's throwaway server, drop it by hand on a shared one.
+        if not conn.execute(sa.text("SELECT 1 FROM pg_roles WHERE rolname = :r"),
+                            {"r": NEON_LIKE_OWNER}).scalar():
+            conn.execute(sa.text(f"CREATE ROLE {NEON_LIKE_OWNER} LOGIN PASSWORD 'neon-like' "
+                                 "NOSUPERUSER NOBYPASSRLS CREATEROLE CREATEDB"))
+        conn.execute(sa.text(f'ALTER DATABASE "{admin.url.database}" OWNER TO {NEON_LIKE_OWNER}'))
+        conn.execute(sa.text(f"GRANT ALL ON SCHEMA public TO {NEON_LIKE_OWNER}"))
+    admin.dispose()
+    return sa.engine.make_url(pg_url).set(username=NEON_LIKE_OWNER, password="neon-like") \
+        .render_as_string(hide_password=False)
+
+
+@pytest.fixture
+def at():
+    """Run alembic on an engine to a given revision (as that engine's role)."""
+    from alembic import command
+    from alembic.config import Config
+
+    from config import Settings
+    from db.session import ALEMBIC_INI
+
+    def run(engine, revision, downgrade=False):
+        settings = Settings(_env_file=None, database_url=engine.url.render_as_string(hide_password=False),
+                            embedding_provider="local")
+        config = Config(str(ALEMBIC_INI))
+        with engine.begin() as conn:
+            config.attributes["connection"] = conn
+            config.attributes["settings"] = settings
+            (command.downgrade if downgrade else command.upgrade)(config, revision)
+    return run

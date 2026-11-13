@@ -1,124 +1,20 @@
 # FinPilot
 
-Ask questions about your documents (PDF, DOCX, TXT). Answers cite the source, and when the document doesn't contain the answer, you get a refusal instead of a guess.
+A banking assistant for the customers of a fictional bank. It answers from the customer's own data (accounts, cards, transactions, fees, holdings), the bank's documents (fee schedules, policies, agreements, rate tables, its API spec) and public market and regulatory data, with every answer planned, run through tools, validated and traced.
 
-## What it does
+**Status: Phase 0 of 12.** What runs today is the retrieval core FinPilot is built on (inherited from DocuMind): hybrid pgvector + full-text search with reciprocal rank fusion, a LangGraph pipeline that refuses rather than guesses (relevance grading, generation, a groundedness check), Firebase sign-in, and row-level security in Postgres. The plan, the architecture checklist (data sources, restructuring, chunking, metadata, Neon, retrieval, planner and agents, validation, evaluation, red-teaming) and the phase-by-phase commit budget are in [docs/FINPILOT_PLAN.md](docs/FINPILOT_PLAN.md); progress is in [docs/PROGRESS.md](docs/PROGRESS.md).
 
-Upload documents, ask questions about them in a chat UI. Answers are generated only from text retrieved out of the documents and carry inline citations. If retrieval finds nothing useful, or the generated answer can't be verified against the retrieved text, the system returns an explicit refusal. Queries are scoped to the document you choose (defaulting to the most recent upload), PII in questions is masked before any model call, small talk is answered without running the pipeline at all, and every query is logged to Postgres — with a thumbs up/down feedback loop feeding quality aggregates in `/admin/stats`.
+## What exists today
 
-**Model stack**: Google Gemini (API free tier, no billing) powers every LLM reasoning call by default — generation and the relevance and groundedness checks all on `gemini-3.5-flash-lite` (`gemini-3.6-flash` is an opt-in for demos). Anthropic Claude remains a drop-in alternative behind the same gateway (`LLM_PROVIDER=anthropic`: `claude-opus-4-8` / `claude-haiku-4-5`). Embeddings come from `gemini-embedding-2` (1536 dimensions) on the same free-tier key by default. Local sentence-transformers (`all-MiniLM-L6-v2`, `EMBEDDING_PROVIDER=local`) remains an offline, keyless alternative. Chunks, their vectors and their full-text index live in Postgres with pgvector. See "Why this pairing" below.
-
-## Architecture
-
-Three services under docker compose:
-
-- `frontend` - React + TypeScript (Vite), served by nginx, which also proxies `/api` to the backend
-- `backend` - FastAPI running a LangGraph pipeline
-- `postgres` - `pgvector/pgvector:0.8.7-pg16`: the chunk store (pgvector HNSW index for the dense leg, a stored `tsvector` for full-text search), plus the query/audit log and feedback. The schema is managed by Alembic and migrated at backend startup.
-
-```mermaid
-flowchart TD
-    subgraph ingestion [Ingestion]
-        A[PDF / DOCX / TXT upload] --> B[validate: file type, size, page count, extractable text]
-        B --> C[format-specific text extraction: pypdf / python-docx / plain read]
-        C --> D[chunking: 600 tokens, 90-token overlap]
-        D --> E[embeddings: gemini-embedding-2, or local all-MiniLM-L6-v2]
-        E --> F[(Postgres chunks: pgvector + full-text tsvector)]
-    end
-
-    subgraph query [Query pipeline: LangGraph, fixed topology]
-        H[question] --> I[1. input validation + PII redaction]
-        I -- empty or oversized --> S
-        I --> RQ[2. route: document question or small talk?]
-        RQ -- small talk --> ST[canned reply, zero model calls] --> S
-        RQ --> J[3. retrieve within doc scope: dense + full-text, RRF fusion]
-        J --> K[4. relevance grading, gemini-3.5-flash-lite]
-        K -- not relevant --> R[refuse]
-        K -- relevant --> L[5. generate with citations, gemini-3.5-flash-lite]
-        L --> M[6. groundedness check, gemini-3.5-flash-lite]
-        M -- fails, first time --> L
-        M -- fails again --> R
-        M -- passes --> S[7. stream out, SSE]
-        R --> S
-    end
-
-    F --> J
-    S --> P[(Postgres query log + feedback)]
-```
-
-## Design decisions
-
-### Why this pairing: free-tier Gemini for reasoning and embeddings
-
-Every reasoning call — relevance grading, answer generation, the groundedness check — goes through one gateway module (`backend/llm.py`) with two operations: `complete_text` for generation and `complete_json` for the checkers. No pipeline code touches a provider SDK. Two providers implement that interface, Gemini (default) and Anthropic, and `LLM_PROVIDER` picks one at startup. The project has switched providers twice (OpenAI → Anthropic → Gemini); each time the change stayed inside the gateway and config, not the pipeline.
-
-Gemini is the default because its API free tier (a Google AI Studio key, no billing) runs the whole pipeline at zero cost. The trade is free-tier capacity: per-model rate limits and highly variable latency (see Known limitations). The gateway absorbs the transient part with bounded exponential backoff on 429 and 503 errors, logged per attempt. A per-day quota error fails fast instead, and its quota ID and limit are logged.
-
-By default generation and both checkers run on `gemini-3.5-flash-lite`. The project's usual split puts generation on a stronger model; on the Gemini free tier that would be `gemini-3.6-flash`, which allows only 20 requests a day. The eval baseline has to be re-run after several phases with the same generator, and development traffic shares that quota, so a 20-a-day generator would make every comparison take days. The resume-critical retrieval metrics (recall@k, MRR, ACL leakage, `retrieval_ms`) don't depend on the generator. `GENERATION_MODEL=gemini-3.6-flash` is available for demos. Both checker calls use the provider's structured output: Gemini's `response_json_schema`, Anthropic's JSON-schema output format. The reply must validate against a schema, which is strictly stronger than JSON-mode-and-hope. The checkers also run at the lowest thinking level Gemini allows (`GRADING_THINKING_LEVEL=minimal`), while generation keeps the model's default. Whatever the provider, a refusal, safety block, truncated or malformed checker reply fails safe: `{}` is read as "no", and an empty generation fails the groundedness gate. Model choices live in config (`GENERATION_MODEL`, `GRADING_MODEL`, `EMBEDDING_MODEL`), not code. When `GENERATION_MODEL` and `GRADING_MODEL` are empty, each provider has its own defaults, so switching providers is one variable.
-
-Embeddings are configured separately from the LLM (`EMBEDDING_PROVIDER`), so switching LLMs never invalidates the index; Anthropic has no embeddings API, so `LLM_PROVIDER=anthropic` still embeds with Gemini (or locally). The default is `gemini-embedding-2` at 1536 dimensions: it takes 8,192 input tokens, so a 600-token chunk is embedded whole (MiniLM stops at 256 word-pieces), and 1536 fits pgvector's 2,000-dimension HNSW limit. On the free tier every text counts as one request against a 100-per-minute limit (measured from a 429), so batching saves round trips, not quota. `EMBEDDING_PROVIDER=local` runs `all-MiniLM-L6-v2` on the CPU: free, keyless and offline after a ~90 MB download, at the cost of loading torch into the backend. Vectors from different models aren't comparable, so the store records which model built the index and the backend refuses to start against a mismatched one.
-
-### Document scoping: one document by default, never silently the whole corpus
-
-Every chunk row carries its `doc_id`, and both retrieval legs filter on it in SQL. The dense leg's filter runs on an approximate HNSW index, which can return fewer rows than asked once the filter discards candidates, so it uses pgvector's iterative index scans and re-sorts the results by exact distance. The query API takes an optional `doc_ids` list; when it's omitted, the scope defaults to the **single most recent upload**, not everything ever ingested. Querying the whole corpus by default invites answers stitched together from unrelated documents; widening the scope is an explicit act (checkboxes in the UI). The scope actually used is logged with every query.
-
-The document list itself is derived from the `chunks` table (each row stores an `uploaded_at` timestamp) rather than kept in a separate table: the chunks already hold everything needed, and a registry would be a second source of truth to keep in sync.
-
-### Multi-format ingestion behind one interface
-
-Every format implements the same contract: bytes in, a list of per-page texts out. Everything downstream of extraction — chunking, embedding, storage, retrieval — is format-agnostic and did not change when DOCX and TXT were added. PDF is the only format with real page numbers; DOCX and TXT return one "page", so their citations degrade to the filename instead of breaking. Unsupported extensions are rejected at upload with a specific 400 listing the supported formats.
-
-### Chunking: per page, 600 tokens, 90-token overlap
-
-Pages are split independently, so every chunk maps to exactly one page number and a citation like "p. 12" is always exact for PDFs. The cost is that no chunk spans a page break, which is acceptable for a citation-first system. 600 tokens is enough for a self-contained passage, and the six chunks that survive fusion fit easily in the generation prompt.
-
-### Hybrid retrieval with reciprocal rank fusion
-
-Dense retrieval (cosine distance on pgvector's HNSW index) handles paraphrase; Postgres full-text search handles exact tokens that embeddings dilute, like part numbers, acronyms, and proper nouns. The retriever takes 12 candidates from each leg and fuses them with RRF (`score = sum of 1/(60 + rank)`), keeping the top 6. RRF only uses ranks, which avoids having to calibrate two incomparable score scales against each other. Equal fused scores are broken dense-first (a chunk the dense leg found, then by dense rank).
-
-The full-text leg uses the `english` configuration (stemming and stop words) and ranks with `ts_rank_cd`. Its query matches **any** term, not all of them: `plainto_tsquery` ANDs every word, and on the eval set the gold page of only 4 of 14 questions contained every query term, so an AND query would leave the sparse leg silent on most questions. Both legs live in the same table as the chunks, so there is no second index to rebuild at startup or keep in sync across replicas.
-
-Phase 1 replaced Chroma and an in-memory BM25 index with this design; the before/after comparison is in `docs/PROGRESS.md`.
-
-### No reranker yet
-
-A cross-encoder reranker is the obvious next retrieval improvement, but it costs latency and another model dependency. The plan is to add one if and when the eval's context-precision score shows that retrieval ordering is the bottleneck. Until there's data saying so, it stays out.
-
-### Query routing: a heuristic, deliberately not an LLM classifier
-
-A routing node in front of retrieval classifies each input as a document question or small talk; greetings and thank-yous get a canned reply with **zero** model calls instead of a full retrieve/grade/generate run that would end in a confusing refusal. The classifier is an anchored regex over whole messages, not a cheap-LLM classification call, for three reasons: an LLM classifier would add cost and latency to *every real query* to catch cases the pipeline already handles safely (a genuinely off-topic question flows through grading and gets a clean refusal); the mistake costs are asymmetric, and the regex is shaped for that — it only fires when the *entire* message is conversational, so "hello, what does section 3 say?" goes through the pipeline, while a missed greeting merely wastes one cheap pipeline run; and a pure function of the input string is replayable and unit-testable, which fits the fixed-pipeline discipline. Which path was taken (`routed_direct` vs `full_pipeline`) is logged with every query.
-
-### PII redaction: regex-based v1, applied at the front door
-
-A redaction step masks emails, phone numbers, SSN-like and credit-card-like patterns in the question (inside input validation) and in retrieved chunk text (once, at the retrieve node) — so the redacted version is what reaches **every** LLM call *and* the Postgres log. The audit log records that redaction happened and which categories were hit, never the matched values.
-
-This is deliberately basic: four regex patterns tuned for precision over recall, no NLP entity recognition, US-centric phone/SSN formats, and no detection of names or addresses. Two consequences worth knowing: retrieval runs on the redacted question, so searching *for* an email address in a document won't match; and PII can still appear in citation snippets shown in the UI, since those come from the user's own uploaded document. If this were going to production, the upgrade path is a dedicated detector with the same mask-and-categorize contract — Microsoft Presidio is the obvious drop-in, or a cloud DLP API.
-
-### Feedback loop: one verdict per query, upserted
-
-Each answer gets thumbs up/down controls (with an optional comment on thumbs-down). Feedback rows live in their own Postgres table keyed to the query log row — and there is exactly **one** feedback row per query, upserted, so adding a comment or changing your mind updates the verdict instead of double-counting it. `/admin/stats` surfaces the aggregates: total feedback, thumbs-down percentage, and the most recent negative-feedback queries with their comments. That is the quality-drift tripwire: a climbing thumbs-down rate flags degrading answers before any outcome count would.
-
-### A fixed pipeline, not an agent
-
-LangGraph here is eight nodes with all edges declared up front. The conditional edges route on deterministic values — a regex verdict and booleans from cheap grading calls — never on a model choosing tools at runtime. Any logged query can be replayed: which path it took and why is fully determined by the recorded state. Cost is bounded and predictable: zero LLM calls for a rejected question or small talk, three on the normal path (grade, generate, groundedness), five in the worst case (a failed check re-runs generation and the check once).
-
-### Refusal instead of hallucination
-
-This was a design goal, not error handling added later. There are three typed non-answer outcomes, each logged distinctly (plus `small_talk` for the routed-direct path):
-
-- `rejected_input` - empty or oversized question, stopped before any model call
-- `refused_no_context` - grading judged the retrieved chunks unable to answer the question; the user sees "I don't have enough information in this document to answer that" (or a prompt to upload a document, if nothing has been ingested yet)
-- `refused_ungrounded` - the answer failed the groundedness check twice (one retry with the unsupported claims fed back)
-
-Uploads fail loudly too: unsupported file types, files over 20 MB, PDFs over 300 pages, encrypted PDFs, scanned PDFs with no extractable text, and empty DOCX/TXT files each get a specific 400. An embedding provider at capacity during ingestion (quota, overload, timeout) returns a 503 saying to retry later; any other embedding or indexing failure is a server-side problem and returns a 500 saying exactly that.
-
-### Answers are verified before they stream
-
-Raw LLM tokens are never forwarded to the client, because an answer that fails the groundedness check would have to be retracted mid-stream. Instead the SSE stream emits a progress event as each pipeline stage completes, then the verified answer. This costs time-to-first-token and buys never showing the user text that gets taken back.
+- **Retrieval.** Every chunk is stored once in Postgres with a pgvector embedding (`gemini-embedding-2` by default, or local `all-MiniLM-L6-v2`) and a full-text index. A query runs both legs and fuses them with reciprocal rank fusion. Questions are scoped to chosen documents (the newest one by default).
+- **Pipeline.** Input validation and PII masking, a small-talk shortcut, retrieval, a relevance grade, generation with inline citations, and a groundedness check with one retry; anything that fails becomes an explicit refusal. Answers stream only after they pass the check.
+- **Access.** Firebase identifies the user; Postgres decides what they may see (below). The bank's documents carry a clearance: 0 for customer-facing, 2 for staff-only.
+- **Documents** come only from a loader (the bank corpus loader arrives in Phase 3); there is no upload. Embedding is paced under the Gemini free tier's limits (`backend/ingestion/pacing.py`).
+- **Observability.** Every query is logged with its route, retrieved chunks, verdicts and per-stage timings; `/admin/logs` and `/admin/stats` read them, and users give thumbs up/down feedback.
 
 ## Setup
 
-You need Docker and a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey); the free tier is enough, no billing required. The key powers all LLM reasoning (generation and the grading/groundedness checks, all on `gemini-3.5-flash-lite` by default) and the default embeddings (`gemini-embedding-2`). With `EMBEDDING_PROVIDER=local`, embeddings need no key: the sentence-transformers model (~90 MB) is downloaded from HuggingFace on first startup and cached in a Docker volume after that. Changing the embedding provider, model or dimension needs a fresh database and a re-upload of your documents.
+You need Docker and a Gemini API key from [Google AI Studio](https://aistudio.google.com/apikey); the free tier is enough, no billing required. The key powers all LLM reasoning (generation and the grading/groundedness checks, all on `gemini-3.5-flash-lite` by default) and the default embeddings (`gemini-embedding-2`). With `EMBEDDING_PROVIDER=local`, embeddings need no key: the sentence-transformers model (~90 MB) is downloaded from HuggingFace on first startup and cached in a Docker volume after that. Changing the embedding provider, model or dimension needs a fresh database and a reload of the documents.
 
 ```bash
 cp .env.example .env
@@ -174,9 +70,9 @@ Outside Docker the backend still needs Postgres with pgvector, because the chunk
 **Firebase identifies the user; Postgres decides what they may see.** The web UI and the eval harness sign in with Firebase email/password and send the ID token as `Authorization: Bearer ...` on every call. The backend checks the token with the Firebase Admin SDK (allowing 5 seconds of clock skew, `FIREBASE_CLOCK_SKEW_SECONDS`), then loads the user's row from Postgres on every request: org, teams, role (`viewer`, `editor`, `admin`), integer clearance (higher sees more) and an `active` flag. Nothing about access lives in Firebase custom claims, so a change applies on the user's next request, not at their next token refresh.
 
 - **Deny by default.** No valid token: 401. A valid token whose user has no row, no org, or `active=false`: 403 on everything except `GET /me`, which always answers and says why (`unknown_user`, `no_org`, `inactive`). `/health` is open and reports nothing about the data.
-- **Roles.** Viewers ask questions and give feedback. Editors and admins also upload and change a document's access (`PATCH /documents/{doc_id}/access`), never into a team they're not in or above their own clearance. `/admin/*` is admin-only, also checks with Firebase that the token wasn't revoked, and shows only the admin's own org. LLM diagnostics (per-model request counts, token usage, raw provider errors) are returned only to admins.
+- **Roles.** Viewers ask questions and give feedback. There is no upload or access-change API: documents come only from the loader, which writes as an editor or admin of the bank's org. `/admin/*` is admin-only, also checks with Firebase that the token wasn't revoked, and shows only the admin's own org. LLM diagnostics (per-model request counts, token usage, raw provider errors) are returned only to admins.
 - **Row-level security does the filtering, not Python.** The app connects as `finpilot_app`, a role that isn't the table owner, isn't a superuser and can't bypass RLS; the backend refuses to start otherwise. Every transaction first sets `app.org_id`, `app.clearance` and `app.team_ids` for that transaction only (`set_config(..., true)`), from the user just loaded. `chunks` and `documents` (and the query and feedback logs, by org) are under `FORCE ROW LEVEL SECURITY` with one policy: same org, clearance at or below the user's, and the team empty (org-wide) or one of the user's. Both retrieval legs (the HNSW vector search with iterative scans, and the full-text search) run under it. A transaction with no context sees no rows.
-- **The `documents` table is the source of truth for access.** An upload writes the document's org, team and clearance (required, no default) and its chunks in one transaction, the chunks copying those values from the document row. An access change updates the document and every chunk in one statement, so they can't drift apart.
+- **The `documents` table is the source of truth for access.** Loading a document writes its org, team and clearance (required, no default) and its chunks in one transaction, the chunks copying those values from the document row, so they can't drift apart.
 - **Owner credentials never reach the app.** Migrations, setting `finpilot_app`'s password and the embedding-model check run as a separate one-shot step (`backend/migrate.py`; the `migrate` service in docker-compose, which the backend waits for). The backend gets only `DATABASE_URL` and refuses to start if `MIGRATION_DATABASE_URL` is in its environment.
 
 ### Setting up the first admin
@@ -188,21 +84,9 @@ Outside Docker the backend still needs Postgres with pgvector, because the chunk
 
 ### Known limitations of the access model
 
-- A document belongs to one team or to the whole org; it can't be shared with two teams.
 - Clearance is a single ordered level with no compartments: a user at level N sees everything at N or below in their org and teams.
 - Firebase's revoked-token check is a network call, so only `/admin/*` makes it. Elsewhere a revoked token keeps working until it expires (at most an hour); setting `users.active=false` is the immediate off switch everywhere.
 - The embedding-model check in the migrate step reads every org's chunks, so the migration role must be able to bypass RLS (true for the Docker Postgres owner, a superuser).
-
-## Observability
-
-Every query writes one row to Postgres: the (redacted) question, answer, outcome, which route it took (`full_pipeline` or `routed_direct`), which doc_ids retrieval was scoped to, whether PII redaction fired and for which categories, the retrieved chunk IDs with cosine similarity, RRF score, and per-leg (dense/full-text) ranks, both checker verdicts, whether a regeneration happened, and timings for each stage (`retrieval_ms`, `grading_ms`, `generation_ms`, `groundedness_ms`, `total_ms`).
-
-- `GET /admin/logs?limit=20` - recent query rows, newest first
-- `GET /admin/stats` - outcome counts, route counts, feedback aggregates (thumbs-down % and recent negative-feedback queries), and avg/p50/p95 latency per stage over the last 200 queries
-
-These exist to make failures detectable in production. A rising `refused_no_context` rate means retrieval is coming back empty-handed; a rising `refused_ungrounded` rate means generation is drifting from its context; a climbing thumbs-down percentage means users disagree with answers the pipeline thought were fine; a p95 spike in one stage column shows where latency went. Logging is fail-open: each log write is guarded, so a failed write logs a warning and the query is still served. (Since Phase 1 the backend can't run without Postgres at all, because the chunks live there.)
-
-Schema note: the schema is managed by Alembic (`backend/migrations/`) and migrated to head at startup. A database created before Alembic existed is adopted at the baseline revision first.
 
 ## Testing
 
@@ -212,81 +96,27 @@ pip install -r requirements-dev.txt
 python -m pytest tests
 ```
 
-`tests/unit/` covers chunking edge cases (empty/single-sentence/boundary-sized documents), input validation (empty and oversized queries), file-type validation for all supported and rejected formats, doc-scoping logic (explicit scope, default-to-newest, empty corpus), PII redaction patterns (including false-positive guards on normal technical text), and the small-talk classifier in both directions.
+`tests/unit/` covers chunking edge cases (empty/single-sentence/boundary-sized documents), input validation (empty and oversized queries), file-type validation for all supported and rejected formats, doc-scoping logic (explicit scope, default-to-newest, empty corpus), PII redaction patterns (including false-positive guards on normal technical text), the small-talk classifier in both directions, and the embedding pacing used by the loaders.
 
-`tests/integration/` runs the real ingestion path (tiny real PDF/DOCX/TXT files into the Postgres + pgvector chunk store, a fresh database per test; embeddings stubbed, everything else real) and the full query path through the FastAPI app with LLM calls replaced by a deterministic fake of the LLM gateway: the small-talk shortcut (asserting **zero** LLM calls), the grading-fails refusal, the ungrounded-retry-then-refuse path (asserting the documented five-call worst case), the normal answer path (asserting checkers ride `GRADING_MODEL` and generation rides `GENERATION_MODEL`), doc scoping end to end, PII never reaching a prompt or the log, and the feedback upsert with its stats aggregates. CI runs these against a `pgvector/pgvector:0.8.7-pg16` service container (the compose image) and fails if the Postgres tests would skip; locally, set `TEST_POSTGRES_URL` to a pgvector database. Unit tests that only need the log tables run on SQLite.
+`tests/integration/` runs the store (documents and chunks into Postgres + pgvector, a fresh database per test; embeddings stubbed, everything else real), row-level security as the app role, and the full query path through the FastAPI app with LLM calls replaced by a deterministic fake of the LLM gateway: the small-talk shortcut (asserting **zero** LLM calls), the grading-fails refusal, the ungrounded-retry-then-refuse path (asserting the documented five-call worst case), the normal answer path (asserting checkers ride `GRADING_MODEL` and generation rides `GENERATION_MODEL`), doc scoping end to end, PII never reaching a prompt or the log, and the feedback upsert with its stats aggregates. CI runs these against a `pgvector/pgvector:0.8.7-pg16` service container (the compose image) and fails if the Postgres tests would skip; locally, set `TEST_POSTGRES_URL` to a pgvector database. Unit tests that only need the log tables run on SQLite.
 
 `tests/unit/test_llm_gateway.py` runs both real gateway classes, Gemini and Anthropic, against stubbed SDK clients through one shared contract. It covers text and structured-JSON calls, fail-safe results on refusal/block/truncation/malformed output, bounded backoff on rate limits (including Gemini's server-suggested retry delay and fail-fast on daily quotas), checker-only thinking config, and provider selection.
 
 The suite runs in GitHub Actions on every push (`.github/workflows/tests.yml`), needs no secrets, and costs nothing. The RAGAS eval is deliberately **not** part of it — see below.
 
-## Evaluation
-
-`backend/eval/` contains 14 hand-written question/answer pairs (`dataset.json`) over `eval/sample.pdf`, a five-page fictional operations manual generated for this repo. The harness (`run_eval.py`) sends each question to the live API, the same code path users hit, then scores the results with RAGAS on two metrics:
-
-- **Faithfulness** - are the answer's claims supported by the retrieved chunks? This is an independent check on the pipeline's own groundedness gate.
-- **Context precision** - did retrieval rank the truly relevant chunks at the top? This is the number that would justify adding a reranker.
-
-The judge follows `LLM_PROVIDER`; override it with `JUDGE_MODEL`:
-
-- **Gemini (default):** `gemini-3.1-flash-lite` (a stable, pinned ID) via `langchain-google-genai`. It's a different model from the app's, so judge calls draw on a separate per-model rate-limit bucket. Generator and judge are both small Flash-Lite models, so self-preference bias in the scores is possible; every report carries that caveat. RAGAS normally forces `temperature=0.01` on judge calls, but Google recommends keeping Gemini 3 models at their default 1.0, so the wrapper runs with `bypass_temperature=True` and judge calls carry no temperature. The resulting variance is why the baseline reports 3 passes with min/max (decision recorded in `docs/PROGRESS.md`). Judge concurrency is capped at 2 for free-tier rate limits (`JUDGE_WORKERS` overrides).
-- **Anthropic:** `claude-sonnet-4-6` via `langchain-anthropic`. It's not `claude-opus-4-8` because RAGAS's forced temperature gets a 400 from Opus 4.8; Sonnet 4.6 is the strongest Claude that still accepts sampling parameters.
-
-The eval stays a separate, manually-run step. It isn't folded into pytest or CI because it needs a real provider key and makes live model calls. To (re)generate the report:
-
-```bash
-docker compose up -d
-cd backend
-.venv/Scripts/pip install -r eval/requirements.txt
-.venv/Scripts/python eval/run_eval.py --ingest
-```
-
-This uploads `sample.pdf`, runs all 14 questions, and writes `eval/report.md` and `eval/report.json` with per-question scores and means. Questions the pipeline refuses are excluded from scoring and reported separately, since a refusal is a distinct outcome rather than a zero. (`--ingest` also makes `sample.pdf` the most recent upload, so default document scoping points the eval at the right document.)
-
-The retrieval latency baseline comes from a separate, LLM-free benchmark: `python eval/bench_retrieval.py --embeddings gemini --database-url URL --out FILE.json` indexes `sample.pdf` into an empty pgvector database and times the store's hybrid search on a stored query vector (`search_ms`, 1 warm-up plus 20 timed calls per question) and the query embedding separately (`embed_ms`), reporting n and p50/p95/p99 plus per-leg ranking quality (MRR, recall@1/@3 against gold pages). It isn't distorted by free-tier queueing, so `search_ms` is the number to compare after storage changes. It is not the pipeline's `retrieval_ms`, which also includes the query embedding, the default-scope lookup and chunk redaction.
-
-Each report records the git commit it ran on and any uncommitted changes, and, when the harness calls the API as an admin (the only callers who get LLM diagnostics), per-role prompt/output/thinking tokens measured from the provider's usage metadata. `python eval/count_grading_tokens.py RESULTS_JSONL` counts the grading call's input tokens with Gemini's countTokens, with full excerpts and with the old 700-character cut.
-
-Each question is scored as soon as it's answered and its record is appended to `results.jsonl` in the output directory (`--out-dir`, default `eval/`), so a killed run keeps every finished question. Re-run with `--resume` to skip finished questions (refused, or answered and fully scored) and retry the rest; without `--resume` the harness refuses to overwrite an existing `results.jsonl`.
-
-**Current result (pgvector + `gemini-embedding-2`, after the grader fix; `docs/baseline/phase1/ragas_c_fix/`):** 14 of 14 questions answered, 0 refused; faithfulness 0.964 (14/14), context precision 0.929 (14/14). Before the fix, the relevance grader saw only the first 700 characters of each excerpt and refused two answerable questions whose answers sit later in their chunk; the earlier "2 of 14 refused" results were those false refusals, not correct refusals. The two 0.5 context-precision scores come from an RRF tie broken dense-first.
-
-Read these numbers with their caveats:
-
-- **Tiny corpus.** One small fictional document, 5 chunks, 14 questions. It can't tell embedding models apart.
-- **Judge variance.** Faithfulness isn't stable even on this set. Re-judging Q7's stored answer, a near-verbatim restatement of its source sentence, gave 1.0, 1.0, 0.0, 1.0, 1.0 (`python eval/rejudge_faithfulness.py`, which keeps each statement's verdict). Q7 alone can move the faithfulness mean between 0.929 and 1.0. Only Q7 was re-judged; three passes before the fix gave identical scores on the 12 questions answered then.
-- **Small models on both sides.** Generator and judge are both Gemini Flash-Lite models, so self-preference bias is possible.
-
-The Phase 0/1 comparison runs and the token cost of the fix are in `docs/PROGRESS.md`; reports are under `docs/baseline/`.
-
-Note on pins: the eval uses `ragas>=0.4,<0.5`. Older ragas (0.2/0.3) requires the langchain-core 0.3 line, which conflicts with the langchain-core 1.x that langgraph 1.x needs, so 0.4 is the version that lets the app and the eval share one environment. `langchain-community` is pinned to 0.4.1 because ragas 0.4.3 imports a module (`chat_models.vertexai`) that 0.4.2 removed.
-
 ## API
 
 | Endpoint | Purpose |
 |---|---|
-| `POST /upload` | Validate and ingest a PDF/DOCX/TXT; 400 with a specific reason on bad input |
-| `GET /documents` | Uploaded documents, newest first; the first entry is the default query scope |
-| `POST /query` | Full pipeline, single JSON response. Body: `{question, doc_ids?}`; omitting `doc_ids` scopes to the newest upload. Returns `query_id` for feedback |
+| `GET /documents` | Documents the caller can see, newest first; the first entry is the default query scope |
+| `POST /query` | Full pipeline, single JSON response. Body: `{question, doc_ids?}`; omitting `doc_ids` scopes to the newest document. Returns `query_id` for feedback |
 | `POST /query/stream` | SSE: one `stage` event per completed node, then the verified answer as `token` events, then `citations` and `done` (which carries `query_id`) |
-| `POST /feedback` | `{query_id, thumbs_up, comment?}` — upserts the verdict for that query |
-| `GET /admin/logs` | Recent query logs |
+| `POST /feedback` | `{query_id, thumbs_up, comment?}`: upserts the verdict for that query |
+| `GET /admin/logs` | Recent query logs of the admin's org |
 | `GET /admin/stats` | Outcome/route counts, feedback aggregates, per-stage latency percentiles |
-| `GET /health` | Liveness and indexed chunk count |
+| `GET /me` | Who the token belongs to and whether they're set up |
+| `GET /health` | Liveness |
 
-## Known limitations
+## Free-tier limits
 
-- **Formats**: only PDF, DOCX, and TXT. CSV, HTML, and structured clinical/financial formats (e.g. FHIR bundles) are future work, not built now, and deliberately so — each needs structure-aware handling (rows and headers, DOM semantics, typed resources), not just text extraction, and pretending a CSV is prose would produce confidently wrong retrieval. The extraction interface is one function per format, so adding them is contained.
-- **DOCX**: text inside tables is skipped (the upload response warns when that happens), and DOCX/TXT have no page numbers, so their citations point at the file rather than a page.
-- Scanned or image-only PDFs are rejected at upload with a clear error. There is no OCR.
-- **PII redaction is a basic v1**: four regex patterns (email, phone, SSN-like, card-like), precision-tuned and US-centric. It does not catch names, addresses, unseparated digit runs, or non-US formats, retrieval runs on the redacted query (searching for an email address won't match it), and citation snippets in the UI can still show PII from the user's own document. Production upgrade path: Microsoft Presidio or a cloud DLP API behind the same mask-and-categorize contract.
-- **The small-talk classifier is an English-centric pattern list.** A French "bonjour" runs the full pipeline and gets a refusal — safe, just not free.
-- **Embedding truncation (local provider only)**: `all-MiniLM-L6-v2` embeds at most 256 word-pieces, so with `EMBEDDING_PROVIDER=local` the dense leg sees roughly the first half of a 600-token chunk (full-text search still sees all of it). `gemini-embedding-2`, the default, embeds the whole chunk.
-- **Embedding quality isn't measured yet.** The eval document has 5 chunks, too few to tell `gemini-embedding-2` from MiniLM (see Evaluation); that comparison waits for a larger corpus.
-- **Query embedding is a network call** with the Gemini provider: about 290 ms p50 on the free tier, against about 14 ms for local MiniLM, and it dominates in-pipeline `retrieval_ms`.
-- No reranker. See above for the trigger that would add one.
-- Postgres is single-node with no HA. At much larger document volumes the plan would be queue-based ingestion, an embedding cache keyed by chunk hash, and sampled rather than per-query groundedness checks.
-- The groundedness check is itself an LLM judgment (`gemini-3.5-flash-lite` by default), a strong spot-check but not a proof. The offline faithfulness metric exists as an independent audit of it.
-- No way to delete a document yet short of deleting its rows (as the owner). Access limits are listed under "Authentication and access control".
-- **Gemini free tier**: rate limits are per project and per model, set in Google AI Studio, and reset daily at midnight Pacific. `gemini-3.6-flash` allows 20 requests/day (measured from a 429), and failed attempts count against it, which is why it isn't the default generator. Latency varies widely; an identical small checker call has measured anywhere from 0.7s to 47s, and 503 "high demand" responses are common. Backoff makes this survivable, not fast. Paid tiers or `LLM_PROVIDER=anthropic` remove the constraint. Free-tier usage may also be used to improve Google's products, so don't upload sensitive documents on the free tier.
-- Time-to-first-token on document questions is a full pipeline run, which is the price of verifying answers before streaming them. (Small talk returns instantly — it skips the pipeline.)
+All reasoning and embeddings run on the Gemini free tier. Limits are per project and per model and reset at midnight Pacific; failed attempts count against them. Measured so far: `gemini-3.6-flash` 20 requests/day (why it isn't the default), `gemini-3.5-flash-lite` 15 requests/minute, embeddings about 100 texts and 30,000 tokens a minute. Latency varies widely and 503 "high demand" responses are common; backoff makes this survivable, not fast. Free-tier usage may be used to improve Google's products, so no real customer data ever goes in: FinPilot's customers are synthetic.

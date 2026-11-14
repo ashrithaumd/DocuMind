@@ -50,7 +50,7 @@ class TokenChecker(Protocol):
 
 
 class FirebaseTokenChecker:
-    APP_NAME = "documind"
+    APP_NAME = "finpilot"
 
     def __init__(self, settings: Settings):
         import firebase_admin
@@ -110,6 +110,7 @@ class Principal:
     role: str
     clearance: int
     team_ids: tuple[str, ...]
+    customer_id: str | None = None  # set for bank customers; None for staff
 
 
 _bearer = HTTPBearer(auto_error=False)
@@ -167,6 +168,7 @@ async def _principal(credentials, check_revoked: bool) -> Principal:
     return Principal(
         user_id=user["user_id"], firebase_uid=user["firebase_uid"], org_id=user["org_id"],
         role=user["role"], clearance=user["clearance"], team_ids=tuple(user["team_ids"]),
+        customer_id=user.get("customer_id"),
     )
 
 
@@ -176,6 +178,6 @@ async def get_me(credentials: HTTPAuthorizationCredentials | None = Depends(_bea
     reason = _not_set_up(user)
     me = {"firebase_uid": uid, "set_up": reason is None, "reason": reason}
     if reason is None:
-        me |= {k: user[k] for k in ("user_id", "org_id", "role", "clearance")}
+        me |= {k: user.get(k) for k in ("user_id", "org_id", "role", "clearance", "customer_id")}
         me["team_ids"] = list(user["team_ids"])
     return me

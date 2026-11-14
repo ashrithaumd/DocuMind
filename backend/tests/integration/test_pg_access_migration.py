@@ -4,12 +4,8 @@ impossible, clearance has no default, a chunk needs its documents row, and
 downgrade restores the 0002 schema without touching chunk data."""
 import pytest
 import sqlalchemy as sa
-from alembic import command
-from alembic.config import Config
-from sqlalchemy.exc import IntegrityError
+from sqlalchemy.exc import IntegrityError, ProgrammingError
 
-from config import Settings
-from db.session import ALEMBIC_INI
 
 NEW_TABLES = {"orgs", "teams", "users", "team_memberships", "documents"}
 VEC = "[" + ",".join(["0.1"] * 384) + "]"
@@ -17,20 +13,6 @@ NOT_NULL_VIOLATION, FOREIGN_KEY_VIOLATION = "23502", "23503"
 
 CHUNK_COLUMNS = ("chunk_id, doc_id, filename, page_number, chunk_index, text, "
                  "embedding_model, embedding")
-
-
-@pytest.fixture
-def at():
-    """Run alembic on an engine to a given revision."""
-    def run(engine, revision, downgrade=False):
-        settings = Settings(_env_file=None, database_url=engine.url.render_as_string(hide_password=False),
-                            embedding_provider="local")
-        config = Config(str(ALEMBIC_INI))
-        with engine.begin() as conn:
-            config.attributes["connection"] = conn
-            config.attributes["settings"] = settings
-            (command.downgrade if downgrade else command.upgrade)(config, revision)
-    return run
 
 
 @pytest.fixture
@@ -148,3 +130,46 @@ def test_downgrade_restores_0002_and_keeps_chunks(head, at):
         assert conn.execute(sa.text("SELECT count(*) FROM chunks")).scalar() == 1
     at(head, "head")  # and it upgrades again
     assert NEW_TABLES <= _tables(head)
+
+
+def _can_read_chunks(engine, role) -> bool:
+    with engine.connect() as conn:
+        return conn.execute(sa.text("SELECT has_table_privilege(:r, 'chunks', 'SELECT')"),
+                            {"r": role}).scalar()
+
+
+def test_0008_moves_the_grants_to_finpilot_app_and_back(pg_url, at):
+    engine = sa.create_engine(pg_url)
+    at(engine, "head")
+    assert _can_read_chunks(engine, "finpilot_app")
+    assert not _can_read_chunks(engine, "documind_app")
+
+    at(engine, "0007", downgrade=True)
+    assert _can_read_chunks(engine, "documind_app")
+    assert not _can_read_chunks(engine, "finpilot_app")
+    engine.dispose()
+
+
+# --- a Neon-style owner -------------------------------------------------------------
+
+def test_a_non_superuser_owner_migrates_and_stays_under_customer_rls(neon_like_owner_url, at):
+    """Neon has no superuser: its owner role has CREATEROLE and CREATEDB (and
+    BYPASSRLS on newer projects). Without BYPASSRLS, the strictest case, it
+    must still run every migration, and FORCE ROW LEVEL SECURITY must apply
+    to it: customer rows go in only inside that customer's context."""
+    owner = sa.create_engine(neon_like_owner_url)
+    at(owner, "head")
+    with owner.begin() as conn:
+        assert conn.execute(sa.text("SELECT rolsuper OR rolbypassrls FROM pg_roles "
+                                    "WHERE rolname = current_user")).scalar() is False
+        conn.execute(sa.text("INSERT INTO orgs VALUES ('bank', 'Bank')"))
+
+    insert = sa.text("INSERT INTO customers VALUES ('c1', 'bank', 'C One', 'retail', '2025-01-01')")
+    with pytest.raises(ProgrammingError, match="row-level security"), owner.begin() as conn:
+        conn.execute(insert)
+    with owner.begin() as conn:
+        conn.execute(sa.text("SELECT set_config('app.customer_id', 'c1', true)"))
+        conn.execute(insert)
+    with owner.connect() as conn:
+        assert conn.execute(sa.text("SELECT count(*) FROM customers")).scalar() == 0
+    owner.dispose()

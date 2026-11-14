@@ -1,4 +1,4 @@
-# DocuMind backend — FastAPI + LangGraph pipeline.
+# FinPilot backend — FastAPI + LangGraph pipeline.
 # Same Python as the backend/.venv that produced the Phase 0 baseline.
 FROM python:3.12.8-slim
 

@@ -45,13 +45,13 @@ from dotenv import dotenv_values
 REPO = Path(__file__).resolve().parents[1]
 LOCAL_API = "http://127.0.0.1:8011"
 LOCAL_PG_PORT = 5440
-LOCAL_DB = f"postgresql+psycopg2://documind:documind@localhost:{LOCAL_PG_PORT}/documind"
-# The local backend connects as documind_app (RLS applies); this throwaway
+LOCAL_DB = f"postgresql+psycopg2://finpilot:finpilot@localhost:{LOCAL_PG_PORT}/finpilot"
+# The local backend connects as finpilot_app (RLS applies); this throwaway
 # password is set on the role by the migration step at startup.
-LOCAL_APP_DB = f"postgresql+psycopg2://documind_app:livecheck@localhost:{LOCAL_PG_PORT}/documind"
+LOCAL_APP_DB = f"postgresql+psycopg2://finpilot_app:livecheck@localhost:{LOCAL_PG_PORT}/finpilot"
 TEST_EMAIL_DOMAIN = "@documind.test"
-CONTAINER = "documind-livecheck-fb"
-LOG = Path(tempfile.gettempdir()) / "documind_live_backend.log"
+CONTAINER = "finpilot-livecheck-fb"
+LOG = Path(tempfile.gettempdir()) / "finpilot_live_backend.log"
 
 ENV = dotenv_values(REPO / ".env")
 
@@ -112,11 +112,11 @@ def start_local_stack() -> subprocess.Popen:
     step("Start throwaway Postgres + backend on :8011")
     subprocess.run(["docker", "rm", "-f", CONTAINER], capture_output=True)
     subprocess.run(["docker", "run", "-d", "--rm", "--name", CONTAINER,
-                    "-e", "POSTGRES_USER=documind", "-e", "POSTGRES_PASSWORD=documind",
-                    "-e", "POSTGRES_DB=documind", "-p", f"{LOCAL_PG_PORT}:5432",
+                    "-e", "POSTGRES_USER=finpilot", "-e", "POSTGRES_PASSWORD=finpilot",
+                    "-e", "POSTGRES_DB=finpilot", "-p", f"{LOCAL_PG_PORT}:5432",
                     "pgvector/pgvector:0.8.7-pg16"], check=True, capture_output=True)
     for _ in range(30):
-        if subprocess.run(["docker", "exec", CONTAINER, "pg_isready", "-U", "documind", "-q"]).returncode == 0:
+        if subprocess.run(["docker", "exec", CONTAINER, "pg_isready", "-U", "finpilot", "-q"]).returncode == 0:
             break
         time.sleep(1)
     time.sleep(2)  # the image restarts once after init

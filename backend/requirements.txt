@@ -1,4 +1,4 @@
-# DocuMind backend - application dependencies.
+# FinPilot backend - application dependencies.
 # Eval-only extras (RAGAS etc.) live in eval/requirements.txt so the
 # runtime image stays small.
 

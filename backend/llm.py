@@ -1,4 +1,4 @@
-"""The single LLM gateway. Every model call in DocuMind goes through this
+"""The single LLM gateway. Every model call in FinPilot goes through this
 module — pipeline nodes never touch a provider SDK directly, so swapping
 providers (as this project has done twice: OpenAI -> Anthropic -> Gemini)
 means changing LLM_PROVIDER, not call sites.

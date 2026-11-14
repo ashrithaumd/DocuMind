@@ -1,12 +1,17 @@
-# DocuMind — full local stack. `docker compose up --build` brings up:
+# FinPilot — full local stack. `docker compose up --build` brings up:
 #   frontend  (nginx-served Vite build, proxies /api -> backend)
-#   migrate   (one-shot: migrations, documind_app's password, embedding-model
+#   migrate   (one-shot: migrations, finpilot_app's password, embedding-model
 #              check, as the owner; the backend waits for it to succeed)
-#   backend   (FastAPI + LangGraph pipeline; connects only as documind_app)
+#   backend   (FastAPI + LangGraph pipeline; connects only as finpilot_app)
 #   postgres  (pgvector: chunk store with vector + full-text search, and the
 #              query/audit log; persisted in a named volume)
 #
 # Secrets come from .env (see .env.example) — never hardcoded here.
+
+# Pinned project name: Compose otherwise names it after the folder, and the
+# volumes after the project (documind_postgres_data, documind_hf_cache). The
+# folder was renamed DocuMind -> FinPilot; this keeps the existing volumes.
+name: documind
 
 services:
   frontend:
@@ -29,9 +34,9 @@ services:
     command: ["python", "migrate.py"]
     environment:
       # The owner's credentials live only here, never in the backend.
-      MIGRATION_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-documind}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
-      # Read for documind_app's password, which this step sets.
-      DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
+      MIGRATION_DATABASE_URL: postgresql+psycopg2://${POSTGRES_USER:-finpilot}:${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-finpilot}
+      # Read for finpilot_app's password, which this step sets.
+      DATABASE_URL: postgresql+psycopg2://finpilot_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-finpilot}
       # The vector column's size and the model check follow these, so they
       # must match the backend's.
       EMBEDDING_PROVIDER: ${EMBEDDING_PROVIDER:-gemini}
@@ -63,9 +68,9 @@ services:
       # The Firebase service account key, mounted read-only below from the
       # host path in .env; never copied into the image or the repo.
       GOOGLE_APPLICATION_CREDENTIALS: /run/secrets/firebase-key.json
-      # Only the documind_app role (row-level security applies to it). The
+      # Only the finpilot_app role (row-level security applies to it). The
       # backend refuses to start if MIGRATION_DATABASE_URL is set.
-      DATABASE_URL: postgresql+psycopg2://documind_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-documind}
+      DATABASE_URL: postgresql+psycopg2://finpilot_app:${APP_DB_PASSWORD:?Set APP_DB_PASSWORD in .env (see .env.example)}@postgres:5432/${POSTGRES_DB:-finpilot}
     volumes:
       - type: bind
         source: ${GOOGLE_APPLICATION_CREDENTIALS:?Set GOOGLE_APPLICATION_CREDENTIALS in .env to the key file on this machine}
@@ -83,13 +88,13 @@ services:
     # Postgres 16 with pgvector 0.8.7 (iterative index scans need >= 0.8).
     image: pgvector/pgvector:0.8.7-pg16
     environment:
-      POSTGRES_USER: ${POSTGRES_USER:-documind}
+      POSTGRES_USER: ${POSTGRES_USER:-finpilot}
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?Set POSTGRES_PASSWORD in .env (see .env.example)}
-      POSTGRES_DB: ${POSTGRES_DB:-documind}
+      POSTGRES_DB: ${POSTGRES_DB:-finpilot}
     volumes:
       - postgres_data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-documind}"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-finpilot}"]
       interval: 3s
       timeout: 3s
       retries: 10

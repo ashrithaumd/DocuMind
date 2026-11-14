@@ -51,12 +51,12 @@ class Settings(BaseSettings):
     google_cloud_location: str = "us-central1"
 
     # --- Postgres: chunk store (pgvector + full-text) and query log ---
-    # Required: the chunks live here. The app connects as the documind_app
+    # Required: the chunks live here. The app connects as the finpilot_app
     # role, which row-level security applies to; the store refuses to start
     # on a superuser, BYPASSRLS or table-owner connection.
     database_url: str | None = None
     # The owner role, for the one-shot migrate step only (migrate.py): it
-    # runs the migrations and sets documind_app's password from DATABASE_URL.
+    # runs the migrations and sets finpilot_app's password from DATABASE_URL.
     # The backend refuses to start if this is set in its environment.
     migration_database_url: str | None = None
 

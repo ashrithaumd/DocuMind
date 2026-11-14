@@ -26,7 +26,7 @@ class GraphState(TypedDict, total=False):
     route: str
 
     # retrieve — the scope actually used: the requested doc_ids, or the most
-    # recent upload when the caller didn't specify any
+    # recent document when the caller didn't specify any
     scoped_doc_ids: list[str]
 
     # retrieve — each chunk is a plain dict (chunk_id, text, filename,

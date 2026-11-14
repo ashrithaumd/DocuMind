@@ -2,3 +2,5 @@
 pytest==9.1.1
 pytest-asyncio==1.4.0
 httpx==0.28.1
+# Reads data/bank/manifest.yaml and the OpenAPI spec in the corpus tests (also a transitive app dependency).
+PyYAML==6.0.3

@@ -139,6 +139,22 @@ async def test_gemini_retries_rate_limits_and_counts_every_attempt():
     assert "EmbedContentRequestsPerMinute" in usage["failures"][0]["error"]
 
 
+async def test_gemini_counts_texts_on_every_attempt():
+    # The free tier charges every text in every request, so a retried batch
+    # counts twice (the corpus loader reports this number).
+    provider, embed = _gemini(
+        gemini_error(429, quota_id="EmbedContentTokensPerMinutePerProjectPerModel-FreeTier"),
+        _reply([1, 0], [0, 1], [1, 1]),
+        dimension=2,
+    )
+
+    with track_usage() as usage:
+        await provider.embed_documents(["a", "b", "c"])
+
+    assert usage["embedding_texts_per_model"] == {"gemini-embedding-2": 6}
+    assert usage["attempts_per_model"] == {"gemini-embedding-2": 2}
+
+
 async def test_gemini_daily_quota_is_not_retried():
     provider, embed = _gemini(gemini_error(429, quota_id="EmbedContentRequestsPerDayPerProjectPerModel"))
 

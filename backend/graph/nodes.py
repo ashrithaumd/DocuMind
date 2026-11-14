@@ -30,7 +30,7 @@ REFUSAL_NO_CONTEXT = (
     "I don't have enough information in this document to answer that."
 )
 REFUSAL_NO_DOCUMENTS = (
-    "No documents have been uploaded yet. Upload a PDF first, then ask again."
+    "No documents have been loaded yet, so there is nothing to answer from."
 )
 REFUSAL_UNGROUNDED = (
     "I couldn't produce an answer that is fully supported by the document, "
@@ -114,7 +114,7 @@ async def retrieve_node(state: GraphState) -> dict:
     # Bound to the caller: RLS limits both legs and the listing to their rows.
     store = get_store().scoped(state.get("access"))
 
-    # Default scope is the single most recent upload, NOT the whole corpus —
+    # Default scope is the single most recent document, NOT the whole corpus —
     # querying everything by default invites answers stitched from unrelated
     # documents. Callers widen the scope explicitly by passing doc_ids.
     scoped = state.get("doc_ids") or []
@@ -147,7 +147,7 @@ async def retrieve_node(state: GraphState) -> dict:
 
 _GRADE_SYSTEM = """\
 You are a relevance grader for a document Q&A system.
-Given a user question and excerpts retrieved from uploaded documents, decide
+Given a user question and excerpts retrieved from documents, decide
 whether the excerpts contain information that can actually answer the question.
 Topical similarity is NOT enough — the excerpts must contain the substance of
 an answer. Reply with JSON: {"relevant": true} or {"relevant": false}."""
@@ -188,7 +188,7 @@ def route_after_grade(state: GraphState) -> str:
 # --- 4. generate ---------------------------------------------------------------
 
 _GENERATE_SYSTEM = """\
-You answer questions about uploaded documents.
+You answer questions about documents.
 
 Rules:
 - Use ONLY the numbered excerpts below. Never use outside knowledge.

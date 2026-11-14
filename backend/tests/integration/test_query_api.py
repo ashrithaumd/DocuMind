@@ -6,27 +6,19 @@ Each test runs against its own fresh Postgres + pgvector database (the
 chunk store and the query log), with the LLM and embeddings faked.
 """
 from db import session as db_session
-from tests.helpers import make_docx
+from tests.helpers import add_text_document
 
 
 def _ingest_two_docs(client):
-    """Two small docs with disjoint vocabulary; returns their doc_ids."""
-    first = client.post(
-        "/upload",
-        files={"file": ("reactor.txt",
-                        b"The reactor manual covers cooling. Cooling pumps run at 400 RPM.",
-                        "text/plain")},
-        data={"clearance": "0"},
-    ).json()
-    second = client.post(
-        "/upload",
-        files={"file": ("handbook.docx",
-                        make_docx(["The HR handbook covers vacation.",
-                                   "Vacation days accrue at 1.5 per month."]),
-                        "application/vnd.openxmlformats-officedocument.wordprocessingml.document")},
-        data={"clearance": "0"},
-    ).json()
-    return first["doc_id"], second["doc_id"]
+    """Two small docs with disjoint vocabulary, the handbook newest; returns their doc_ids."""
+    from tests.conftest import TEST_ORG
+
+    first = add_text_document("The reactor manual covers cooling. Cooling pumps run at 400 RPM.",
+                              "reactor.txt", org_id=TEST_ORG)
+    second = add_text_document("The HR handbook covers vacation. "
+                               "Vacation days accrue at 1.5 per month.",
+                               "handbook.txt", org_id=TEST_ORG)
+    return first, second
 
 
 def _last_log():
@@ -47,7 +39,7 @@ def test_small_talk_skips_pipeline_entirely(client, app_env):
     body = response.json()
     assert body["outcome"] == "small_talk"
     assert body["route"] == "routed_direct"
-    assert "DocuMind" in body["answer"]
+    assert "FinPilot" in body["answer"]
     assert body["chunks"] == [] and body["citations"] == []
 
     # The whole point: zero LLM traffic on this path.
@@ -79,11 +71,11 @@ def test_grading_fails_refusal(client, app_env):
     assert row["grounded"] is None
 
 
-def test_empty_corpus_refusal_mentions_upload(client, app_env):
+def test_empty_corpus_refusal_says_nothing_is_loaded(client, app_env):
     app_env.relevant = False
     body = client.post("/query", json={"question": "What does the doc say?"}).json()
     assert body["outcome"] == "refused_no_context"
-    assert "No documents have been uploaded yet" in body["answer"]
+    assert "No documents have been loaded yet" in body["answer"]
 
 
 # --- normal generate + groundedness path ----------------------------------------
@@ -134,11 +126,11 @@ def test_ungrounded_retries_once_then_refuses(client, app_env):
 # --- doc scoping -----------------------------------------------------------------
 
 
-def test_default_scope_is_newest_upload(client, app_env):
+def test_default_scope_is_newest_document(client, app_env):
     reactor_id, handbook_id = _ingest_two_docs(client)
 
     body = client.post("/query", json={"question": "cooling pumps RPM"}).json()
-    # Default = newest upload (the handbook), NOT the whole corpus — so the
+    # Default = newest document (the handbook), NOT the whole corpus — so the
     # reactor content must not be retrieved even though it matches the query.
     assert body["doc_ids"] == [handbook_id]
     assert all(c["chunk_id"].startswith(handbook_id) for c in body["chunks"])

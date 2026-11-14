@@ -13,10 +13,7 @@ PROTECTED = [
     ("get", "/documents", {}),
     ("post", "/query", {"json": {"question": "hi"}}),
     ("post", "/query/stream", {"json": {"question": "hi"}}),
-    ("post", "/upload", {"files": {"file": ("a.txt", b"hello", "text/plain")},
-                         "data": {"clearance": "0"}}),
     ("post", "/feedback", {"json": {"query_id": 1, "thumbs_up": True}}),
-    ("patch", "/documents/{doc_id}/access", {"json": {"clearance": 0}}),
     ("get", "/admin/logs", {}),
     ("get", "/admin/stats", {}),
 ]
@@ -106,7 +103,8 @@ def test_me_for_a_set_up_user_lists_org_role_clearance_and_teams(client, sql):
 
     assert body.pop("user_id")
     assert body == {"firebase_uid": TEST_UID, "set_up": True, "reason": None, "org_id": TEST_ORG,
-                    "role": "admin", "clearance": 0, "team_ids": ["t1", "t2"]}
+                    "role": "admin", "clearance": 0, "team_ids": ["t1", "t2"],
+                    "customer_id": None}
 
 
 def test_me_still_needs_a_valid_token(client):

@@ -1,0 +1,7 @@
+effective_date,product,rate_type,apr_min_pct,apr_max_pct,variable,margin_over_prime_min_pct,margin_over_prime_max_pct,prime_rate_pct
+2025-07-01,Cash Back Card,purchase,21.24,29.24,yes,13.74,21.74,7.50
+2025-07-01,Cash Back Card,balance_transfer,21.24,29.24,yes,13.74,21.74,7.50
+2025-07-01,Cash Back Card,cash_advance,29.99,29.99,yes,22.49,22.49,7.50
+2026-02-01,Cash Back Card,purchase,20.24,28.24,yes,13.74,21.74,6.50
+2026-02-01,Cash Back Card,balance_transfer,20.24,28.24,yes,13.74,21.74,6.50
+2026-02-01,Cash Back Card,cash_advance,29.49,29.49,yes,22.99,22.99,6.50

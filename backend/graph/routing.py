@@ -32,9 +32,9 @@ _SMALL_TALK = re.compile(
 )
 
 SMALL_TALK_RESPONSE = (
-    "Hi! I'm DocuMind. Upload a PDF, DOCX, or TXT document and ask me "
-    "questions about it — answers cite the document, and if it doesn't "
-    "contain the answer, I'll say so instead of guessing."
+    "Hi! I'm FinPilot. Ask me questions about the bank's documents — "
+    "answers cite the document, and if it doesn't contain the answer, "
+    "I'll say so instead of guessing."
 )
 
 

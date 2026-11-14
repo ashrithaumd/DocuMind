@@ -20,13 +20,13 @@ jobs:
         # Same image as docker-compose.yml.
         image: pgvector/pgvector:0.8.7-pg16
         env:
-          POSTGRES_USER: documind
-          POSTGRES_PASSWORD: documind
-          POSTGRES_DB: documind
+          POSTGRES_USER: finpilot
+          POSTGRES_PASSWORD: finpilot
+          POSTGRES_DB: finpilot
         ports:
           - 5432:5432
         options: >-
-          --health-cmd "pg_isready -U documind"
+          --health-cmd "pg_isready -U finpilot"
           --health-interval 3s
           --health-timeout 3s
           --health-retries 20
@@ -62,7 +62,7 @@ jobs:
       - name: Run tests
         working-directory: backend
         env:
-          TEST_POSTGRES_URL: postgresql+psycopg2://documind:documind@localhost:5432/documind
+          TEST_POSTGRES_URL: postgresql+psycopg2://finpilot:finpilot@localhost:5432/finpilot
           # Postgres tests must run here, not skip.
           REQUIRE_POSTGRES_TESTS: "1"
         run: python -m pytest tests -v

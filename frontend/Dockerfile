@@ -1,4 +1,4 @@
-# DocuMind frontend — two-stage build: Vite compile, then static nginx serve.
+# FinPilot frontend — two-stage build: Vite compile, then static nginx serve.
 FROM node:26.13.0-alpine AS build
 WORKDIR /app
 COPY package.json package-lock.json ./

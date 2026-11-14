@@ -163,3 +163,24 @@ class FakeTokenChecker:
             if token in self.revoked:
                 raise InvalidToken("revoked")
         return token.removeprefix("token:")
+
+
+# --- loading a document (there is no upload API) ---------------------------------
+
+
+def add_text_document(text: str, filename: str, *, org_id: str, clearance: int = 0) -> str:
+    """Chunk `text` with the app's chunker and store it as an admin of
+    `org_id`, org-wide, the way the corpus loader writes. Returns the doc_id.
+    Call after the `client` fixture has started the app (and its store)."""
+    import asyncio
+
+    import deps
+    from config import get_settings
+    from db.access import Access
+    from ingestion.chunking import chunk_pages
+    from ingestion.extract import PageText
+
+    chunks = chunk_pages([PageText(page_number=1, text=text)], filename, get_settings())
+    store = deps.get_store().scoped(Access(org_id=org_id, clearance=clearance, role="admin"))
+    asyncio.run(store.add_document(chunks, team_id=None, clearance=clearance, uploaded_by=None))
+    return chunks[0].doc_id

@@ -67,9 +67,11 @@ def test_log_tables_still_match_the_models(pg_url):
 
     with engine.connect() as conn:
         diffs = compare_metadata(MigrationContext.configure(conn), Base.metadata)
-    # The chunks and access tables (and their indexes) are raw SQL in the store, not an ORM
-    # model, so autogenerate sees it as "not in the models".
-    raw_sql_tables = {"chunks", "orgs", "teams", "users", "team_memberships", "documents"}
+    # The chunks, access and customer-data tables (and their indexes) are raw SQL, not ORM
+    # models, so autogenerate sees them as "not in the models".
+    raw_sql_tables = {"chunks", "orgs", "teams", "users", "team_memberships", "documents",
+                      "customers", "accounts", "cards", "transactions", "fees", "holdings",
+                      "securities", "prices"}
 
     def on_chunks(diff):
         obj = diff[1]

@@ -1,0 +1,8 @@
+# Corpus, data and eval text: LF on every platform. Chunk counts and
+# document ids depend on the exact text, and CRLF (git's default checkout on
+# Windows) adds tokens.
+data/** text eol=lf
+backend/eval/*.json text eol=lf
+*.pdf binary
+*.png binary
+*.xlsx binary

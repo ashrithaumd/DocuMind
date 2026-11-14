@@ -15,7 +15,7 @@ viewer instead (see test_rls.py), never through that default admin.
 
 Postgres roles: migrations run as the TEST_POSTGRES_URL user (the owner,
 pg_url), as their own step before the app starts, like the migrate service;
-the app connects as documind_app (app_url), so RLS applies to it, and never
+the app connects as finpilot_app (app_url), so RLS applies to it, and never
 sees MIGRATION_DATABASE_URL.
 """
 import pytest
@@ -28,9 +28,9 @@ from tests.helpers import FakeEmbeddings, FakeLLM, FakeTokenChecker
 
 TEST_ORG = "org-test"
 TEST_UID = "uid-test"
-# documind_app is cluster-wide; every test database's migration sets this
+# finpilot_app is cluster-wide; every test database's migration sets this
 # password on it (db.session._sync_app_role_password).
-APP_ROLE_PASSWORD = "documind-app-test"
+APP_ROLE_PASSWORD = "finpilot-app-test"
 
 
 @pytest.fixture
@@ -109,11 +109,11 @@ def client(app_env, pg_url):
 
 @pytest.fixture
 def app_url(pg_url):
-    """pg_url's database, as the documind_app role (exists once migrated)."""
+    """pg_url's database, as the finpilot_app role (exists once migrated)."""
     import sqlalchemy as sa
 
     return sa.engine.make_url(pg_url).set(
-        username="documind_app", password=APP_ROLE_PASSWORD).render_as_string(hide_password=False)
+        username="finpilot_app", password=APP_ROLE_PASSWORD).render_as_string(hide_password=False)
 
 
 @pytest.fixture
@@ -131,7 +131,7 @@ def pg_url():
         if os.environ.get("REQUIRE_POSTGRES_TESTS"):  # CI: a skip would hide the tests
             pytest.fail("REQUIRE_POSTGRES_TESTS is set but TEST_POSTGRES_URL is not")
         pytest.skip("TEST_POSTGRES_URL not set (needs a pgvector Postgres)")
-    name = f"documind_test_{uuid.uuid4().hex[:12]}"
+    name = f"finpilot_test_{uuid.uuid4().hex[:12]}"
     admin = sa.create_engine(admin_url, isolation_level="AUTOCOMMIT")
     with admin.connect() as conn:
         conn.execute(sa.text(f'CREATE DATABASE "{name}"'))
@@ -141,3 +141,50 @@ def pg_url():
         with admin.connect() as conn:
             conn.execute(sa.text(f'DROP DATABASE IF EXISTS "{name}" WITH (FORCE)'))
         admin.dispose()
+
+
+NEON_LIKE_OWNER = "neon_like_owner"
+
+
+@pytest.fixture
+def neon_like_owner_url(pg_url):
+    """pg_url's database, owned by a role like Neon's owner but stricter: not
+    a superuser, no BYPASSRLS, with CREATEROLE and CREATEDB. Not migrated."""
+    import sqlalchemy as sa
+
+    admin = sa.create_engine(pg_url)
+    with admin.begin() as conn:
+        # Neon lets its owner CREATE EXTENSION vector; plain Postgres needs a
+        # superuser, so the server's admin does it first.
+        conn.execute(sa.text("CREATE EXTENSION IF NOT EXISTS vector"))
+        # shortcut: the role is cluster-wide and outlives the test database;
+        # fine on CI's throwaway server, drop it by hand on a shared one.
+        if not conn.execute(sa.text("SELECT 1 FROM pg_roles WHERE rolname = :r"),
+                            {"r": NEON_LIKE_OWNER}).scalar():
+            conn.execute(sa.text(f"CREATE ROLE {NEON_LIKE_OWNER} LOGIN PASSWORD 'neon-like' "
+                                 "NOSUPERUSER NOBYPASSRLS CREATEROLE CREATEDB"))
+        conn.execute(sa.text(f'ALTER DATABASE "{admin.url.database}" OWNER TO {NEON_LIKE_OWNER}'))
+        conn.execute(sa.text(f"GRANT ALL ON SCHEMA public TO {NEON_LIKE_OWNER}"))
+    admin.dispose()
+    return sa.engine.make_url(pg_url).set(username=NEON_LIKE_OWNER, password="neon-like") \
+        .render_as_string(hide_password=False)
+
+
+@pytest.fixture
+def at():
+    """Run alembic on an engine to a given revision (as that engine's role)."""
+    from alembic import command
+    from alembic.config import Config
+
+    from config import Settings
+    from db.session import ALEMBIC_INI
+
+    def run(engine, revision, downgrade=False):
+        settings = Settings(_env_file=None, database_url=engine.url.render_as_string(hide_password=False),
+                            embedding_provider="local")
+        config = Config(str(ALEMBIC_INI))
+        with engine.begin() as conn:
+            config.attributes["connection"] = conn
+            config.attributes["settings"] = settings
+            (command.downgrade if downgrade else command.upgrade)(config, revision)
+    return run

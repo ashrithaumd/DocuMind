@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 8 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
+**Commits: 9 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
 
 ## Chores outside the phase budget
 
@@ -115,7 +115,8 @@ so the PR doesn't change under review.
 | # | Commit | What |
 |---|---|---|
 | 1 | `4137f21` | Parsers for Markdown, CSV, XLSX, OpenAPI and PDF/DOCX/TXT; noise removal; structure-aware chunker (256–512 tokens); the corpus loader; full-length deposit agreement and a new cardmember agreement |
-| 2 | this commit | Migration 0010: document tables as rows linked to their chunks; synthetic receipt images and one vision call each, checked against the transaction and cached; image input in the LLM gateway; recurring subscriptions and occasional (not chronic) overdrafts in the generator |
+| 2 | `d51fcae` | Migration 0010: document tables as rows linked to their chunks; synthetic receipt images and one vision call each, checked against the transaction and cached; image input in the LLM gateway; recurring subscriptions and occasional (not chronic) overdrafts in the generator |
+| 3 | this commit | Migration 0011: manifest metadata on documents; section, summary, keywords and questions on chunks (one LLM call per batch, cached); `python -m bank.corpus load` replaces documents in place |
 
 ### Notes
 
@@ -192,3 +193,27 @@ so the PR doesn't change under review.
   year** (one struggling customer at 38), 121 overdraft fees under the 2025
   schedule and 83 under 2026. Tests hold subscriptions to monthly fixed
   amounts and overdrafts to "occasional, under both schedules".
+
+### Notes (commit 3)
+
+- **Manifest metadata** (doc_type, department, version, effective_date,
+  superseded_on) goes on `documents`, for Phase 4's "as of" filters.
+  Chunks carry their `section` for parent-section joins.
+- **LLM metadata**: one call per batch of up to 6 neighbouring chunks of a
+  document (≤3,000 tokens): 62 chunks, 13 calls. Each reply is validated
+  per chunk (non-empty summary, keywords, questions; trimmed to 400 chars,
+  8 keywords, 4 questions); a chunk with an unusable reply is stored bare
+  and retried on the next run. The prompt tells the model the excerpts are
+  data and to ignore instructions in them (red-teamed in Phase 11).
+- **Cache**: `data/.cache/chunk-metadata.json` (gitignored), keyed by hash
+  of prompt version, model and chunk text, saved even if the load fails
+  halfway, so quota spent is never lost. Local, not in the database: it
+  holds summaries of the staff memo and is read before any access context.
+- **Loader**: `python -m bank.corpus load` (or `--no-metadata`) writes all
+  13 documents as an admin of the bank org, replacing each document, its
+  chunks and tables in one transaction (stable ids make re-runs replace,
+  not duplicate). A Postgres test loads the whole corpus: 13 documents, 29
+  tables, metadata on every chunk; a customer sees 12 documents, no
+  canary, no staff table.
+- **Not run yet**: the real load (embeddings + 13 metadata calls) waits for
+  Neon (Phase 4) and your go.

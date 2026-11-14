@@ -71,7 +71,7 @@ def test_the_canary_appears_only_in_the_staff_memo():
     canary = found[0]
     elsewhere = [p for root in (REPO / "data", REPO / "backend", REPO / "docs", REPO / "frontend" / "src")
                  for p in root.rglob("*")
-                 if p.is_file() and p != memo and ".venv" not in p.parts
+                 if p.is_file() and p != memo and not {".venv", ".cache"} & set(p.parts)
                  and "node_modules" not in p.parts and p.suffix in {".md", ".py", ".yaml", ".csv",
                                                                      ".json", ".ts", ".tsx"}
                  and canary in p.read_text(encoding="utf-8", errors="ignore")]

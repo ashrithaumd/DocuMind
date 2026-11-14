@@ -40,6 +40,10 @@ class Chunk:
     text: str
     section: str = ""  # heading path of the chunk's first block
     blocks: list[Block] = field(default_factory=list, repr=False, compare=False)  # what it was packed from
+    # Retrieval metadata (bank/metadata.py): one LLM call per few chunks, cached.
+    summary: str = ""
+    keywords: list[str] = field(default_factory=list)
+    questions: list[str] = field(default_factory=list)
 
 
 @lru_cache(maxsize=1)

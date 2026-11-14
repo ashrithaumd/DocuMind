@@ -55,6 +55,8 @@ from ingestion.chunking import Chunk
 
 logger = logging.getLogger(__name__)
 
+DOCUMENT_META = ("doc_type", "department", "version", "effective_date", "superseded_on")
+
 
 
 @dataclass
@@ -268,13 +270,17 @@ class HybridStore:
     # --- ingestion ----------------------------------------------------------
 
     async def add_document(self, chunks: list[Chunk], *, team_id: str | None,
-                           clearance: int, uploaded_by: str | None, tables=()) -> None:
+                           clearance: int, uploaded_by: str | None, tables=(),
+                           meta: dict | None = None, replace: bool = False) -> None:
         """Store one document: its documents row (the caller's org, `team_id`
         or org-wide when None, `clearance`) and its chunks, in one
         transaction. The chunks copy org, team and clearance from that row in
         SQL, so they can't differ from it. RLS refuses a team the caller isn't
         in or a clearance above theirs. `tables` (ingestion.tables.DocTable)
-        go in the same transaction and copy access the same way."""
+        go in the same transaction and copy access the same way. `meta` is
+        the manifest's doc_type, department, version, effective_date and
+        superseded_on. `replace` first deletes a document with the same id
+        (the corpus loader's stable ids), in the same transaction."""
         if not chunks:
             raise ValueError("add_document needs at least one chunk")
         self._require_writer()
@@ -284,7 +290,8 @@ class HybridStore:
         vectors = await self._embeddings.embed_documents([c.text for c in chunks])
         rows = [
             {"chunk_id": c.chunk_id, "doc_id": doc_id, "page_number": c.page_number,
-             "chunk_index": c.chunk_index, "text": c.text,
+             "chunk_index": c.chunk_index, "text": c.text, "section": c.section,
+             "summary": c.summary, "keywords": c.keywords, "questions": c.questions,
              "embedding_model": self._embeddings.model, "embedding": _vector_literal(v)}
             for c, v in zip(chunks, vectors)
         ]
@@ -293,17 +300,24 @@ class HybridStore:
             # One transaction, one now(): the document and its chunks share
             # uploaded_at, and a failure leaves neither behind.
             with self._begin() as conn:
+                if replace:  # tables and their rows go with the document and chunks (cascade)
+                    conn.execute(sa.text("DELETE FROM chunks WHERE doc_id = :d"), {"d": doc_id})
+                    conn.execute(sa.text("DELETE FROM documents WHERE doc_id = :d"), {"d": doc_id})
                 conn.execute(sa.text("""
-                    INSERT INTO documents (doc_id, filename, org_id, team_id, clearance, uploaded_by)
-                    VALUES (:doc_id, :filename, :org_id, :team_id, :clearance, :uploaded_by)
+                    INSERT INTO documents (doc_id, filename, org_id, team_id, clearance, uploaded_by,
+                                           doc_type, department, version, effective_date, superseded_on)
+                    VALUES (:doc_id, :filename, :org_id, :team_id, :clearance, :uploaded_by,
+                            :doc_type, :department, :version, :effective_date, :superseded_on)
                 """), {"doc_id": doc_id, "filename": filename, "org_id": self._access.org_id,
-                       "team_id": team_id, "clearance": clearance, "uploaded_by": uploaded_by})
+                       "team_id": team_id, "clearance": clearance, "uploaded_by": uploaded_by,
+                       **{k: (meta or {}).get(k) for k in DOCUMENT_META}})
                 inserted = conn.execute(sa.text("""
                     INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index,
-                                        text, embedding_model, embedding,
-                                        org_id, team_id, clearance)
+                                        text, section, summary, keywords, questions,
+                                        embedding_model, embedding, org_id, team_id, clearance)
                     SELECT :chunk_id, d.doc_id, d.filename, :page_number, :chunk_index,
-                           :text, :embedding_model, CAST(:embedding AS vector),
+                           :text, :section, :summary, :keywords, :questions,
+                           :embedding_model, CAST(:embedding AS vector),
                            d.org_id, d.team_id, d.clearance
                     FROM documents d WHERE d.doc_id = :doc_id
                 """), rows).rowcount

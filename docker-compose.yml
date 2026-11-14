@@ -8,6 +8,11 @@
 #
 # Secrets come from .env (see .env.example) — never hardcoded here.
 
+# Pinned project name: Compose otherwise names it after the folder, and the
+# volumes after the project (documind_postgres_data, documind_hf_cache). The
+# folder was renamed DocuMind -> FinPilot; this keeps the existing volumes.
+name: documind
+
 services:
   frontend:
     build:

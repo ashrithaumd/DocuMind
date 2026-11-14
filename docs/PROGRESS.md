@@ -7,6 +7,13 @@ enterprise build, its eval baselines and decisions) is in git history: see
 
 **Commits: 6 of 22** (budget pending your choice of 20 or 22; see the plan).
 
+## Chores outside the phase budget
+
+- 2026-11-13: GitHub repo renamed DocuMind → FinPilot (old URL redirects);
+  `docker-compose.yml` pins `name: documind` so the existing volumes
+  (`documind_postgres_data`, `documind_hf_cache`) survive renaming the
+  local folder to FinPilot.
+
 ## Phase 0: cleanup and rename (done)
 
 | # | Commit | What |

@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 9 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
+**Commits: 10 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
 
 ## Chores outside the phase budget
 
@@ -116,7 +116,8 @@ so the PR doesn't change under review.
 |---|---|---|
 | 1 | `4137f21` | Parsers for Markdown, CSV, XLSX, OpenAPI and PDF/DOCX/TXT; noise removal; structure-aware chunker (256–512 tokens); the corpus loader; full-length deposit agreement and a new cardmember agreement |
 | 2 | `d51fcae` | Migration 0010: document tables as rows linked to their chunks; synthetic receipt images and one vision call each, checked against the transaction and cached; image input in the LLM gateway; recurring subscriptions and occasional (not chronic) overdrafts in the generator |
-| 3 | this commit | Migration 0011: manifest metadata on documents; section, summary, keywords and questions on chunks (one LLM call per batch, cached); `python -m bank.corpus load` replaces documents in place |
+| 3 | `d2236cd` | Migration 0011: manifest metadata on documents; section, summary, keywords and questions on chunks (one LLM call per batch, cached); `python -m bank.corpus load` replaces documents in place |
+| spare 2 | this commit | The corpus-load test hardcoded 29 tables; there are 32 (my miscount). It now counts them from the parser (CI caught it) |
 
 ### Notes
 
@@ -166,7 +167,7 @@ so the PR doesn't change under review.
   what it needs and cites the row. They are written in `add_document`'s
   transaction, copying org, team and clearance from the documents row in
   SQL, under the same `tenant_access` policy as chunks, so the staff memo's
-  table is as hidden as its text. The corpus has 29 tables, 161 rows.
+  table is as hidden as its text. The corpus has 32 tables, 161 rows.
 - **Receipts.** Ten PNGs in `data/bank/receipts/`, one card purchase each
   for customers 1–10, rendered from the transaction itself (merchant, date,
   total, card last 4; the items are invented but add up to the total). The
@@ -212,7 +213,7 @@ so the PR doesn't change under review.
 - **Loader**: `python -m bank.corpus load` (or `--no-metadata`) writes all
   13 documents as an admin of the bank org, replacing each document, its
   chunks and tables in one transaction (stable ids make re-runs replace,
-  not duplicate). A Postgres test loads the whole corpus: 13 documents, 29
+  not duplicate). A Postgres test loads the whole corpus: 13 documents, 32
   tables, metadata on every chunk; a customer sees 12 documents, no
   canary, no staff table.
 - **Not run yet**: the real load (embeddings + 13 metadata calls) waits for

@@ -9,6 +9,7 @@ from bank.synthetic import BANK_ORG
 from config import Settings
 from db import session as db_session
 from ingestion.store import Access, HybridStore
+from ingestion.tables import extract_tables
 from tests.helpers import FakeEmbeddings
 from tests.unit.test_metadata import MetadataLLM
 
@@ -50,7 +51,8 @@ async def test_the_corpus_loads_with_its_metadata_and_reloads_in_place(pg_url, a
 
     await load(store.scoped(ADMIN), docs)  # again, no metadata calls: replaced, not duplicated
     assert _one(store, ADMIN, "SELECT count(*) FROM chunks") == [(chunks,)]
-    assert _one(store, ADMIN, "SELECT count(*) FROM doc_tables") == [(29,)]
+    tables = sum(len(extract_tables(d.chunks)) for d in docs)
+    assert _one(store, ADMIN, "SELECT count(*) FROM doc_tables") == [(tables,)]
 
 
 async def test_customers_never_see_the_staff_memo_its_tables_or_its_canary(pg_url, app_url):

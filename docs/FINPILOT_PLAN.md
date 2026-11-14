@@ -22,8 +22,8 @@ DocuMind's own history is in git, up to commit 51ba57a on `main`.
 | Customer data | Ownership RLS: every customer-owned row carries `customer_id`; one policy compares it with `app.customer_id`, set per transaction like `app.org_id`. New migrations only; 0001–0008 stay as they are. |
 | Bank documents | The org/clearance machinery stays, reduced: one org (the bank), **clearance 0** for customer-facing documents, **clearance 2** for staff-only ones. A staff-only fraud-rules memo carries a canary string that no customer may ever retrieve. Teams are unused. |
 | Upload | Removed. Documents come only from the loader. |
-| Customer data source | A seeded synthetic generator. Berka has no stated licence. TabFormer is Apache-2.0 at the repo level but states no data-specific terms, so it is not used unless you decide otherwise (see `data/SOURCES.md`). |
-| Market prices | Cached in Postgres, never committed. FINRA content is linked, never ingested. |
+| Customer data source | A seeded synthetic generator with realistic patterns (salary, rent, subscriptions, groceries, occasional overdrafts). Berka and TabFormer are not used (see `data/SOURCES.md`). |
+| Market prices | Real prices (Alpha Vantage), shown only to signed-in demo accounts, cached in Postgres, never committed, with attribution and an as-of date. FINRA content is linked, never ingested. |
 | Hosting | Neon (serverless Postgres + pgvector) from Phase 4. Until then plain Postgres in CI. The code runs on both (see Neon notes). |
 
 ## Architecture checklist
@@ -63,7 +63,7 @@ is ticked only when its code is merged and tested.
 ### 6. Retrieval
 
 - [ ] **Hybrid search** (dense + full-text, RRF): exists, extended with the hypothetical-question index and the filters. *Phase 4.*
-- [ ] **Rerank**, behind a toggle, measured on and off. *Phase 4.* (Reranker choice: decision pending, see below.)
+- [ ] **Rerank**, behind a toggle, measured on and off: a local cross-encoder run through ONNX (fastembed's reranker), so torch isn't loaded. *Phase 4.*
 
 ### 7. Reasoning engine
 
@@ -124,7 +124,7 @@ is ticked only when its code is merged and tested.
 The full architecture needs **two more commits** than the original 20
 (Phase 3 grows from 2 to 3 for restructuring and vision; Phase 4 from 1 to 2
 for Neon and the branching experiment). With 20, no spare is left, and one
-spare was already spent on a Phase 0 test fix. **Recommended budget: 22.**
+spare was already spent on a Phase 0 test fix. **Budget: 22** (decided 2026-11-13).
 
 ## LLM call budget (Gemini free tier)
 
@@ -192,17 +192,17 @@ Tables (migration 0009), all `customer_id`-owned except the reference data:
   merchants and descriptions; every table, every query shape, as each
   customer and with no context; the canary never crosses.
 
-## Pending decisions (yours)
+## Decisions made on 2026-11-13
 
-1. Commit budget: 20 (no spare) or 22.
-2. Reranker: a local cross-encoder (no API cost, ~90 MB more RAM) or an LLM
-   rerank (one more call per question, breaking the 3–4 budget). Recommended:
-   local cross-encoder behind the toggle.
-3. Accounts tool design: one generic read tool with typed filters, or a few
-   narrow tools (balances, transactions, fees, holdings). Recommended: narrow
-   tools; each is easier to test against cross-customer arguments.
-4. TabFormer: use it for realistic amounts and merchant mixes, or stay fully
-   synthetic.
-5. Price API: Alpha Vantage's free key is personal and non-commercial only
-   (see `data/SOURCES.md`). Fine for development; for the public demo,
-   either keep prices private to the demo account or show synthetic prices.
+| Topic | Decision |
+|---|---|
+| Commit budget | **22**. The Compose-name chore before the folder rename is outside it. |
+| Neon | The project exists. `NEON_MIGRATION_DATABASE_URL` (direct, owner) and `NEON_POOLED_DATABASE_URL` (pooled) are in `.env`; never printed. FinPilot creates the app role. No connection before Phase 4 unless needed. |
+| SEC User-Agent | `FinPilot research project <name> <email>`, from `SEC_USER_AGENT` in `.env`; under 10 requests a second. |
+| Reranker | Local cross-encoder through ONNX (fastembed), no torch. If that isn't workable, ask before adding torch back. |
+| Accounts tools | Several narrow tools (balances, transactions, fees, holdings). |
+| Prices | Real prices, only for signed-in demo accounts, cached in the database, with attribution and an as-of date. |
+| Transactions | Fully synthetic generator with realistic patterns. |
+| Investor.gov | Treated like other SEC-created content: reused with attribution, recorded in `data/SOURCES.md`. |
+| Bank documents | Approved as drafts. The deposit agreement is full length (about 5,400 words, 24 numbered sections, tables), and the corpus must have enough multi-chunk documents to test chunking and retrieval (a test checks it). |
+| Staff-only documents | Clearance 0 for customers, 2 for staff. |

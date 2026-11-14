@@ -54,6 +54,13 @@ documents:
     effective_date: 2025-07-01
     clearance: 0
     status: draft
+  - file: cardmember-agreement.md
+    doc_type: agreement
+    department: card_services
+    version: "2026"
+    effective_date: 2026-02-01
+    clearance: 0
+    status: draft
   - file: rates/deposit-rates.csv
     doc_type: rate_table
     department: treasury

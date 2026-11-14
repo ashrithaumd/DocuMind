@@ -56,6 +56,7 @@ depends on how you use your account, the condition is in the same row.
 | Returned payment | Up to $29.00 | If a payment is returned unpaid. |
 | Foreign transaction | 3% of each transaction in U.S. dollars | — |
 | Cash advance | 5% of the amount (minimum $10.00) | — |
+| Balance transfer | 5% of the amount (minimum $10.00) | — |
 
 Interest rates for the Cash Back Card are in the rate sheet.
 

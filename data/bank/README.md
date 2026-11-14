@@ -20,7 +20,8 @@ any CFPB, bank or other source.
 | `overdraft-policy-2026.md` | policy, v2026 | customers | Adds the $50 cushion and the 2-per-day cap |
 | `dispute-policy.md` | policy | customers | Card and electronic-transfer disputes, timelines |
 | `account-comparison.md` | product comparison | customers | Checking, savings, card, investing side by side |
-| `deposit-agreement.md` | agreement | customers | The terms behind every deposit account |
+| `deposit-agreement.md` | agreement | customers | The terms behind every deposit account (about 5,400 words, 24 sections) |
+| `cardmember-agreement.md` | agreement | customers | Cash Back Card terms: pricing table, how APRs follow prime, interest, payments, rewards |
 | `rates/deposit-rates.csv`, `rates/card-rates.csv` | rate tables | customers | Two versions each (2025-07-01, 2026-02-01) |
 | `rates/rate-sheet.xlsx` | spreadsheet | customers | The same tables as a published workbook, built from the CSVs |
 | `api/openapi.yaml` | code (OpenAPI 3.1) | developers | The bank's customer-data API, which FinPilot's tools mirror |

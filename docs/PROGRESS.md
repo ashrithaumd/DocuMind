@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 6 of 22** (budget pending your choice of 20 or 22; see the plan).
+**Commits: 7 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
 
 ## Chores outside the phase budget
 
@@ -43,7 +43,7 @@ enterprise build, its eval baselines and decisions) is in git history: see
   (backend tests without Postgres, frontend lint and build); GitHub CI runs
   the full Postgres suite on every push.
 
-## Phase 1: customer data (done; PR #1 waits for you)
+## Phase 1: customer data (done; PR #5 waits for you)
 
 | # | Commit | What |
 |---|---|---|
@@ -74,7 +74,7 @@ enterprise build, its eval baselines and decisions) is in git history: see
   Tested as the superuser and as an owner without BYPASSRLS.
 - **Not run locally** (no Postgres here); CI runs the Postgres tests.
 
-## Phase 2: bank corpus and sources (drafts, pending your review)
+## Phase 2: bank corpus and sources (approved as drafts, 2026-11-13)
 
 | # | Commit | What |
 |---|---|---|
@@ -102,3 +102,55 @@ enterprise build, its eval baselines and decisions) is in git history: see
   contact, max 10 requests/second; CFPB content is public domain; FDIC's own
   pages make no public-domain statement (BankFind is listed as public
   domain); investor.gov's policies page couldn't be read (403).
+- **Your decisions (2026-11-13)** are recorded in the plan and in
+  `data/SOURCES.md`: Investor.gov reused like other SEC content, with
+  attribution; real prices only for signed-in demo accounts; no TabFormer.
+
+## Phase 3: parsing, restructuring, chunking
+
+PR #5 (`finpilot` → `main`, GitHub's number: #1–4 are DocuMind's) holds
+Phases 0–2 for your review. Phase 3 is on `finpilot-phase3`, stacked on it,
+so the PR doesn't change under review.
+
+| # | Commit | What |
+|---|---|---|
+| 1 | this commit | Parsers for Markdown, CSV, XLSX, OpenAPI and PDF/DOCX/TXT; noise removal; structure-aware chunker (256–512 tokens); the corpus loader; full-length deposit agreement and a new cardmember agreement |
+
+### Notes
+
+- **Corpus changes ride in this commit**, not a Phase 2 commit, to keep the
+  spare: they exist so chunking can be tested. The deposit agreement is now
+  5,391 words in 24 numbered sections with four tables (opening deposits,
+  funds availability, daily limits, CD penalties). Its worked examples
+  ($29.14 interest, $100.36 penalty) were recomputed. The fee schedule and
+  account comparison both cited a "Cardmember Agreement" that didn't exist;
+  it does now (2026, card services: pricing table, APR = prime + margin
+  matching `card-rates.csv`, average daily balance interest, payments,
+  rewards). Both fee schedules gained the balance-transfer fee row that
+  agreement states.
+- **Multi-chunk check.** 13 documents, 62 chunks. Six documents span 3 or
+  more chunks (deposit agreement 19, OpenAPI 13, cardmember agreement 8,
+  both fee schedules and the dispute policy 3); a test keeps it at six or
+  more. The short policies stay at 2 chunks: they're the version-pair
+  distractors (2025 vs 2026), not chunking tests.
+- **Blocks, then chunks.** Parsers turn each file into blocks a chunk may
+  not cut: a paragraph, a list item, a whole table, one API operation.
+  The chunker packs blocks of the same section up to 512 tokens and lets a
+  chunk under 256 take in the next section; every chunk starts with its
+  section path. A table over the limit splits between rows, repeating its
+  header; an operation is always its own chunk.
+- **Spreadsheets.** CSVs split by `effective_date`, so the 2025 and 2026
+  rates never share a chunk. In the workbook the header is the widest row,
+  found under the title rows on purpose.
+- **Noise.** Running headers and footers (on half the pages or more, at
+  the page edges), page numbers at the edges only (a lone "12" mid-page can
+  be a table cell), navigation lines, and paragraphs repeated in 3+
+  documents. The draft banner is boilerplate; one copy stays (in the 2025
+  fee schedule) so "not FDIC-insured" is still retrievable. Removed share
+  per document: 0–6%.
+- **Stable ids.** `doc_id` is a hash of the file path, so chunk ids are the
+  same on every run and can key the Phase 3 metadata cache.
+- **`chunk_pages` stays** for DocuMind's PDF eval tooling. FinPilot's
+  corpus uses `chunk_blocks`.
+- **Venv rebuilt** after the folder rename (pinned requirements, no torch,
+  eval extras included): 234 passed, 163 Postgres tests skipped locally.

@@ -32,6 +32,7 @@ provider's own token counts (prompt, output, thinking), per call and summed
 per role.
 """
 import asyncio
+import base64
 import contextvars
 import json
 import logging
@@ -235,9 +236,12 @@ class GeminiLLM(_BackoffLLM):
 
     async def complete_json(
         self, model: str, system: str, user: str, schema: dict, max_tokens: int = 1024,
-        role: str = "",
+        role: str = "", image: bytes | None = None,
     ) -> dict:
-        """One-shot JSON call constrained by `schema` (structured output)."""
+        """One-shot JSON call constrained by `schema` (structured output).
+        `image` (PNG bytes) goes before the text, for vision extraction."""
+        contents = ([genai_types.Part.from_bytes(data=image, mime_type="image/png"), user]
+                    if image else user)
         config = genai_types.GenerateContentConfig(
             system_instruction=system,
             max_output_tokens=max_tokens,
@@ -248,7 +252,7 @@ class GeminiLLM(_BackoffLLM):
         response = await self._call(
             model,
             lambda: self._client.aio.models.generate_content(
-                model=model, contents=user, config=config
+                model=model, contents=contents, config=config
             ),
             role,
         )
@@ -309,16 +313,21 @@ class ClaudeLLM(_BackoffLLM):
 
     async def complete_json(
         self, model: str, system: str, user: str, schema: dict, max_tokens: int = 1024,
-        role: str = "",
+        role: str = "", image: bytes | None = None,
     ) -> dict:
-        """One-shot JSON call constrained by `schema` (structured outputs)."""
+        """One-shot JSON call constrained by `schema` (structured outputs).
+        `image` (PNG bytes) goes before the text, for vision extraction."""
+        content = user if not image else [
+            {"type": "image", "source": {"type": "base64", "media_type": "image/png",
+                                         "data": base64.b64encode(image).decode()}},
+            {"type": "text", "text": user}]
         response = await self._call(
             model,
             lambda: self._client.messages.create(
                 model=model,
                 max_tokens=max_tokens,
                 system=system,
-                messages=[{"role": "user", "content": user}],
+                messages=[{"role": "user", "content": content}],
                 output_config={"format": {"type": "json_schema", "schema": schema}},
             ),
             role,

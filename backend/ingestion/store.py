@@ -41,6 +41,7 @@ team and clearance from that row in SQL. Nothing else writes access.
 """
 import asyncio
 import copy
+import json
 import logging
 from contextlib import contextmanager
 from dataclasses import dataclass
@@ -267,12 +268,13 @@ class HybridStore:
     # --- ingestion ----------------------------------------------------------
 
     async def add_document(self, chunks: list[Chunk], *, team_id: str | None,
-                           clearance: int, uploaded_by: str | None) -> None:
+                           clearance: int, uploaded_by: str | None, tables=()) -> None:
         """Store one document: its documents row (the caller's org, `team_id`
         or org-wide when None, `clearance`) and its chunks, in one
         transaction. The chunks copy org, team and clearance from that row in
         SQL, so they can't differ from it. RLS refuses a team the caller isn't
-        in or a clearance above theirs."""
+        in or a clearance above theirs. `tables` (ingestion.tables.DocTable)
+        go in the same transaction and copy access the same way."""
         if not chunks:
             raise ValueError("add_document needs at least one chunk")
         self._require_writer()
@@ -307,6 +309,22 @@ class HybridStore:
                 """), rows).rowcount
                 if inserted != len(rows):  # the documents row must be visible right here
                     raise RuntimeError(f"Inserted {inserted} of {len(rows)} chunks for {doc_id}")
+                for table in (t for t in tables if t.rows):
+                    conn.execute(sa.text("""
+                        INSERT INTO doc_tables (table_id, doc_id, section, columns, org_id, team_id, clearance)
+                        SELECT :table_id, d.doc_id, :section, CAST(:columns AS jsonb),
+                               d.org_id, d.team_id, d.clearance
+                        FROM documents d WHERE d.doc_id = :doc_id
+                    """), {"table_id": table.table_id, "doc_id": doc_id, "section": table.section,
+                           "columns": json.dumps(table.columns)})
+                    conn.execute(sa.text("""
+                        INSERT INTO doc_table_rows (table_id, row_index, chunk_id, cells,
+                                                    org_id, team_id, clearance)
+                        SELECT t.table_id, :row_index, :chunk_id, CAST(:cells AS jsonb),
+                               t.org_id, t.team_id, t.clearance
+                        FROM doc_tables t WHERE t.table_id = :table_id
+                    """), [{"table_id": table.table_id, "row_index": i, "chunk_id": chunk_id,
+                            "cells": json.dumps(cells)} for i, (chunk_id, cells) in enumerate(table.rows)])
 
         await asyncio.to_thread(insert)
 

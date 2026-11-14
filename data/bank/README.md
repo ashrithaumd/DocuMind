@@ -26,6 +26,7 @@ any CFPB, bank or other source.
 | `rates/rate-sheet.xlsx` | spreadsheet | customers | The same tables as a published workbook, built from the CSVs |
 | `api/openapi.yaml` | code (OpenAPI 3.1) | developers | The bank's customer-data API, which FinPilot's tools mirror |
 | `internal/fraud-rules-memo.md` | memo | **staff only (clearance 2)** | Contains a canary string no customer may ever retrieve |
+| `receipts/*.png` | images | **customer data** | Ten synthetic receipts drawn from real rows of the generator (`python -m bank.receipts render`); not documents, so not in the manifest |
 
 `manifest.yaml` carries each document's version, effective date, department,
 document type, clearance and review status: the metadata that Phase 3 attaches

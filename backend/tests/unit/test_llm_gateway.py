@@ -401,3 +401,27 @@ async def test_claude_records_input_and_output_tokens():
     assert usage["calls"] == [
         {"role": "grade", "model": "m", "prompt_tokens": 700, "output_tokens": 9, "thinking_tokens": None}]
     assert usage["tokens_per_role"]["grade"]["thinking_tokens"] == 0
+
+
+# --- images (vision extraction) ---------------------------------------------------------
+
+
+async def test_gemini_sends_the_image_before_the_text():
+    client, create = gemini_client(gemini_reply('{"merchant": "X"}'))
+    assert await GeminiLLM(client).complete_json("gemini-x", "sys", "read", SCHEMA, image=b"png") == {"merchant": "X"}
+    image, text = create.calls[0]["contents"]
+    assert (image.inline_data.data, image.inline_data.mime_type, text) == (b"png", "image/png", "read")
+
+
+async def test_claude_sends_the_image_before_the_text():
+    client, create = claude_client(claude_reply('{"merchant": "X"}'))
+    await ClaudeLLM(client).complete_json("claude-x", "sys", "read", SCHEMA, image=b"png")
+    image, text = create.calls[0]["messages"][0]["content"]
+    assert image == {"type": "image", "source": {"type": "base64", "media_type": "image/png", "data": "cG5n"}}
+    assert text == {"type": "text", "text": "read"}
+
+
+async def test_without_an_image_the_request_is_unchanged():
+    client, create = gemini_client(gemini_reply("{}"))
+    await GeminiLLM(client).complete_json("gemini-x", "sys", "q", SCHEMA)
+    assert create.calls[0]["contents"] == "q"

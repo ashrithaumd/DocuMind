@@ -34,6 +34,7 @@ class Block:
     kind: str = "text"   # text | item | table | operation
     page_number: int = 1
     header: str = ""     # tables: the header lines, repeated when a table is split
+    part: int = 0        # tables: 0 for a whole table or its first part, then 1, 2, ...
 
 
 _HEADING = re.compile(r"^(#{1,6})\s+(.+?)\s*#*$")

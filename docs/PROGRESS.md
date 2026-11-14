@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 7 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
+**Commits: 8 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
 
 ## Chores outside the phase budget
 
@@ -114,7 +114,8 @@ so the PR doesn't change under review.
 
 | # | Commit | What |
 |---|---|---|
-| 1 | this commit | Parsers for Markdown, CSV, XLSX, OpenAPI and PDF/DOCX/TXT; noise removal; structure-aware chunker (256–512 tokens); the corpus loader; full-length deposit agreement and a new cardmember agreement |
+| 1 | `4137f21` | Parsers for Markdown, CSV, XLSX, OpenAPI and PDF/DOCX/TXT; noise removal; structure-aware chunker (256–512 tokens); the corpus loader; full-length deposit agreement and a new cardmember agreement |
+| 2 | this commit | Migration 0010: document tables as rows linked to their chunks; synthetic receipt images and one vision call each, checked against the transaction and cached; image input in the LLM gateway; recurring subscriptions and occasional (not chronic) overdrafts in the generator |
 
 ### Notes
 
@@ -154,3 +155,40 @@ so the PR doesn't change under review.
   corpus uses `chunk_blocks`.
 - **Venv rebuilt** after the folder rename (pinned requirements, no torch,
   eval extras included): 234 passed, 163 Postgres tests skipped locally.
+
+### Notes (commit 2)
+
+- **Tables as rows.** `ingestion/tables.py` turns every table block into a
+  `doc_tables` row (columns, section) and one `doc_table_rows` row per table
+  row, with the `chunk_id` that holds it; a table split across chunks stays
+  one table. Cells stay text (`"$15.00 per item"`); the calculator parses
+  what it needs and cites the row. They are written in `add_document`'s
+  transaction, copying org, team and clearance from the documents row in
+  SQL, under the same `tenant_access` policy as chunks, so the staff memo's
+  table is as hidden as its text. The corpus has 29 tables, 161 rows.
+- **Receipts.** Ten PNGs in `data/bank/receipts/`, one card purchase each
+  for customers 1–10, rendered from the transaction itself (merchant, date,
+  total, card last 4; the items are invented but add up to the total). The
+  vision call returns those four fields; `check` compares each exactly
+  (merchant ignoring case and accents, total in cents, last 4 digits).
+  Results go in `receipt_images` under the **customer** policy, written in
+  the receipt's customer context (works for a Neon owner without
+  BYPASSRLS), keyed by the image's hash and the model, so a re-run makes
+  no calls. `txn_id` isn't a foreign key: reloading the synthetic data
+  replaces transactions, and the cached extraction must survive that.
+- **Not run yet: the real vision pass** (10 Gemini calls, about one minute
+  under the 15-a-minute limit). It needs a database with the customer data
+  and your go: `python -m bank.receipts extract --database-url OWNER`.
+- **Generator realism** (your instruction: salary, rent, subscriptions,
+  groceries, occasional overdrafts). Subscriptions were random one-off
+  purchases; each customer now has 1–3 that charge the same amount on the
+  same day every month. Overdrafts were chronic (31 of 50 customers, one at
+  80 fees a year): customers without direct deposit paid rent sized to a
+  paycheck they never received. Now everyone is paid every other Friday
+  (direct deposit or mobile check), card spending is 75% of what pay
+  leaves after rent (60% premier, 80% students), and a month-end sweep
+  keeps checking near rent plus a per-customer cushion. Result, seed 7:
+  23,115 transactions, 625 fees; 31 customers overdraw, **median 3 times a
+  year** (one struggling customer at 38), 121 overdraft fees under the 2025
+  schedule and 83 under 2026. Tests hold subscriptions to monthly fixed
+  amounts and overdrafts to "occasional, under both schedules".

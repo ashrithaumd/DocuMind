@@ -71,7 +71,7 @@ def test_log_tables_still_match_the_models(pg_url):
     # models, so autogenerate sees them as "not in the models".
     raw_sql_tables = {"chunks", "orgs", "teams", "users", "team_memberships", "documents",
                       "customers", "accounts", "cards", "transactions", "fees", "holdings",
-                      "securities", "prices"}
+                      "securities", "prices", "doc_tables", "doc_table_rows", "receipt_images"}
 
     def on_chunks(diff):
         obj = diff[1]

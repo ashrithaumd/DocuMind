@@ -75,10 +75,15 @@ MERCHANTS = [
     ("Corner Grocer", "groceries", 12, 140), ("FreshFields Market", "groceries", 20, 180),
     ("Bean & Barrel Coffee", "dining", 4, 15), ("Harbor Noodle House", "dining", 14, 60),
     ("QuickFuel", "transport", 25, 70), ("MetroRide Transit", "transport", 3, 40),
-    ("StreamBox", "subscriptions", 10, 18), ("CloudLocker Storage", "subscriptions", 3, 10),
     ("Brightline Pharmacy", "health", 8, 90), ("Northside Hardware", "home", 15, 220),
     ("Paperleaf Books", "shopping", 9, 60), ("Atlas Outfitters", "shopping", 30, 250),
 ]
+AVERAGE_PURCHASE = sum((low + high) / 2 for _, _, low, high in MERCHANTS) / len(MERCHANTS) * 100  # cents
+SPEND_SHARE = 0.75
+# Monthly subscriptions: (name, low, high) in dollars. Each customer has 1-3,
+# each charged the same amount on the same day every month.
+SUBSCRIPTIONS = [("StreamBox", 10, 18), ("CloudLocker Storage", 3, 10), ("TuneWave Music", 11, 17),
+                 ("FitLoop Gym", 25, 55)]
 FOREIGN_MERCHANTS = [("Café Lumière Paris", "travel", 15, 120), ("Kyoto Rail Pass", "travel", 60, 300)]
 SEGMENTS = (("retail", 0.7), ("premier", 0.15), ("student", 0.15))
 FIRST = ["Avery", "Jordan", "Riley", "Morgan", "Casey", "Quinn", "Rowan", "Sasha", "Devi", "Mateo",
@@ -166,27 +171,35 @@ def _customer_rows(rng, cid, segment, out, last_prices) -> None:
     paycheck = _cents(rng, *pay)
     rent = int(paycheck * rng.uniform(0.6, 0.9))
     balance = _cents(rng, 200, 3000) if segment != "premier" else _cents(rng, 4000, 15000)
-    spend_rate = {"retail": 1.6, "premier": 2.2, "student": 1.1}[segment]
+    # Card spending is a share of what pay leaves after rent, so most months end
+    # ahead and overdrafts are occasional (a big week before payday), not chronic.
+    spend_share = {"retail": SPEND_SHARE, "premier": SPEND_SHARE - 0.15, "student": SPEND_SHARE + 0.05}[segment]
+    per_day = max(0, paycheck * 26 / 12 - rent) * spend_share / 30 / AVERAGE_PURCHASE
+    purchase_odds = min(1.0, per_day / 3)  # up to 3 purchases a day
     deposits_this_month, overdrafts_today, day_seen = 0, 0, None
+    cushion = int(paycheck * rng.uniform(0.6, 1.2))  # kept in checking above next month's rent
+    subscriptions = [(name, _cents(rng, low, high), rng.randint(1, 28))
+                     for name, low, high in rng.sample(SUBSCRIPTIONS, rng.randint(1, 3))]
     txn(START, checking, 100, "interest", f"Statement memo ref {canary(cid)}")
 
     for day in _days(START, END):
         sched = schedule_on(day)
         if day != day_seen:
             overdrafts_today, day_seen = 0, day
-        if direct_deposit and day.weekday() == 4 and (day - START).days // 7 % 2 == 0:
-            txn(day, checking, paycheck, "income", "Direct deposit PAYROLL", "Employer Payroll")
+        if day.weekday() == 4 and (day - START).days // 7 % 2 == 0:  # every other Friday
+            if direct_deposit:
+                txn(day, checking, paycheck, "income", "Direct deposit PAYROLL", "Employer Payroll")
+                deposits_this_month += paycheck
+            else:  # paid by check: same pay, but it doesn't waive the maintenance fee
+                txn(day, checking, paycheck, "income", "Mobile check deposit")
             balance += paycheck
-            deposits_this_month += paycheck
-        elif not direct_deposit and day.day == 15:
-            amount = _cents(rng, 200, 600)
-            txn(day, checking, amount, "income", "Mobile check deposit")
-            balance += amount
         debits = []
         if day.day == 1:
             debits.append((rent, "housing", "Rent payment", "Maple Court Apartments"))
+        debits += [(amount, "subscriptions", f"Recurring payment {name}", name)
+                   for name, amount, on_day in subscriptions if day.day == on_day]
         # A debit card is declined once the account is $200 overdrawn.
-        purchases = rng.choices([0, 1, 2, 3], [3, 4, 2 * spend_rate, spend_rate])[0]
+        purchases = sum(rng.random() < purchase_odds for _ in range(3))
         for _ in range(purchases if balance > -20000 else 0):
             name, category, low, high = rng.choice(MERCHANTS)
             debits.append((_cents(rng, low, high), category, f"Card purchase {name}", name))
@@ -216,8 +229,11 @@ def _customer_rows(rng, cid, segment, out, last_prices) -> None:
                     max(1, amount * sched.foreign_transaction_bps // 10_000), row["txn_id"])
         next_day = day + timedelta(days=1)
         if next_day.month != day.month:  # month end
-            if balance > 50000 and rng.random() < 0.6:
-                amount = min(balance // 5, 100000)
+            # Sweep what's above next month's rent plus a cushion to savings, so
+            # checking stays near the same level all year (and so does the
+            # chance of an overdraft, under either fee schedule).
+            if balance > rent + cushion and rng.random() < 0.6:
+                amount = balance - rent - cushion
                 txn(day, checking, -amount, "transfer", "Transfer to savings")
                 txn(day, savings, amount, "transfer", "Transfer from checking")
                 balance -= amount

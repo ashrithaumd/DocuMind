@@ -75,3 +75,28 @@ def test_every_customer_has_exactly_one_canary(data):
     for c in data["customers"]:
         mine = [t for t in data["transactions"] if canary(c["customer_id"]) in t["description"]]
         assert len(mine) == 1 and mine[0]["customer_id"] == c["customer_id"]
+
+
+def test_subscriptions_recur_monthly_at_a_fixed_amount(data):
+    from collections import defaultdict
+
+    charges = defaultdict(list)
+    for t in data["transactions"]:
+        if t["category"] == "subscriptions":
+            charges[(t["customer_id"], t["merchant"])].append(t)
+    assert charges
+    for (_, _), rows in charges.items():
+        assert len({r["amount_cents"] for r in rows}) == 1
+        assert len({r["posted_on"].day for r in rows}) == 1
+        assert len(rows) == 12  # every month of the generated year
+
+
+def test_overdrafts_are_occasional_and_happen_under_both_schedules(data):
+    from collections import Counter
+    from statistics import median
+
+    overdrafts = [f for f in data["fees"] if f["fee_type"] == "overdraft"]
+    per_customer = Counter(f["customer_id"] for f in overdrafts)
+    assert 0.2 <= len(per_customer) / len(data["customers"]) <= 0.8
+    assert median(per_customer.values()) <= 6
+    assert {f["assessed_on"] >= SCHEDULE_CHANGE for f in overdrafts} == {True, False}

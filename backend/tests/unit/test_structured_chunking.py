@@ -146,3 +146,21 @@ def test_boilerplate_in_three_documents_is_kept_once():
     assert [b.text for b in docs["a"]] == [banner, "a content"]
     assert [b.text for b in docs["b"]] == ["b content"]
     assert removed == {"a": 0, "b": len(banner), "c": len(banner), "d": 0}
+
+
+def test_tables_become_rows_linked_to_the_chunk_holding_them():
+    from ingestion.tables import extract_tables
+
+    header = "| Code | Meaning |\n|---|---|"
+    rows = [f"| C{i:03d} | the meaning of code number {i} in plain words |" for i in range(120)]
+    blocks = parse_markdown(DOC) + [Block("\n".join(rows), "Codes", "table", header=header)]
+    chunks = chunk_blocks(blocks, "codes.md", "d6")
+    fees, codes = extract_tables(chunks)
+
+    assert (fees.table_id, fees.columns, fees.section) == ("d6-t00", ["Service", "Fee"], "Guide > 1. Fees")
+    assert [cells for _, cells in fees.rows] == [["Overdraft", "$15.00"], ["Stop payment", "$30.00"]]
+    assert codes.columns == ["Code", "Meaning"]
+    assert [cells[0] for _, cells in codes.rows] == [f"C{i:03d}" for i in range(120)]
+    by_id = {c.chunk_id: c.text for c in chunks}
+    assert len({chunk_id for chunk_id, _ in codes.rows}) > 1  # split across chunks, still one table
+    assert all(f"| {cells[0]} |" in by_id[chunk_id] for chunk_id, cells in codes.rows)

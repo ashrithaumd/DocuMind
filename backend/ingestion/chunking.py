@@ -18,7 +18,7 @@ independently at ~600 tokens with 15% overlap, so every chunk maps to
 exactly one page.
 """
 import uuid
-from dataclasses import dataclass, replace
+from dataclasses import dataclass, field, replace
 from functools import lru_cache
 
 from langchain_text_splitters import RecursiveCharacterTextSplitter
@@ -39,6 +39,7 @@ class Chunk:
     chunk_index: int   # position within the whole document
     text: str
     section: str = ""  # heading path of the chunk's first block
+    blocks: list[Block] = field(default_factory=list, repr=False, compare=False)  # what it was packed from
 
 
 @lru_cache(maxsize=1)
@@ -63,7 +64,7 @@ def _split_oversized(block: Block, budget: int) -> list[Block]:
             if groups[-1] and tokens(block.header + "\n" + "\n".join(groups[-1] + [row])) > budget:
                 groups.append([])
             groups[-1].append(row)
-        return [replace(block, text="\n".join(g)) for g in groups]
+        return [replace(block, text="\n".join(g), part=i) for i, g in enumerate(groups)]
     splitter = RecursiveCharacterTextSplitter.from_tiktoken_encoder(
         encoding_name="cl100k_base", chunk_size=budget, chunk_overlap=0,
         separators=["\n\n", "\n", ". ", " ", ""])
@@ -104,7 +105,8 @@ def chunk_blocks(blocks: list[Block], filename: str, doc_id: str) -> list[Chunk]
             and tokens(_render(groups[-2] + groups[-1])) <= MAX_TOKENS):
         groups[-2:] = [groups[-2] + groups[-1]]
     return [Chunk(chunk_id=f"{doc_id}-{i:04d}", doc_id=doc_id, filename=filename,
-                  page_number=g[0].page_number, chunk_index=i, text=_render(g), section=g[0].section)
+                  page_number=g[0].page_number, chunk_index=i, text=_render(g), section=g[0].section,
+                  blocks=g)
             for i, g in enumerate(groups)]
 
 

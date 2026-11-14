@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 11 of 22**, both spares used (budget decided 2026-11-13; the Compose-name chore is outside it).
+**Commits: 12 of 24** (budget raised from 22 on 2026-11-14: Phase 4 gets two more commits; one spare left after Phase 12's) (budget decided 2026-11-13; the Compose-name chore is outside it).
 
 ## Chores outside the phase budget
 
@@ -226,7 +226,8 @@ PR #5 (Phases 0–2) was merged on 2026-11-14 with a merge commit
 
 | # | Commit | What |
 |---|---|---|
-| 1 | this commit | Chunks never cross a section or hold two tables; replaced documents keep unchanged chunks' vectors; Neon setup (`scripts/neon.py`, psycopg URL schemes in config); batched synthetic inserts; read-only leakage check (`scripts/leakage_check.py`) |
+| 1 | `c6b8571` | Chunks never cross a section or hold two tables; replaced documents keep unchanged chunks' vectors; Neon setup (`scripts/neon.py`, psycopg URL schemes in config); batched synthetic inserts; read-only leakage check (`scripts/leakage_check.py`) |
+| 2 | this commit | Metadata filters (department, document type, the version in force on a date, today by default); hypothetical-question index (migration 0012) as a third RRF leg; cross-encoder rerank toggle (fastembed, ONNX); parent-section expansion within a token cap; default scope is every visible document |
 
 ### Notes
 
@@ -269,6 +270,44 @@ PR #5 (Phases 0–2) was merged on 2026-11-14 with a merge commit
   merchant 10/10, date 10/10, amount 10/10, card last 4 10/10. Every value
   is exact; only the merchant comparison ignores case (the receipts print
   it in capitals).
-- **Phase 4 has one commit left** for metadata filters, parent-section
-  joins, the question index, the version filter, the rerank toggle and the
-  branching experiment, and no spare remains.
+- **Budget raised to 24** (2026-11-14): Phase 4 has commits 2 (retrieval
+  options) and 3 (the Neon branching experiment); one spare remains.
+
+### Notes (commit 2)
+
+- **Filters** (`ingestion.store.Filters`): department, doc_type, and the
+  version in force on `as_of` (effective on or before it, not superseded
+  by then; a document without dates always counts). Default: today, so the
+  2025 fee schedule and overdraft policy drop out unless asked for
+  (`as_of`, or `all_versions`). One SQL fragment on every leg, a subquery on
+  `documents`, which RLS covers too. Checked read-only on Neon before
+  pushing: the default leaves out both 2025 documents; `as_of=2025-06-01`
+  returns only what was in force then.
+- **Default scope changed.** With no `doc_ids` the API used to search only
+  the newest upload (DocuMind's rule against stitched answers). With the
+  version filter that job is done properly, so it now searches every
+  document the caller may see; the UI text says so.
+- **Question index** (migration 0012): `chunks.question_embedding`, one
+  vector per chunk for its LLM-written questions joined, HNSW, same model
+  and type as `embedding`, on the chunk row so the chunks policy covers it.
+  A third RRF leg in hybrid mode; `RETRIEVAL_MODE=dense` uses chunk vectors
+  only. Embedded on load, reused when the questions don't change.
+- **Rerank** (`RERANK`, off until the experiment decides): fastembed's
+  ONNX cross-encoder `Xenova/ms-marco-MiniLM-L-6-v2` (80 MB, loads on
+  first use: 2.4 s locally, then about 75 ms for 3 passages) scores the
+  top `RERANK_CANDIDATES` (20) fused chunks. fastembed needs
+  `huggingface_hub<2`, so constraints move it from 2.2.0 to 1.33.0, which
+  sentence-transformers 6.2 accepts (pip resolves the whole set).
+- **Parent-section expansion** (`PARENT_EXPANSION`, off until the
+  experiment decides): each hit becomes its top-level section (title >
+  heading) grown outward from the hit, contiguous, while the joined text
+  stays under `PARENT_MAX_TOKENS` (1,500). A second hit in the same parent
+  is dropped, not repeated; page-chunked uploads (no section) stay as they
+  are. `context_chunk_ids` lists the chunks a hit's text holds, which the
+  experiment uses for recall.
+
+## Phase 10 notes (from 2026-11-14)
+
+- **Harder receipts.** Add 5 receipt images that are blurred, rotated and
+  low-contrast, so the vision accuracy claim (10/10 per field) isn't
+  measured on clean renders only.

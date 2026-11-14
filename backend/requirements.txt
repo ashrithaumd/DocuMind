@@ -21,6 +21,10 @@ tiktoken==0.14.0
 # doesn't ship CUDA. Needs 6+: LocalEmbeddings calls get_embedding_dimension
 # (renamed in 6).
 sentence-transformers==6.2.0
+# Reranker (RERANK=true): a cross-encoder run through ONNX Runtime, so torch
+# isn't loaded at query time. Needs huggingface_hub<2 (constraints.txt pins
+# 1.33.0, which sentence-transformers 6.2 also accepts).
+fastembed==0.9.1
 pypdf==6.21.2
 python-docx==1.2.0
 # Corpus parsers (ingestion/parse.py): the rate-sheet workbook and the OpenAPI spec.

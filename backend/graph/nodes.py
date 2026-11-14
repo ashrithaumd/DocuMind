@@ -23,6 +23,7 @@ from deps import get_llm, get_store
 from graph.redaction import redact
 from graph.routing import SMALL_TALK_RESPONSE, is_small_talk
 from graph.state import GraphState
+from ingestion.store import Filters
 
 logger = logging.getLogger(__name__)
 
@@ -114,15 +115,12 @@ async def retrieve_node(state: GraphState) -> dict:
     # Bound to the caller: RLS limits both legs and the listing to their rows.
     store = get_store().scoped(state.get("access"))
 
-    # Default scope is the single most recent document, NOT the whole corpus —
-    # querying everything by default invites answers stitched from unrelated
-    # documents. Callers widen the scope explicitly by passing doc_ids.
+    # Default scope: every document the caller may see, in the version in
+    # force today (Filters' default), so a 2025 and a 2026 fee schedule never
+    # answer together. doc_ids and the filters narrow it.
     scoped = state.get("doc_ids") or []
-    if not scoped:
-        documents = store.list_documents()
-        scoped = [documents[0]["doc_id"]] if documents else []
-
-    results = await store.search(state["question"], doc_ids=scoped or None)
+    results = await store.search(state["question"], doc_ids=scoped or None,
+                                 filters=state.get("filters") or Filters())
 
     # Redact retrieved text ONCE here, so every downstream LLM call (grade,
     # generate, groundedness) and every API response works from masked text.

@@ -87,7 +87,7 @@ const isRefusal = (outcome?: string) =>
   !!outcome && outcome !== "answered" && outcome !== "small_talk";
 
 interface Props {
-  docIds: string[]; // empty = backend default (newest document)
+  docIds: string[]; // empty = backend default (every visible document, current versions)
 }
 
 export default function Chat({ docIds }: Props) {

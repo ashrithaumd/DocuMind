@@ -27,7 +27,7 @@ export default function App() {
 
 function Workspace({ me, user, onSignOut }: { me: Me; user: User; onSignOut: () => void }) {
   const [documents, setDocuments] = useState<DocumentInfo[]>([]);
-  // Empty selection = default scope (the backend queries the newest document).
+  // Empty selection = default scope (every document you can see, current versions).
   const [selectedDocIds, setSelectedDocIds] = useState<string[]>([]);
 
   useEffect(() => {
@@ -89,7 +89,7 @@ function DocumentList({
         <div className="doc-list">
           <p className="doc-hint">
             {selectedDocIds.length === 0
-              ? "Questions go to the newest document. Tick boxes to choose."
+              ? "Questions search every document you can see. Tick boxes to narrow it."
               : `Questions go to ${selectedDocIds.length} selected document${
                   selectedDocIds.length > 1 ? "s" : ""
                 }.`}

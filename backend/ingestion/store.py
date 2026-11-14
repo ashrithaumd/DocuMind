@@ -1,6 +1,12 @@
 """Hybrid chunk store on Postgres: pgvector (dense) + full-text search
-(sparse) over the `chunks` table (migration 0002), fused with Reciprocal
-Rank Fusion.
+(sparse) + the hypothetical-question index (migration 0012: one vector per
+chunk for the questions it answers) over the `chunks` table, fused with
+Reciprocal Rank Fusion. RETRIEVAL_MODE=dense uses the chunk vectors alone.
+After fusion, optionally: a cross-encoder rerank (RERANK, ingestion/rerank.py)
+and parent-section expansion (PARENT_EXPANSION: each hit replaced by its
+top-level section's text around it, up to PARENT_MAX_TOKENS). Metadata
+filters (Filters: department, doc_type, the version in force on a date,
+today by default) apply to every leg in SQL.
 
 Why hybrid: dense embeddings catch paraphrases ("remuneration" ~ "salary"),
 full-text search catches exact terms embeddings dilute (part numbers,
@@ -44,14 +50,16 @@ import copy
 import json
 import logging
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, field, replace
+from datetime import date
 
 import sqlalchemy as sa
 
 from config import Settings
 from db.access import WRITER_ROLES, Access, set_access  # noqa: F401  (Access re-exported)
 from embeddings import EmbeddingProvider
-from ingestion.chunking import Chunk
+from ingestion.chunking import Chunk, tokens
+from ingestion.rerank import Reranker
 
 logger = logging.getLogger(__name__)
 
@@ -62,61 +70,71 @@ DOCUMENT_META = ("doc_type", "department", "version", "effective_date", "superse
 @dataclass
 class RetrievedChunk:
     chunk_id: str
-    text: str
+    text: str                 # the chunk's text, or its parent section's (parent_expansion)
     filename: str
     page_number: int
     score: float              # fused RRF score (used for the final ranking)
     dense_rank: int | None    # rank in the dense leg, None if it didn't place
     sparse_rank: int | None   # rank in the full-text leg, None if it didn't place
     similarity: float | None  # cosine similarity, only known for the dense leg
+    question_rank: int | None = None  # rank in the hypothetical-question leg
+    rerank_score: float | None = None  # cross-encoder score, when reranked
+    doc_id: str = ""
+    section: str = ""
+    chunk_index: int = 0
+    # The chunks whose text `text` holds: [chunk_id], or the parent section's
+    # chunks around it when expanded.
+    context_chunk_ids: list[str] = field(default_factory=list)
+
+
+@dataclass(frozen=True)
+class Filters:
+    """Metadata filters, applied in SQL to every retrieval leg. By default
+    only versions in force today: effective on or before `as_of` and not
+    superseded by then (a document without dates is always in force)."""
+    department: str | None = None
+    doc_type: str | None = None
+    as_of: date | None = None   # None: today
+    all_versions: bool = False  # True: superseded and not-yet-effective versions too
+
+    def params(self) -> dict:
+        return {"department": self.department, "doc_type": self.doc_type,
+                "as_of": None if self.all_versions else (self.as_of or date.today())}
 
 
 def rrf_fuse(
     dense: dict[str, tuple[int, float, str, dict]],
     sparse: dict[str, tuple[int, str, dict]],
     k: int,
+    questions: dict[str, tuple[int, str, dict]] | None = None,
 ) -> list[RetrievedChunk]:
     """Reciprocal Rank Fusion: score(c) = sum over legs of 1 / (k + rank).
 
-    `dense` maps chunk_id -> (rank, similarity, text, meta), `sparse` maps
-    chunk_id -> (rank, text, meta); meta has filename and page_number. Every
-    candidate from either leg comes back, sorted by fused score, keeping its
-    rank in each leg.
+    `dense` maps chunk_id -> (rank, similarity, text, meta); `sparse` and
+    `questions` (the hypothetical-question leg) map chunk_id -> (rank, text,
+    meta); meta has filename and page_number (and doc_id, section,
+    chunk_index from the store). Every candidate from any leg comes back,
+    sorted by fused score, keeping its rank in each leg.
 
     Tie-break rule (equal fused scores, which happen whenever two chunks hold
     mirrored ranks, e.g. dense 1 + sparse 2 vs dense 2 + sparse 1): a chunk
-    the dense leg found comes first, ordered by its dense rank; chunks only
-    the sparse leg found follow, ordered by sparse rank. This is the order
-    the Phase 0 store produced implicitly (stable sort over dense-first
-    insertion), so run A and the Postgres runs break ties the same way.
+    the dense leg found comes first, ordered by its dense rank; then chunks
+    the sparse leg found, by sparse rank; then question-leg-only chunks.
+    The first two are the order the Phase 0 store produced implicitly
+    (stable sort over dense-first insertion), so run A and the Postgres runs
+    break ties the same way.
     """
     fused: dict[str, RetrievedChunk] = {}
     for cid, (rank, similarity, text, meta) in dense.items():
-        fused[cid] = RetrievedChunk(
-            chunk_id=cid,
-            text=text,
-            filename=meta["filename"],
-            page_number=meta["page_number"],
-            score=1.0 / (k + rank),
-            dense_rank=rank,
-            sparse_rank=None,
-            similarity=round(similarity, 4),
-        )
-    for cid, (rank, text, meta) in sparse.items():
-        if cid in fused:
+        fused[cid] = RetrievedChunk(chunk_id=cid, text=text, score=1.0 / (k + rank), dense_rank=rank,
+                                    sparse_rank=None, similarity=round(similarity, 4), **meta)
+    for leg, rows in (("sparse_rank", sparse), ("question_rank", questions or {})):
+        for cid, (rank, text, meta) in rows.items():
+            if cid not in fused:
+                fused[cid] = RetrievedChunk(chunk_id=cid, text=text, score=0.0, dense_rank=None,
+                                            sparse_rank=None, similarity=None, **meta)
             fused[cid].score += 1.0 / (k + rank)
-            fused[cid].sparse_rank = rank
-        else:
-            fused[cid] = RetrievedChunk(
-                chunk_id=cid,
-                text=text,
-                filename=meta["filename"],
-                page_number=meta["page_number"],
-                score=1.0 / (k + rank),
-                dense_rank=None,
-                sparse_rank=rank,
-                similarity=None,
-            )
+            setattr(fused[cid], leg, rank)
     return sorted(fused.values(), key=_fused_order)
 
 
@@ -124,33 +142,111 @@ def _fused_order(chunk: RetrievedChunk) -> tuple:
     """Sort key: fused score descending, then the tie-break rule in rrf_fuse."""
     if chunk.dense_rank is not None:
         return (-chunk.score, 0, chunk.dense_rank)
-    return (-chunk.score, 1, chunk.sparse_rank)
+    if chunk.sparse_rank is not None:
+        return (-chunk.score, 1, chunk.sparse_rank)
+    return (-chunk.score, 2, chunk.question_rank)
 
 
+def parent_of(section: str) -> str:
+    """The top-level section a chunk belongs to: title > heading (a sheet or
+    an API operation is its own)."""
+    return " > ".join(section.split(" > ")[:2])
 
-_DENSE = sa.text("""
-    WITH candidates AS MATERIALIZED (
-        SELECT chunk_id, text, filename, page_number,
-               embedding <=> CAST(:query_vector AS vector) AS distance
-        FROM chunks
-        WHERE CAST(:doc_ids AS text[]) IS NULL OR doc_id = ANY(CAST(:doc_ids AS text[]))
-        ORDER BY distance
-        LIMIT :n
-    )
-    SELECT chunk_id, text, filename, page_number, distance
-    FROM candidates
-    ORDER BY distance + 0
-""")
 
-_SPARSE = sa.text("""
-    SELECT chunk_id, text, filename, page_number, ts_rank_cd(tsv, query) AS score
+def expand_to_parents(hits: list[RetrievedChunk], rows: list[dict], max_tokens: int) -> list[RetrievedChunk]:
+    """Give each hit its parent section's text: the chunks of the same document
+    and top-level section (`rows`: chunk_id, doc_id, section, text, in
+    chunk_index order), grown outward from the hit while under `max_tokens`
+    (always contiguous, always including the hit). A second hit in a parent
+    already given is dropped: its text is in the context once. A hit with no
+    section (a page-chunked upload) stays as it is."""
+    from ingestion.chunking import tokens
+
+    parents: dict[tuple[str, str], list[dict]] = {}
+    for row in rows:
+        parents.setdefault((row["doc_id"], parent_of(row["section"])), []).append(row)
+    out, given = [], set()
+    for hit in hits:
+        key = (hit.doc_id, parent_of(hit.section))
+        members = parents.get(key, []) if hit.section else []
+        at = next((i for i, m in enumerate(members) if m["chunk_id"] == hit.chunk_id), None)
+        if at is None:
+            out.append(replace(hit, context_chunk_ids=[hit.chunk_id]))
+            continue
+        if key in given:
+            continue
+        given.add(key)
+        lo = hi = at
+        grew = True
+        while grew:
+            grew = False
+            for j in (hi + 1, lo - 1):  # after, then before
+                if 0 <= j < len(members) and \
+                        tokens(_joined(members[min(lo, j):max(hi, j) + 1])) <= max_tokens:
+                    lo, hi, grew = min(lo, j), max(hi, j), True
+        window = members[lo:hi + 1]
+        out.append(replace(hit, text=_joined(window), context_chunk_ids=[m["chunk_id"] for m in window]))
+    return out
+
+
+def _joined(window: list[dict]) -> str:
+    """Chunk texts in order, each section's path line kept once."""
+    parts, previous = [], None
+    for m in window:
+        text = m["text"]
+        if m["section"] == previous and text.startswith(m["section"] + "\n\n"):
+            text = text[len(m["section"]) + 2:]
+        parts.append(text)
+        previous = m["section"]
+    return "\n\n".join(parts)
+
+
+# Every leg: the caller's doc_ids, then the metadata filters (Filters.params)
+# as a subquery on documents, which RLS also covers.
+_WHERE = """
+    (CAST(:doc_ids AS text[]) IS NULL OR doc_id = ANY(CAST(:doc_ids AS text[])))
+    AND (CAST(:department AS text) IS NULL AND CAST(:doc_type AS text) IS NULL
+         AND CAST(:as_of AS date) IS NULL
+         OR doc_id IN (
+            SELECT d.doc_id FROM documents d
+            WHERE (CAST(:department AS text) IS NULL OR d.department = CAST(:department AS text))
+              AND (CAST(:doc_type AS text) IS NULL OR d.doc_type = CAST(:doc_type AS text))
+              AND (CAST(:as_of AS date) IS NULL
+                   OR (coalesce(d.effective_date <= CAST(:as_of AS date), true)
+                       AND coalesce(d.superseded_on > CAST(:as_of AS date), true)))))
+"""
+_COLUMNS = "chunk_id, doc_id, chunk_index, section, text, filename, page_number"
+
+
+def _nearest(column: str) -> sa.TextClause:
+    return sa.text(f"""
+        WITH candidates AS MATERIALIZED (
+            SELECT {_COLUMNS}, {column} <=> CAST(:query_vector AS vector) AS distance
+            FROM chunks
+            WHERE {column} IS NOT NULL AND {_WHERE}
+            ORDER BY distance
+            LIMIT :n
+        )
+        SELECT * FROM candidates
+        ORDER BY distance + 0
+    """)
+
+
+_DENSE = _nearest("embedding")
+_QUESTIONS = _nearest("question_embedding")
+
+_SPARSE = sa.text(f"""
+    SELECT {_COLUMNS}, ts_rank_cd(tsv, query) AS score
     FROM chunks,
          CAST(replace(plainto_tsquery('english', :query)::text, '&', '|') AS tsquery) AS query
-    WHERE tsv @@ query
-      AND (CAST(:doc_ids AS text[]) IS NULL OR doc_id = ANY(CAST(:doc_ids AS text[])))
+    WHERE tsv @@ query AND {_WHERE}
     ORDER BY score DESC, chunk_id
     LIMIT :n
 """)
+
+
+def _meta(row) -> dict:
+    return {k: row[k] for k in ("filename", "page_number", "doc_id", "section", "chunk_index")}
 
 
 def _vector_literal(vector: list[float]) -> str:
@@ -158,7 +254,8 @@ def _vector_literal(vector: list[float]) -> str:
 
 
 class HybridStore:
-    def __init__(self, settings: Settings, embeddings: EmbeddingProvider, engine: sa.Engine | None = None):
+    def __init__(self, settings: Settings, embeddings: EmbeddingProvider, engine: sa.Engine | None = None,
+                 reranker: Reranker | None = None):
         if engine is None:
             if not settings.database_url:
                 raise RuntimeError("The Postgres chunk store needs DATABASE_URL.")
@@ -166,6 +263,7 @@ class HybridStore:
         self._settings = settings
         self._embeddings = embeddings
         self._engine = engine
+        self._reranker = reranker or Reranker(settings.rerank_model)  # loads on first use
         self._access = None
         self._check_embedding_index()
         self._check_role_cannot_bypass_rls()
@@ -175,6 +273,13 @@ class HybridStore:
         scoped = copy.copy(self)
         scoped._access = access
         return scoped
+
+    def configured(self, **overrides) -> "HybridStore":
+        """A copy with retrieval settings overridden (retrieval_mode, rerank,
+        parent_expansion, top_k...), so modes can be compared on one store."""
+        configured = copy.copy(self)
+        configured._settings = self._settings.model_copy(update=overrides)
+        return configured
 
     def _require_writer(self) -> None:
         """Writes (the corpus loader) are for editors and admins only,
@@ -270,12 +375,16 @@ class HybridStore:
     # --- ingestion ----------------------------------------------------------
 
     def _stored_vectors(self, doc_id: str) -> dict[str, str]:
-        """Chunk text -> its stored vector (pgvector's text form), for this
-        document and the current embedding model, as far as RLS shows it."""
+        """Text -> its stored vector (pgvector's text form): chunk texts and
+        joined question lists, for this document and the current embedding
+        model, as far as RLS shows it."""
         with self._begin() as conn:
-            return dict(conn.execute(sa.text(
-                "SELECT text, embedding::text FROM chunks WHERE doc_id = :d AND embedding_model = :m"),
-                {"d": doc_id, "m": self._embeddings.model}).all())
+            return dict(conn.execute(sa.text("""
+                SELECT text, embedding::text FROM chunks WHERE doc_id = :d AND embedding_model = :m
+                UNION ALL
+                SELECT array_to_string(questions, chr(10)), question_embedding::text FROM chunks
+                WHERE doc_id = :d AND embedding_model = :m AND question_embedding IS NOT NULL
+            """), {"d": doc_id, "m": self._embeddings.model}).all())
 
     async def add_document(self, chunks: list[Chunk], *, team_id: str | None,
                            clearance: int, uploaded_by: str | None, tables=(),
@@ -295,10 +404,13 @@ class HybridStore:
         doc_id, filename = chunks[0].doc_id, chunks[0].filename
         if any(c.doc_id != doc_id for c in chunks):
             raise ValueError("add_document takes the chunks of one document")
-        # A replaced document keeps the vectors of chunks whose text didn't
-        # change (same model); only new text is embedded.
+        # Each chunk's hypothetical questions, joined, get one vector of their
+        # own (the question index). A replaced document keeps the vectors of
+        # text that didn't change (same model); only new text is embedded.
+        asked = {c.chunk_id: "\n".join(c.questions) for c in chunks if c.questions}
         vectors = await asyncio.to_thread(self._stored_vectors, doc_id) if replace else {}
-        todo = list(dict.fromkeys(c.text for c in chunks if c.text not in vectors))
+        todo = list(dict.fromkeys(t for t in [c.text for c in chunks] + list(asked.values())
+                                  if t not in vectors))
         if todo:
             fresh = await self._embeddings.embed_documents(todo)
             vectors |= {t: _vector_literal(v) for t, v in zip(todo, fresh)}
@@ -306,7 +418,8 @@ class HybridStore:
             {"chunk_id": c.chunk_id, "doc_id": doc_id, "page_number": c.page_number,
              "chunk_index": c.chunk_index, "text": c.text, "section": c.section,
              "summary": c.summary, "keywords": c.keywords, "questions": c.questions,
-             "embedding_model": self._embeddings.model, "embedding": vectors[c.text]}
+             "embedding_model": self._embeddings.model, "embedding": vectors[c.text],
+             "question_embedding": vectors.get(asked.get(c.chunk_id))}
             for c in chunks
         ]
 
@@ -328,10 +441,12 @@ class HybridStore:
                 inserted = conn.execute(sa.text("""
                     INSERT INTO chunks (chunk_id, doc_id, filename, page_number, chunk_index,
                                         text, section, summary, keywords, questions,
-                                        embedding_model, embedding, org_id, team_id, clearance)
+                                        embedding_model, embedding, question_embedding,
+                                        org_id, team_id, clearance)
                     SELECT :chunk_id, d.doc_id, d.filename, :page_number, :chunk_index,
                            :text, :section, :summary, :keywords, :questions,
                            :embedding_model, CAST(:embedding AS vector),
+                           CAST(:question_embedding AS vector),
                            d.org_id, d.team_id, d.clearance
                     FROM documents d WHERE d.doc_id = :doc_id
                 """), rows).rowcount
@@ -361,45 +476,67 @@ class HybridStore:
     async def embed_query(self, query: str) -> list[float]:
         return await self._embeddings.embed_query(query)
 
-    async def search(self, query: str, doc_ids: list[str] | None = None) -> list[RetrievedChunk]:
-        """Hybrid search: top candidates from each leg, fused with RRF.
-        `doc_ids` scopes both legs to those documents."""
-        return await self.search_with_vector(query, await self.embed_query(query), doc_ids)
+    async def search(self, query: str, doc_ids: list[str] | None = None,
+                     filters: Filters | None = None) -> list[RetrievedChunk]:
+        """Retrieve the top_k chunks for `query`: the legs of RETRIEVAL_MODE
+        fused with RRF, optionally reranked (RERANK), optionally expanded to
+        their parent sections (PARENT_EXPANSION). `doc_ids` scopes every leg
+        to those documents; `filters` defaults to the versions in force today."""
+        return await self.search_with_vector(query, await self.embed_query(query), doc_ids, filters)
 
     async def search_with_vector(
-        self, query: str, query_vector: list[float], doc_ids: list[str] | None = None
+        self, query: str, query_vector: list[float], doc_ids: list[str] | None = None,
+        filters: Filters | None = None,
     ) -> list[RetrievedChunk]:
         """search() with the query already embedded, so the benchmark can
         time embedding and search separately."""
-        return (await self.fused_ranking(query, query_vector, doc_ids))[: self._settings.top_k]
+        return await asyncio.to_thread(self._search, query, query_vector, doc_ids, filters)
 
     async def fused_ranking(
-        self, query: str, query_vector: list[float], doc_ids: list[str] | None = None
+        self, query: str, query_vector: list[float], doc_ids: list[str] | None = None,
+        filters: Filters | None = None,
     ) -> list[RetrievedChunk]:
-        """Every candidate from either leg, fused and sorted, before the top_k
-        cut, each keeping its rank in each leg."""
-        return await asyncio.to_thread(self._fused_ranking, query, query_vector, doc_ids)
+        """Every candidate from the legs, fused and sorted, before reranking
+        and the top_k cut, each keeping its rank in each leg."""
+        return await asyncio.to_thread(self._fused_ranking, query, query_vector, doc_ids, filters)
 
-    def _fused_ranking(self, query: str, query_vector: list[float],
-                       doc_ids: list[str] | None) -> list[RetrievedChunk]:
-        params = {"doc_ids": list(doc_ids) if doc_ids else None, "n": self._settings.rrf_candidates}
-        # Both legs run under the RLS policy: the access check is a filter on
+    def _search(self, query: str, query_vector: list[float], doc_ids: list[str] | None,
+                filters: Filters | None) -> list[RetrievedChunk]:
+        ranked = self._fused_ranking(query, query_vector, doc_ids, filters)
+        if self._settings.rerank and ranked:
+            head = ranked[: self._settings.rerank_candidates]
+            for chunk, score in zip(head, self._reranker.scores(query, [c.text for c in head])):
+                chunk.rerank_score = round(score, 4)
+            ranked = sorted(head, key=lambda c: -c.rerank_score)
+        hits = ranked[: self._settings.top_k]
+        if self._settings.parent_expansion and hits:
+            return self._expanded(hits)
+        return [replace(h, context_chunk_ids=[h.chunk_id]) for h in hits]
+
+    def _expanded(self, hits: list[RetrievedChunk]) -> list[RetrievedChunk]:
+        with self._begin() as conn:
+            rows = conn.execute(sa.text(
+                "SELECT chunk_id, doc_id, section, text FROM chunks "
+                "WHERE doc_id = ANY(:d) AND section <> '' ORDER BY doc_id, chunk_index"),
+                {"d": sorted({h.doc_id for h in hits})}).mappings().all()
+        return expand_to_parents(hits, rows, self._settings.parent_max_tokens)
+
+    def _fused_ranking(self, query: str, query_vector: list[float], doc_ids: list[str] | None,
+                       filters: Filters | None) -> list[RetrievedChunk]:
+        params = {"doc_ids": list(doc_ids) if doc_ids else None, "n": self._settings.rrf_candidates,
+                  **(filters or Filters()).params()}
+        vector = {**params, "query_vector": _vector_literal(query_vector)}
+        hybrid = self._settings.retrieval_mode == "hybrid"
+        # Every leg runs under the RLS policy: the access check is a filter on
         # each row's own columns, which iterative scans handle like doc_id.
         with self._begin() as conn:
             conn.execute(sa.text("SET LOCAL hnsw.iterative_scan = relaxed_order"))
-            dense_rows = conn.execute(
-                _DENSE, {**params, "query_vector": _vector_literal(query_vector)}
-            ).mappings().all()
-            sparse_rows = conn.execute(_SPARSE, {**params, "query": query}).mappings().all()
+            dense_rows = conn.execute(_DENSE, vector).mappings().all()
+            sparse_rows = conn.execute(_SPARSE, {**params, "query": query}).mappings().all() if hybrid else []
+            question_rows = conn.execute(_QUESTIONS, vector).mappings().all() if hybrid else []
 
-        dense = {
-            r["chunk_id"]: (rank, 1.0 - r["distance"], r["text"],
-                            {"filename": r["filename"], "page_number": r["page_number"]})
-            for rank, r in enumerate(dense_rows, start=1)
-        }
-        sparse = {
-            r["chunk_id"]: (rank, r["text"],
-                            {"filename": r["filename"], "page_number": r["page_number"]})
-            for rank, r in enumerate(sparse_rows, start=1)
-        }
-        return rrf_fuse(dense, sparse, self._settings.rrf_k)
+        dense = {r["chunk_id"]: (rank, 1.0 - r["distance"], r["text"], _meta(r))
+                 for rank, r in enumerate(dense_rows, start=1)}
+        sparse = {r["chunk_id"]: (rank, r["text"], _meta(r)) for rank, r in enumerate(sparse_rows, start=1)}
+        questions = {r["chunk_id"]: (rank, r["text"], _meta(r)) for rank, r in enumerate(question_rows, start=1)}
+        return rrf_fuse(dense, sparse, self._settings.rrf_k, questions)

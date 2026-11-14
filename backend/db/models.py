@@ -52,8 +52,8 @@ class QueryLog(Base):
     # [{chunk_id, page_number, score, similarity, dense_rank, sparse_rank}]
     retrieved_chunks: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
-    # doc_ids retrieval was actually scoped to (requested, or the default
-    # most-recent upload). Null for queries that never reached retrieval.
+    # doc_ids retrieval was scoped to: the requested ones, or [] for every
+    # document the caller may see. Null for queries that never reached retrieval.
     doc_ids: Mapped[list | None] = mapped_column(JSON, nullable=True)
 
     # PII masking: whether any redaction happened, and which categories

@@ -126,15 +126,15 @@ def test_ungrounded_retries_once_then_refuses(client, app_env):
 # --- doc scoping -----------------------------------------------------------------
 
 
-def test_default_scope_is_newest_document(client, app_env):
+def test_default_scope_is_every_visible_document(client, app_env):
     reactor_id, handbook_id = _ingest_two_docs(client)
 
     body = client.post("/query", json={"question": "cooling pumps RPM"}).json()
-    # Default = newest document (the handbook), NOT the whole corpus — so the
-    # reactor content must not be retrieved even though it matches the query.
-    assert body["doc_ids"] == [handbook_id]
-    assert all(c["chunk_id"].startswith(handbook_id) for c in body["chunks"])
-    assert _last_log()["doc_ids"] == [handbook_id]
+    # Default = every document the caller may see (in the version in force
+    # today), so the older reactor manual is found although the handbook is newer.
+    assert body["doc_ids"] == []
+    assert any(c["chunk_id"].startswith(reactor_id) for c in body["chunks"])
+    assert _last_log()["doc_ids"] == []
 
 
 def test_explicit_doc_ids_scope_retrieval(client, app_env):

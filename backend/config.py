@@ -74,6 +74,17 @@ class Settings(BaseSettings):
     top_k: int = 6            # chunks handed to the LLM after fusion
     rrf_candidates: int = 12  # candidates pulled from EACH retriever before fusion
     rrf_k: int = 60           # standard RRF damping constant
+    # "dense": chunk vectors only. "hybrid": chunk vectors + full-text +
+    # the hypothetical-question index, fused with RRF.
+    retrieval_mode: Literal["dense", "hybrid"] = "hybrid"
+    # Rerank the fused candidates with a local cross-encoder (ONNX, no torch).
+    rerank: bool = False
+    rerank_model: str = "Xenova/ms-marco-MiniLM-L-6-v2"
+    rerank_candidates: int = 20  # fused candidates the cross-encoder scores
+    # Give the model each hit's parent section (title > heading), grown
+    # around the hit up to this many tokens, instead of the chunk alone.
+    parent_expansion: bool = False
+    parent_max_tokens: int = 1500
 
     # --- Chunking (~600 tokens with 15% overlap) ---
     chunk_size_tokens: int = 600

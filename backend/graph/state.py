@@ -11,6 +11,7 @@ from typing import Annotated, TypedDict
 class GraphState(TypedDict, total=False):
     question: str
     doc_ids: list[str] | None  # documents the caller asked to query (None = default)
+    filters: object            # ingestion.store.Filters; missing = versions in force today
     # The caller (auth.Principal): retrieval runs under RLS as this org,
     # clearance and teams. Missing = no access context = no rows.
     access: object
@@ -25,12 +26,12 @@ class GraphState(TypedDict, total=False):
     # "full_pipeline" (real document question)
     route: str
 
-    # retrieve — the scope actually used: the requested doc_ids, or the most
-    # recent document when the caller didn't specify any
+    # retrieve — the scope actually used: the requested doc_ids, or [] for
+    # every document the caller may see
     scoped_doc_ids: list[str]
 
-    # retrieve — each chunk is a plain dict (chunk_id, text, filename,
-    # page_number, score, dense_rank, sparse_rank, similarity)
+    # retrieve — each chunk is a plain dict (ingestion.store.RetrievedChunk:
+    # chunk_id, text, filename, page_number, score, the legs' ranks, ...)
     chunks: list[dict]
 
     # grade

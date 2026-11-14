@@ -6,7 +6,7 @@ A banking assistant for the customers of a fictional bank. It answers from the c
 
 ## What exists today
 
-- **Retrieval.** Every chunk is stored once in Postgres with a pgvector embedding (`gemini-embedding-2` by default, or local `all-MiniLM-L6-v2`) and a full-text index. A query runs both legs and fuses them with reciprocal rank fusion. Questions are scoped to chosen documents (the newest one by default).
+- **Retrieval.** Every chunk is stored once in Postgres with a pgvector embedding (`gemini-embedding-2` by default, or local `all-MiniLM-L6-v2`) and a full-text index. A query runs the chunk vectors, full-text search and a hypothetical-question index (one vector per chunk for the questions it answers) and fuses them with reciprocal rank fusion; a local cross-encoder can rerank the result (`RERANK`), and each hit can be widened to its parent section (`PARENT_EXPANSION`). Metadata filters (department, document type, an as-of date) run in SQL; by default only the version of each document in force today is searched, across every document the caller may see.
 - **Pipeline.** Input validation and PII masking, a small-talk shortcut, retrieval, a relevance grade, generation with inline citations, and a groundedness check with one retry; anything that fails becomes an explicit refusal. Answers stream only after they pass the check.
 - **Access.** Firebase identifies the user; Postgres decides what they may see (below). The bank's documents carry a clearance: 0 for customer-facing, 2 for staff-only.
 - **Documents** come only from a loader (the bank corpus loader arrives in Phase 3); there is no upload. Embedding is paced under the Gemini free tier's limits (`backend/ingestion/pacing.py`).
@@ -115,7 +115,7 @@ pip install -r requirements-dev.txt
 python -m pytest tests
 ```
 
-`tests/unit/` covers chunking edge cases (empty/single-sentence/boundary-sized documents), input validation (empty and oversized queries), file-type validation for all supported and rejected formats, doc-scoping logic (explicit scope, default-to-newest, empty corpus), PII redaction patterns (including false-positive guards on normal technical text), the small-talk classifier in both directions, and the embedding pacing used by the loaders.
+`tests/unit/` covers chunking edge cases (empty/single-sentence/boundary-sized documents), input validation (empty and oversized queries), file-type validation for all supported and rejected formats, doc scoping and filters (explicit scope, every visible document by default, current versions only), PII redaction patterns (including false-positive guards on normal technical text), the small-talk classifier in both directions, and the embedding pacing used by the loaders.
 
 `tests/integration/` runs the store (documents and chunks into Postgres + pgvector, a fresh database per test; embeddings stubbed, everything else real), row-level security as the app role, and the full query path through the FastAPI app with LLM calls replaced by a deterministic fake of the LLM gateway: the small-talk shortcut (asserting **zero** LLM calls), the grading-fails refusal, the ungrounded-retry-then-refuse path (asserting the documented five-call worst case), the normal answer path (asserting checkers ride `GRADING_MODEL` and generation rides `GENERATION_MODEL`), doc scoping end to end, PII never reaching a prompt or the log, and the feedback upsert with its stats aggregates. CI runs these against a `pgvector/pgvector:0.8.7-pg16` service container (the compose image) and fails if the Postgres tests would skip; locally, set `TEST_POSTGRES_URL` to a pgvector database. Unit tests that only need the log tables run on SQLite.
 
@@ -127,8 +127,8 @@ The suite runs in GitHub Actions on every push (`.github/workflows/tests.yml`), 
 
 | Endpoint | Purpose |
 |---|---|
-| `GET /documents` | Documents the caller can see, newest first; the first entry is the default query scope |
-| `POST /query` | Full pipeline, single JSON response. Body: `{question, doc_ids?}`; omitting `doc_ids` scopes to the newest document. Returns `query_id` for feedback |
+| `GET /documents` | Documents the caller can see, newest first |
+| `POST /query` | Full pipeline, single JSON response. Body: `{question, doc_ids?, department?, doc_type?, as_of?, all_versions?}`; omitting `doc_ids` searches every document the caller may see, in the version in force on `as_of` (default today). Returns `query_id` for feedback |
 | `POST /query/stream` | SSE: one `stage` event per completed node, then the verified answer as `token` events, then `citations` and `done` (which carries `query_id`) |
 | `POST /feedback` | `{query_id, thumbs_up, comment?}`: upserts the verdict for that query |
 | `GET /admin/logs` | Recent query logs of the admin's org |

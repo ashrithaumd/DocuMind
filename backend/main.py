@@ -26,6 +26,7 @@ import logging
 import re
 import time
 from contextlib import asynccontextmanager
+from datetime import date
 from functools import partial
 
 from fastapi import Depends, FastAPI, HTTPException
@@ -39,6 +40,7 @@ from db import session as db
 import deps
 from deps import get_store
 from graph.pipeline import pipeline
+from ingestion.store import Filters
 from llm import classify_error, track_usage
 
 logging.basicConfig(level=logging.INFO, format="%(levelname)s %(name)s: %(message)s")
@@ -80,9 +82,15 @@ app.add_middleware(
 
 class QueryRequest(BaseModel):
     question: str
-    # Documents to query. Omitted/empty -> the single most recent document
-    # (deliberately NOT the whole corpus, to avoid cross-document bleed).
+    # Documents to query. Omitted/empty -> every document the caller may see.
     doc_ids: list[str] | None = None
+    # Metadata filters (ingestion.store.Filters). By default only the version
+    # of each document in force today; as_of picks another day, all_versions
+    # drops the version filter.
+    department: str | None = Field(default=None, max_length=100)
+    doc_type: str | None = Field(default=None, max_length=100)
+    as_of: date | None = None
+    all_versions: bool = False
 
 
 class FeedbackRequest(BaseModel):
@@ -95,8 +103,10 @@ class FeedbackRequest(BaseModel):
 
 
 def _initial_state(request: QueryRequest, principal: Principal) -> dict:
-    return {"question": request.question, "doc_ids": request.doc_ids, "access": principal,
-            "timings": {}}
+    filters = Filters(department=request.department, doc_type=request.doc_type,
+                      as_of=request.as_of, all_versions=request.all_versions)
+    return {"question": request.question, "doc_ids": request.doc_ids, "filters": filters,
+            "access": principal, "timings": {}}
 
 
 def _merge_update(final: dict, delta: dict) -> None:
@@ -184,8 +194,7 @@ def _stage_detail(node: str, delta: dict) -> dict:
 
 @app.get("/documents")
 async def list_documents(principal: Principal = Depends(get_principal)):
-    """Documents the caller can see, newest first. The first entry is the
-    default query scope."""
+    """Documents the caller can see, newest first."""
     return {"documents": get_store().scoped(principal).list_documents()}
 
 

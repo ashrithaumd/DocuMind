@@ -26,6 +26,8 @@ import sys
 from dataclasses import dataclass
 from datetime import date, timedelta
 
+from config import sqlalchemy_url
+
 BANK_ORG = "finpilot-bank"
 BANK_NAME = "FinPilot Bank"
 START, END = date(2025, 7, 1), date(2026, 6, 30)
@@ -261,12 +263,13 @@ CHILDREN = ("accounts", "cards", "transactions", "fees", "holdings")  # insert o
 
 
 def _insert(conn, table: str, rows: list[dict]) -> None:
+    """Multi-row INSERTs (a Core insert() runs as batches of VALUES rows), not
+    text(), which psycopg2 runs as one round trip per row: over the network to
+    Neon that was nearly the whole load time."""
     import sqlalchemy as sa
 
     if rows:
-        columns = list(rows[0])
-        conn.execute(sa.text(f"INSERT INTO {table} ({', '.join(columns)}) "
-                             f"VALUES ({', '.join(':' + c for c in columns)})"), rows)
+        conn.execute(sa.insert(sa.table(table, *map(sa.column, rows[0]))), rows)
 
 
 def load(owner_url: str, data: dict[str, list[dict]]) -> dict[str, int]:
@@ -279,7 +282,7 @@ def load(owner_url: str, data: dict[str, list[dict]]) -> dict[str, int]:
         for row in data[table]:
             by_customer[row["customer_id"]][table].append(row)
 
-    engine = sa.create_engine(owner_url)
+    engine = sa.create_engine(sqlalchemy_url(owner_url))
     try:
         with engine.begin() as conn:
             conn.execute(sa.text("INSERT INTO orgs VALUES (:o, :n) ON CONFLICT (org_id) DO NOTHING"),

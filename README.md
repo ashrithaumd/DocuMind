@@ -65,6 +65,25 @@ npm run dev                     # Vite proxies /api to localhost:8000
 
 Outside Docker the backend still needs Postgres with pgvector, because the chunks live there: set `DATABASE_URL` to the `finpilot_app` role (e.g. `postgresql+psycopg2://finpilot_app:change-me-too@localhost:5432/finpilot`) run `docker compose up postgres`, then run the migrate step once with the owner's URL given only to it: `MIGRATION_DATABASE_URL=postgresql+psycopg2://finpilot:change-me@localhost:5432/finpilot python migrate.py` (from `backend/`). The backend connects only as `finpilot_app`, which row-level security applies to; it refuses to start on a superuser or table-owner connection, or with `MIGRATION_DATABASE_URL` set. In Docker, the one-shot `migrate` service does this before the backend starts.
 
+### Running on Neon
+
+FinPilot's hosted database is Neon (serverless Postgres with pgvector). Put the two URLs from the Neon console in `backend/.env` (gitignored), never in the repo: `NEON_MIGRATION_DATABASE_URL` (the direct URL of the owner role) and `NEON_POOLED_DATABASE_URL` (the pooled host). Neon's `postgresql://` and `postgresql+psycopg://` schemes are accepted; the backend rewrites them for its psycopg2 driver (`config.sqlalchemy_url`). Then, from the repo root:
+
+```bash
+P=backend/.venv/Scripts/python                              # backend/.venv/bin/python on macOS/Linux
+$P scripts/neon.py setup                                    # app role URL, migrations, finpilot_app's password
+$P scripts/neon.py run -- python -m bank.synthetic          # synthetic customers (~30 s)
+$P scripts/neon.py run -- python -m bank.corpus load        # the bank's documents: metadata + embeddings (Gemini)
+$P scripts/neon.py run -- python -m bank.receipts extract   # receipt fields: 10 Gemini vision calls
+$P scripts/neon.py run -- python ../scripts/leakage_check.py
+```
+
+`setup` writes `NEON_APP_DATABASE_URL` to `backend/.env` on its first run: `finpilot_app` on the pooled host, with a random password. Then it runs the migrate step as the owner, which creates `finpilot_app` (not a superuser, no `BYPASSRLS`, owns no table) and sets that password. `run` gives a command the owner URL as `MIGRATION_DATABASE_URL` and the app URL as `DATABASE_URL`. No script prints a URL.
+
+Reloading is incremental. Chunk metadata is cached by chunk text, and a replaced document keeps the stored vectors of chunks whose text didn't change, so only changed chunks cost Gemini calls.
+
+`scripts/leakage_check.py` is read-only, so it is safe on a live database. It connects as `finpilot_app` and checks four things: every table with a `customer_id` or `clearance` column is under forced row-level security; with no access context, every one of those tables shows zero rows; each synthetic customer sees only their own rows; and a customer sees no staff-only (clearance above 0) chunks, documents or table rows. It exits 1 on any leak. Never point the pytest fixtures at Neon: they create and drop databases and reset `finpilot_app`'s password.
+
 ## Authentication and access control
 
 **Firebase identifies the user; Postgres decides what they may see.** The web UI and the eval harness sign in with Firebase email/password and send the ID token as `Authorization: Bearer ...` on every call. The backend checks the token with the Firebase Admin SDK (allowing 5 seconds of clock skew, `FIREBASE_CLOCK_SKEW_SECONDS`), then loads the user's row from Postgres on every request: org, teams, role (`viewer`, `editor`, `admin`), integer clearance (higher sees more) and an `active` flag. Nothing about access lives in Firebase custom claims, so a change applies on the user's next request, not at their next token refresh.

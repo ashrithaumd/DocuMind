@@ -27,6 +27,7 @@ from decimal import Decimal, InvalidOperation
 from pathlib import Path
 
 from bank.synthetic import generate
+from config import sqlalchemy_url
 
 RECEIPTS = Path(__file__).resolve().parents[2] / "data" / "bank" / "receipts"
 COUNT = 10
@@ -147,7 +148,7 @@ async def extract_all(owner_url: str, llm, model: str, truths: list[dict],
 
     import sqlalchemy as sa
 
-    engine = sa.create_engine(owner_url)
+    engine = sa.create_engine(sqlalchemy_url(owner_url))
     results = []
     try:
         for truth in truths:

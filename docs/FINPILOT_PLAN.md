@@ -46,7 +46,7 @@ is ticked only when its code is merged and tested.
 
 ### 3. Chunking
 
-- [ ] **Structure-aware chunking at 256–512 tokens**: split on headings, sections, list items, table boundaries and OpenAPI operations; never mid-table; small neighbours merged up to 256, large sections split below 512. *Phase 3.*
+- [ ] **Structure-aware chunking, up to 512 tokens**: split on headings, sections, list items, table boundaries and OpenAPI operations; never mid-table; a chunk never crosses a section or holds two tables, so a small section stays a small chunk (merging it into the next one mixed topics); large sections split below 512. *Phase 3, rule changed in Phase 4.*
 
 ### 4. Chunk metadata
 
@@ -118,7 +118,7 @@ is ticked only when its code is merged and tested.
 | 10 | 1 | Evaluation, `RESULTS.md` |
 | 11 | 1 | Red-team report and fixes |
 | 12 | 1 | Deploy and README. **PR #4** |
-| Spare | 2 | Fixes found late (one already used, Phase 0) |
+| Spare | 2 | Fixes found late (both used: Phase 0, Phase 3) |
 | **Total** | **22** | |
 
 The full architecture needs **two more commits** than the original 20

@@ -5,7 +5,7 @@ The plan, the architecture checklist and the commit budget are in
 enterprise build, its eval baselines and decisions) is in git history: see
 `docs/PROGRESS.md` at commit 51ba57a.
 
-**Commits: 10 of 22** (budget decided 2026-11-13; the Compose-name chore is outside it).
+**Commits: 11 of 22**, both spares used (budget decided 2026-11-13; the Compose-name chore is outside it).
 
 ## Chores outside the phase budget
 
@@ -131,16 +131,16 @@ so the PR doesn't change under review.
   matching `card-rates.csv`, average daily balance interest, payments,
   rewards). Both fee schedules gained the balance-transfer fee row that
   agreement states.
-- **Multi-chunk check.** 13 documents, 62 chunks. Six documents span 3 or
+- **Multi-chunk check** (counts before Phase 4's chunking change, which made 114 chunks). 13 documents, 62 chunks. Six documents span 3 or
   more chunks (deposit agreement 19, OpenAPI 13, cardmember agreement 8,
   both fee schedules and the dispute policy 3); a test keeps it at six or
   more. The short policies stay at 2 chunks: they're the version-pair
   distractors (2025 vs 2026), not chunking tests.
 - **Blocks, then chunks.** Parsers turn each file into blocks a chunk may
   not cut: a paragraph, a list item, a whole table, one API operation.
-  The chunker packs blocks of the same section up to 512 tokens and lets a
-  chunk under 256 take in the next section; every chunk starts with its
-  section path. A table over the limit splits between rows, repeating its
+  The chunker packs blocks of the same section up to 512 tokens; every
+  chunk starts with its section path. (Until Phase 4 a chunk under 256 also
+  took in the next section; see Phase 4 commit 1.) A table over the limit splits between rows, repeating its
   header; an operation is always its own chunk.
 - **Spreadsheets.** CSVs split by `effective_date`, so the 2025 and 2026
   rates never share a chunk. In the workbook the header is the widest row,
@@ -218,3 +218,57 @@ so the PR doesn't change under review.
   canary, no staff table.
 - **Not run yet**: the real load (embeddings + 13 metadata calls) waits for
   Neon (Phase 4) and your go.
+
+## Phase 4: Neon
+
+PR #5 (Phases 0–2) was merged on 2026-11-14 with a merge commit
+(`926ddee`); `finpilot` and `finpilot-phase3` are kept.
+
+| # | Commit | What |
+|---|---|---|
+| 1 | this commit | Chunks never cross a section or hold two tables; replaced documents keep unchanged chunks' vectors; Neon setup (`scripts/neon.py`, psycopg URL schemes in config); batched synthetic inserts; read-only leakage check (`scripts/leakage_check.py`) |
+
+### Notes
+
+- **Neon is set up and loaded.** All 11 migrations ran as the owner;
+  `finpilot_app` was created with a random password, kept as
+  `NEON_APP_DATABASE_URL` in `backend/.env`. Logged in as it: not a superuser, no `BYPASSRLS`, owns no table. Loaded:
+  50 customers (23,115 transactions, 625 fees), 13 documents, 114 chunks,
+  10 receipts. No connection string is ever printed.
+- **Leakage check on Neon: clean.** 13 protected tables, all 50 customers,
+  7 customer-owned tables, 4 tables with clearance; staff see the 6
+  clearance-2 chunks (so the check isn't passing on empty data).
+  It refuses the owner role (`BYPASSRLS`). It is read-only; the pytest
+  fixtures never touch Neon (they create and drop databases and reset
+  `finpilot_app`'s password, which would lock the app out). A CI test turns
+  RLS off on `accounts` and checks that the leak is reported, which caught a
+  hole while writing it: a table whose RLS was off had dropped out of the
+  check. Every table with a `customer_id` or `clearance` column (except
+  `users`, the sign-in directory) must now be under forced RLS.
+- **Chunking rule changed** (your call, 2026-11-14). A chunk was labelled
+  with its first block's section, and a chunk under 256 tokens took in the
+  next section: the deposit agreement's 8.7 (third-party disclosure) sat in
+  a "section 8" chunk that was all 9. Interest, and the workbook's card and
+  previous deposit rates shared a chunk. Labelling by majority would only
+  have hidden it. Now a chunk never crosses a section (heading path or
+  sheet) or holds two tables. Result: 114 chunks (was 62); 83 under 256
+  tokens (35 under 100); median 169, maximum 500. A corpus-wide test finds
+  every Markdown chunk's text in the raw file, takes the heading above it
+  there, and checks the chunk has exactly that one section, one top-level
+  section and at most one table.
+- **Only changed chunks cost calls.** 86 of 114 chunk texts changed:
+  21 metadata calls (the cache is keyed by text) and 86 embeddings (a
+  replaced document now keeps the stored vector of an unchanged chunk).
+  A full metadata run is now 26 calls (was 19; batches never span
+  documents, so each document starts its own).
+- **Synthetic load batched**: a Core `insert()` sends multi-row VALUES;
+  `text()` made psycopg2 do a round trip per row. On Neon: before, 650 s
+  for 17 of 50 customers, after which the connection failed (projected about 32 min
+  for all 50); after, **33 s for all 50**.
+- **Receipt vision pass** (gemini-3.5-flash-lite, 10 calls, 58 s):
+  merchant 10/10, date 10/10, amount 10/10, card last 4 10/10. Every value
+  is exact; only the merchant comparison ignores case (the receipts print
+  it in capitals).
+- **Phase 4 has one commit left** for metadata filters, parent-section
+  joins, the question index, the version filter, the rerank toggle and the
+  branching experiment, and no spare remains.

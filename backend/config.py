@@ -7,7 +7,7 @@ overrides the service hosts.
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field, model_validator
+from pydantic import Field, field_validator, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -84,6 +84,11 @@ class Settings(BaseSettings):
     max_upload_mb: int = 20
     max_pages: int = 300
 
+    @field_validator("database_url", "migration_database_url")
+    @classmethod
+    def _psycopg2_url(cls, url: str | None) -> str | None:
+        return sqlalchemy_url(url)
+
     @model_validator(mode="after")
     def _fill_default_models(self) -> "Settings":
         generation, grading = PROVIDER_DEFAULT_MODELS[self.llm_provider]
@@ -118,6 +123,16 @@ EMBEDDING_DEFAULT_DIMENSIONS = {
     "all-MiniLM-L6-v2": 384,      # fixed by the model
     "gemini-embedding-2": 1536,   # reduced from its native 3072
 }
+
+
+def sqlalchemy_url(url: str | None) -> str | None:
+    """A Postgres URL for the driver the backend ships (psycopg2). Neon hands
+    out postgresql:// or postgresql+psycopg:// (psycopg 3) URLs; other
+    schemes (sqlite) pass through."""
+    scheme, sep, rest = (url or "").partition("://")
+    if sep and scheme in ("postgres", "postgresql", "postgresql+psycopg"):
+        return f"postgresql+psycopg2://{rest}"
+    return url
 
 
 @lru_cache

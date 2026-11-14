@@ -159,3 +159,56 @@ def test_chunk_ids_are_stable(corpus):
 
     again = {d.file: [c.chunk_id for c in d.chunks] for d in load_corpus(Settings(anthropic_api_key="x"))}
     assert again == {f: [c.chunk_id for c in d.chunks] for f, d in corpus.items()}
+
+
+def _raw_headings(text: str) -> list[tuple[int, str]]:
+    """(offset, heading path) for every Markdown heading in the raw file, worked
+    out independently of the parser."""
+    import re
+
+    out, path, offset = [], [], 0
+    for line in text.split("\n"):
+        if m := re.match(r"^(#{1,6})\s+(.+?)\s*#*$", line):
+            level = len(m.group(1))
+            path = path[: level - 1] + [m.group(2)]
+            out.append((offset, " > ".join(path)))
+        offset += len(line) + 1
+    return out
+
+
+def test_every_chunk_has_one_section_and_at_most_one_table(corpus):
+    """Each chunk's label is the section its text sits under, no chunk spans
+    two top-level sections (title > heading; a sheet) or two tables. Checked
+    against the raw files: each piece of a Markdown chunk is found in its
+    source and takes the heading above it there. Non-Markdown files have
+    no headings in the raw text; their sections (sheet, table, operation) come
+    from the parser's structure."""
+    import bisect
+
+    from bank.corpus import BANK
+
+    wrong = []
+    for file, doc in corpus.items():
+        raw = (BANK / file).read_text(encoding="utf-8").replace("\r\n", "\n") if file.endswith(".md") else None
+        heads = _raw_headings(raw) if raw else []
+        cursor = 0
+        for chunk in doc.chunks:
+            sections: dict[str, None] = {}  # in order, no repeats
+            for block in chunk.blocks:
+                section = block.section
+                if raw is not None:
+                    at = raw.find(block.text[:60], cursor)
+                    assert at >= 0, f"{file}: block not found in the source: {block.text[:60]!r}"
+                    cursor = at
+                    i = bisect.bisect_right([o for o, _ in heads], at) - 1
+                    section = heads[i][1] if i >= 0 else ""
+                    assert section == block.section, f"{file}: parser put {block.text[:40]!r} under {block.section!r}"
+                sections[section] = None
+            where = f"{file} #{chunk.chunk_index}"
+            if list(sections) != [chunk.section]:
+                wrong.append(f"{where}: labelled {chunk.section!r}, text under {list(sections)}")
+            if len({" > ".join(s.split(" > ")[:2]) for s in sections}) > 1:
+                wrong.append(f"{where}: spans top-level sections {list(sections)}")
+            if (n := sum(b.kind == "table" for b in chunk.blocks)) > 1:
+                wrong.append(f"{where}: holds {n} tables")
+    assert not wrong, "\n".join(wrong)

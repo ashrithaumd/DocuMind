@@ -79,3 +79,15 @@ def test_migrating_twice_is_a_no_op(tmp_path):
     db_session.migrate_database(settings)
 
     assert _revision(sa.create_engine(settings.database_url)) == _head()
+
+
+def test_neon_urls_use_the_shipped_psycopg2_driver():
+    from config import Settings, sqlalchemy_url
+
+    rest = "u:p@ep-x.neon.tech/neondb?sslmode=require"
+    for scheme in ("postgres", "postgresql", "postgresql+psycopg"):
+        assert sqlalchemy_url(f"{scheme}://{rest}") == f"postgresql+psycopg2://{rest}"
+    assert sqlalchemy_url("sqlite:///x.db") == "sqlite:///x.db" and sqlalchemy_url(None) is None
+    s = Settings(_env_file=None, database_url=f"postgresql+psycopg://{rest}",
+                 migration_database_url=f"postgresql://{rest}")
+    assert s.database_url == s.migration_database_url == f"postgresql+psycopg2://{rest}"

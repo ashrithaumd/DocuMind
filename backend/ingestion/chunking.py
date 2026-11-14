@@ -2,12 +2,14 @@
 
 chunk_blocks (FinPilot's corpus): structure-aware. Parsers (parse.py) cut a
 document into blocks (paragraphs, list items, whole tables, API
-operations); this packs neighbouring blocks into chunks of 256-512 tokens:
+operations); this packs neighbouring blocks into chunks of up to 512 tokens:
 
-  - A chunk starts with its section path, and a new path line wherever it
-    crosses into another section, so every chunk says where it came from.
-  - Blocks of the same section and page are packed together up to 512
-    tokens. A chunk still under 256 also takes in the next section.
+  - A chunk never crosses a section (heading path, sheet), so it has exactly
+    one section and starts with its path. A small section stays a small
+    chunk: merging a section's tail into the next one mixed topics (the
+    deposit agreement's 8.7 ended up inside a chunk that was all 9. Interest).
+  - Blocks of the same section and page are packed together up to 512 tokens.
+  - Two tables never share a chunk, even in the same section.
   - A table is never cut mid-row: one bigger than 512 splits between rows,
     each part repeating the header. Other oversized blocks split on
     paragraph, line, then sentence boundaries.
@@ -27,7 +29,7 @@ from config import Settings
 from ingestion.extract import PageText
 from ingestion.parse import Block
 
-MIN_TOKENS, MAX_TOKENS = 256, 512
+MAX_TOKENS = 512
 
 
 @dataclass
@@ -38,7 +40,7 @@ class Chunk:
     page_number: int
     chunk_index: int   # position within the whole document
     text: str
-    section: str = ""  # heading path of the chunk's first block
+    section: str = ""  # heading path of every block in the chunk
     blocks: list[Block] = field(default_factory=list, repr=False, compare=False)  # what it was packed from
     # Retrieval metadata (bank/metadata.py): one LLM call per few chunks, cached.
     summary: str = ""
@@ -88,10 +90,12 @@ def _render(group: list[Block]) -> str:
 
 
 def _can_join(group: list[Block], block: Block) -> bool:
-    if "operation" in (group[-1].kind, block.kind):
+    last = group[-1]
+    if "operation" in (last.kind, block.kind) or (last.section, last.page_number) != (block.section, block.page_number):
         return False
-    same_place = (group[-1].section, group[-1].page_number) == (block.section, block.page_number)
-    return (same_place or tokens(_render(group)) < MIN_TOKENS) and tokens(_render(group + [block])) <= MAX_TOKENS
+    if block.kind == "table" and any(b.kind == "table" for b in group):
+        return False
+    return tokens(_render(group + [block])) <= MAX_TOKENS
 
 
 def chunk_blocks(blocks: list[Block], filename: str, doc_id: str) -> list[Chunk]:
@@ -103,11 +107,6 @@ def chunk_blocks(blocks: list[Block], filename: str, doc_id: str) -> list[Chunk]
             groups[-1].append(piece)
         else:
             groups.append([piece])
-    # A short last chunk joins the one before it when they fit together.
-    if (len(groups) > 1 and tokens(_render(groups[-1])) < MIN_TOKENS
-            and all(b.kind != "operation" for b in groups[-2] + groups[-1])
-            and tokens(_render(groups[-2] + groups[-1])) <= MAX_TOKENS):
-        groups[-2:] = [groups[-2] + groups[-1]]
     return [Chunk(chunk_id=f"{doc_id}-{i:04d}", doc_id=doc_id, filename=filename,
                   page_number=g[0].page_number, chunk_index=i, text=_render(g), section=g[0].section,
                   blocks=g)

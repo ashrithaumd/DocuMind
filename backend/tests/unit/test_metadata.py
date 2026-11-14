@@ -75,12 +75,12 @@ async def test_a_reply_without_chunks_is_survived():
     assert not any(c.summary for c in chunks)
 
 
-def test_the_corpus_costs_about_a_dozen_calls():
+def test_the_corpus_costs_26_calls():
     from bank.corpus import load_corpus
     from config import Settings
 
     docs = load_corpus(Settings(anthropic_api_key="x"))
-    assert len(batches([c for d in docs for c in d.chunks])) <= 20
+    assert len(batches([c for d in docs for c in d.chunks])) <= 26  # a full run, cache empty
 
 
 def test_cache_round_trip(tmp_path):

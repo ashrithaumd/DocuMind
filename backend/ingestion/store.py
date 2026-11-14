@@ -269,6 +269,14 @@ class HybridStore:
 
     # --- ingestion ----------------------------------------------------------
 
+    def _stored_vectors(self, doc_id: str) -> dict[str, str]:
+        """Chunk text -> its stored vector (pgvector's text form), for this
+        document and the current embedding model, as far as RLS shows it."""
+        with self._begin() as conn:
+            return dict(conn.execute(sa.text(
+                "SELECT text, embedding::text FROM chunks WHERE doc_id = :d AND embedding_model = :m"),
+                {"d": doc_id, "m": self._embeddings.model}).all())
+
     async def add_document(self, chunks: list[Chunk], *, team_id: str | None,
                            clearance: int, uploaded_by: str | None, tables=(),
                            meta: dict | None = None, replace: bool = False) -> None:
@@ -287,13 +295,19 @@ class HybridStore:
         doc_id, filename = chunks[0].doc_id, chunks[0].filename
         if any(c.doc_id != doc_id for c in chunks):
             raise ValueError("add_document takes the chunks of one document")
-        vectors = await self._embeddings.embed_documents([c.text for c in chunks])
+        # A replaced document keeps the vectors of chunks whose text didn't
+        # change (same model); only new text is embedded.
+        vectors = await asyncio.to_thread(self._stored_vectors, doc_id) if replace else {}
+        todo = list(dict.fromkeys(c.text for c in chunks if c.text not in vectors))
+        if todo:
+            fresh = await self._embeddings.embed_documents(todo)
+            vectors |= {t: _vector_literal(v) for t, v in zip(todo, fresh)}
         rows = [
             {"chunk_id": c.chunk_id, "doc_id": doc_id, "page_number": c.page_number,
              "chunk_index": c.chunk_index, "text": c.text, "section": c.section,
              "summary": c.summary, "keywords": c.keywords, "questions": c.questions,
-             "embedding_model": self._embeddings.model, "embedding": _vector_literal(v)}
-            for c, v in zip(chunks, vectors)
+             "embedding_model": self._embeddings.model, "embedding": vectors[c.text]}
+            for c in chunks
         ]
 
         def insert() -> None:

@@ -2,7 +2,7 @@
 questions per chunk, from one LLM call per batch of neighbouring chunks.
 
 Batches stay inside one document and hold up to BATCH_CHUNKS chunks and
-BATCH_TOKENS tokens, so the corpus (62 chunks) costs about 13 calls. Every
+BATCH_TOKENS tokens, so the corpus (114 chunks in 13 documents) costs 26 calls. Every
 answer is cached by the hash of (prompt version, model, chunk text): a
 re-run sends only chunks that changed. A batch whose reply is missing or
 malformed for some chunk leaves that chunk uncached, to be retried next

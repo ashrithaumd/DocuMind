@@ -49,8 +49,16 @@ async def test_the_corpus_loads_with_its_metadata_and_reloads_in_place(pg_url, a
     assert _one(store, ADMIN, "SELECT count(*) FROM chunks WHERE summary = '' OR keywords = '{}' "
                               "OR questions = '{}' OR section = ''") == [(0,)]
 
+    embedded = store._embeddings.embed_calls
+    embedded.clear()
     await load(store.scoped(ADMIN), docs)  # again, no metadata calls: replaced, not duplicated
     assert _one(store, ADMIN, "SELECT count(*) FROM chunks") == [(chunks,)]
+    assert embedded == []  # unchanged text keeps its stored vectors
+
+    docs[0].chunks[0].text += "\n\nAmended."
+    await load(store.scoped(ADMIN), docs[:1])
+    assert embedded == [[docs[0].chunks[0].text]]  # only the changed chunk is embedded again
+    assert _one(store, ADMIN, "SELECT count(*) FROM chunks WHERE embedding IS NULL") == [(0,)]
     tables = sum(len(extract_tables(d.chunks)) for d in docs)
     assert _one(store, ADMIN, "SELECT count(*) FROM doc_tables") == [(tables,)]
 

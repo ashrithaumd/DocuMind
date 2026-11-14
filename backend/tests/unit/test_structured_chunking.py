@@ -1,5 +1,5 @@
 """Parsers, noise removal and the structure-aware chunker (Phase 3)."""
-from ingestion.chunking import MAX_TOKENS, MIN_TOKENS, chunk_blocks, tokens
+from ingestion.chunking import MAX_TOKENS, chunk_blocks, tokens
 from ingestion.extract import PageText
 from ingestion.noise import strip_boilerplate, strip_nav_lines, strip_page_furniture
 from ingestion.parse import Block, parse_csv, parse_markdown, parse_openapi
@@ -45,14 +45,13 @@ def test_a_skipped_heading_level_keeps_the_path_aligned():
     assert blocks[0].section == "A > C"
 
 
-def test_small_document_is_one_chunk_with_its_section_path_first():
+def test_each_section_is_its_own_chunk_with_its_path_first():
     chunks = chunk_blocks(parse_markdown(DOC), "guide.md", "d1")
-    assert len(chunks) == 1
-    text = chunks[0].text
-    assert text.startswith("Guide\n\nIntro paragraph.")
-    assert "Guide > 1. Fees\n\n| Service | Fee |" in text
-    assert "- first item\n  continues here\n- second item" in text  # items stay single-spaced
-    assert chunks[0].chunk_id == "d1-0000" and chunks[0].section == "Guide"
+    assert [c.section for c in chunks] == ["Guide", "Guide > 1. Fees", "Guide > 1. Fees > 1.1 Detail"]
+    assert chunks[0].text == "Guide\n\nIntro paragraph."  # small, but never merged into 1. Fees
+    assert chunks[1].text.startswith("Guide > 1. Fees\n\n| Service | Fee |")
+    assert "- first item\n  continues here\n- second item" in chunks[1].text  # items stay single-spaced
+    assert [c.chunk_id for c in chunks] == ["d1-0000", "d1-0001", "d1-0002"]
 
 
 def test_a_big_table_splits_between_rows_and_repeats_its_header():
@@ -68,14 +67,21 @@ def test_a_big_table_splits_between_rows_and_repeats_its_header():
     assert seen == rows  # every row once, in order, none cut
 
 
-def test_sections_pack_up_to_the_limit_and_small_ones_merge():
+def test_a_section_packs_up_to_the_limit_but_sections_never_merge():
     para = "This sentence is about deposits and how they are made available. " * 12
-    blocks = [Block(para, f"Doc > {i}") for i in range(12)]
-    chunks = chunk_blocks(blocks, "doc.md", "d3")
-    sizes = [tokens(c.text) for c in chunks]
-    assert all(s <= MAX_TOKENS for s in sizes)
-    assert all(s >= MIN_TOKENS for s in sizes[:-1])
-    assert len(chunks) < len(blocks)
+    one = chunk_blocks([Block(para, "Doc > Deposits") for _ in range(12)], "doc.md", "d3")
+    sizes = [tokens(c.text) for c in one]
+    assert all(s <= MAX_TOKENS for s in sizes) and len(one) < 12
+    assert all(s + tokens(para) > MAX_TOKENS for s in sizes[:-1])  # each chunk full before the next starts
+    many = chunk_blocks([Block(para, f"Doc > {i}") for i in range(12)], "doc.md", "d3")
+    assert [c.section for c in many] == [f"Doc > {i}" for i in range(12)]
+
+
+def test_two_tables_never_share_a_chunk():
+    head = "| Item | Fee |\n|---|---|"
+    blocks = [Block("| Overdraft | $15 |", "Fees", "table", header=head),
+              Block("| Wire | $25 |", "Fees", "table", header=head)]
+    assert [c.text.count("| Item |") for c in chunk_blocks(blocks, "f.md", "d5")] == [1, 1]
 
 
 def test_oversized_prose_splits_below_the_limit():
